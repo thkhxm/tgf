@@ -1,4 +1,4 @@
-package tcore
+package tframework
 
 //***************************************************
 //author tim.huang
@@ -26,4 +26,13 @@ type ITServer interface {
 // ITServerOptions
 // @Description: 启动过程中相关切面，行为
 type ITServerOptions interface {
+}
+
+// ITServerPlugs
+// @Description: 服务器插件相关接口
+type ITServerPlugs interface {
+}
+
+type ITModule interface {
+	GetModuleName() (moduleName string)
 }

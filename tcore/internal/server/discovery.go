@@ -8,6 +8,6 @@ package tserver
 //***************************************************
 
 // TConsulServiceDiscovery
-// @Description: Consul服务发现
+// @Description:
 type TConsulServiceDiscovery struct {
 }

@@ -1,6 +1,9 @@
 package tcore
 
-import "tframework.com/rpc/tcore/internal/server"
+import (
+	"tframework.com/rpc/tcore/interface"
+	"tframework.com/rpc/tcore/internal/server"
+)
 
 //***************************************************
 //author tim.huang
@@ -9,10 +12,12 @@ import "tframework.com/rpc/tcore/internal/server"
 //
 //***************************************************
 
-// CreateTServer 服务发现
+// CreateDefaultTServer
 // @Description: 创建一个新的服务
 // @return *ITServer
 // @return error
-func CreateTServer() (ITServer, error) {
-	return &tserver.TServer{}, nil
+func CreateDefaultTServer(module tframework.ITModule) (tframework.ITServer, error) {
+	server := &tserver.TServer[tframework.ITModule]{}
+	server.SetModule(module)
+	return server, nil
 }
