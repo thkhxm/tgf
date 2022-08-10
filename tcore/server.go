@@ -1,5 +1,7 @@
 package tcore
 
+import "tframework.com/rpc/tcore/internal/server"
+
 //***************************************************
 //author tim.huang
 //2022/8/10
@@ -7,19 +9,10 @@ package tcore
 //
 //***************************************************
 
-// TServer
-// @Description:
-type TServer struct {
-}
-
-func (s *TServer) name() {
-
-}
-
-// CreateTServer
+// CreateTServer 服务发现
 // @Description: 创建一个新的服务
 // @return *ITServer
 // @return error
-func CreateTServer() (*ITServer, error) {
-	return nil, nil
+func CreateTServer() (ITServer, error) {
+	return &tserver.TServer{}, nil
 }
