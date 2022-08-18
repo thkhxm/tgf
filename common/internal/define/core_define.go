@@ -19,10 +19,10 @@ var CallDepth = flag.Int("log_depth", 3, "log depth")
 
 var Modules = flag.String("modules", "Chat", "startup modules")
 
-var address = flag.String("address", "0.0.0.0", "server address")
+var Address = flag.String("address", "0.0.0.0", "server address")
 
 // 端口如果是0，启动时会随机一个端口
-var port = flag.Int("port", 8081, "server port")
+var Port = flag.Int("port", 8081, "server port")
 
 //***********************    var_end    ****************************
 

@@ -38,9 +38,9 @@ func newDefaultLogger() tframework.ILogPlugin {
 }
 
 func (lp *TLogPlugin) Info(msg string) {
-	lp.Output(*common.CallDepth, msg)
+	lp.Output(common.GetCallDepth(), msg)
 }
 
 func (lp *TLogPlugin) FInfo(msg string, params ...interface{}) {
-	lp.Output(*common.CallDepth, fmt.Sprintf(msg, params...))
+	lp.Output(common.GetCallDepth(), fmt.Sprintf(msg, params...))
 }

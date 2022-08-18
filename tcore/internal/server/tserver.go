@@ -7,6 +7,7 @@ import (
 	"reflect"
 	"strings"
 	"tframework.com/rpc/tcore/interface"
+	"tframework.com/server/common"
 )
 
 //***************************************************
@@ -77,7 +78,7 @@ func (s *TServer[T]) autoRegisterRPCService() {
 // @Description:
 // @receiver s
 func (s *TServer[T]) startupServer() {
-	addr := fmt.Sprintf("%v:%v", *address, *port)
+	addr := fmt.Sprintf("%v:%v", common.GetAddress(), common.GetPort())
 	s.rpcServer.Serve("tcp", addr)
 }
 

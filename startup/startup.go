@@ -18,7 +18,7 @@ import (
 var startUpManager startup.IStartUpManager
 
 func main() {
-	initModule(*common.Modules)
+	initModule(common.GetModules())
 }
 
 func init() {
