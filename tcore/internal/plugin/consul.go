@@ -1,4 +1,4 @@
-package plugs
+package plugin
 
 // ***************************************************
 // author tim.huang
@@ -6,8 +6,8 @@ package plugs
 //
 // ***************************************************
 
-// ConsulPlugs
+// ConsulPlugin
 // @Description: Consul服务发现
-type ConsulPlugs struct {
-	BasePlugs
+type ConsulPlugin struct {
+	BasePlugin
 }

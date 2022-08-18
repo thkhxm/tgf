@@ -28,9 +28,10 @@ type ITServer interface {
 type ITServerOptions interface {
 }
 
-// ITServerPlugs
+// ITServerPlugin
 // @Description: 服务器插件相关接口
-type ITServerPlugs interface {
+type ITServerPlugin interface {
+	StartPlugin()
 }
 
 type ITModule interface {

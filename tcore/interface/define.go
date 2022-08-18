@@ -16,17 +16,17 @@ const (
 	StartAfter
 )
 
-// TServerPlugs 模块启动配置，最多支持64个模块的配置
-type TServerPlugs int64
+// TServerPlugin 模块启动配置，最多支持64个模块的配置
+type TServerPlugin int64
 
 const (
-	Log TServerPlugs = 1 << iota
-	Consul
+	Log    TServerPlugin = 0 //log模块，默认启动
+	Consul               = 1 << iota
 	P2P
 )
 
-// CheckServerPlugs val & TServerPlugs == TServerPlugs 判断模块是否开启
-func CheckServerPlugs(base int64, val TServerPlugs) (open bool) {
+// CheckServerPlugs val & TServerPlugin == TServerPlugin 判断模块是否开启
+func CheckServerPlugs(base int64, val TServerPlugin) (open bool) {
 	open = base&int64(val) == int64(val)
 	return
 }

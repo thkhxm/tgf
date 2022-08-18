@@ -1,10 +1,9 @@
 package tserver
 
 import (
-	"flag"
 	"fmt"
+	"github.com/smallnest/rpcx/log"
 	"github.com/smallnest/rpcx/server"
-	"log"
 	"reflect"
 	"strings"
 	"tframework.com/rpc/tcore/interface"
@@ -16,11 +15,6 @@ import (
 //
 //
 //***************************************************
-
-var address = flag.String("address", "0.0.0.0", "server address")
-
-// 端口如果是0，启动时会随机一个端口
-var port = flag.Int("port", 8081, "server port")
 
 var rpcPrefix = "RPC"
 
@@ -50,7 +44,7 @@ func (s *TServer[T]) AddOptions(status tframework.TServerStatus, options ...tfra
 // @Description: 开启插件
 // @receiver s
 // @param plugs
-func (s *TServer[T]) OpenPlugs(plugs tframework.TServerPlugs) {
+func (s *TServer[T]) OpenPlugs(plugs tframework.TServerPlugin) {
 	s.plugs |= int64(plugs)
 }
 
@@ -74,7 +68,7 @@ func (s *TServer[T]) autoRegisterRPCService() {
 		method := types.Method(i)
 		if strings.HasPrefix(method.Name, rpcPrefix) {
 			//s.rpcServer.Register()
-			log.Fatalf("find the rpc method ,method name is %v", method.Name)
+			log.Infof("find the rpc method ,method name is %v", method.Name)
 		}
 	}
 }

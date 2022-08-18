@@ -1,4 +1,4 @@
-package plugs
+package plugin
 
 import "tframework.com/rpc/tcore/interface"
 
@@ -8,8 +8,12 @@ import "tframework.com/rpc/tcore/interface"
 //
 // ***************************************************
 
-// BasePlugs
+// BasePlugin
 // @Description: 基础插件模板
-type BasePlugs struct {
-	plugsType tframework.TServerPlugs //插件类型
+type BasePlugin struct {
+	plugsType tframework.TServerPlugin //插件类型
+}
+
+func (receiver *BasePlugin) StartPlugin() {
+
 }

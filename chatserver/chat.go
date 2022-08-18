@@ -1,6 +1,9 @@
 package chat
 
-import "tframework.com/server/common"
+import (
+	tframework "tframework.com/rpc/tcore/interface"
+	"tframework.com/server/common"
+)
 
 //***************************************************
 //author tim.huang
@@ -14,6 +17,14 @@ import "tframework.com/server/common"
 type ChatModule struct {
 }
 
-func (c *ChatModule) GetModuleName() (moduleName string) {
+func (c ChatModule) GetModuleName() (moduleName string) {
 	return string(common.Chat)
+}
+
+func (c ChatModule) Startup() {
+
+}
+
+func Create() tframework.ITModule {
+	return &ChatModule{}
 }
