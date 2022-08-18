@@ -12,19 +12,19 @@ import (
 //
 //***************************************************
 
-// ChatModule
+// Module
 // @Description: 聊天模块
-type ChatModule struct {
+type Module struct {
 }
 
-func (c ChatModule) GetModuleName() (moduleName string) {
+func (c *Module) GetModuleName() (moduleName string) {
 	return string(common.Chat)
 }
 
-func (c ChatModule) Startup() {
+func (c *Module) StartUp() {
 
 }
 
 func Create() tframework.ITModule {
-	return &ChatModule{}
+	return &Module{}
 }

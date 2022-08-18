@@ -1,6 +1,7 @@
 package logic
 
 import (
+	"github.com/fatih/color"
 	tframework "tframework.com/rpc/tcore/interface"
 	"tframework.com/rpc/tcore/tlog"
 	startup "tframework.com/server/startup/internal/interface"
@@ -25,7 +26,7 @@ type StartupManager struct {
 
 func (s *StartupManager) AddModule(module tframework.ITModule) {
 	s.moduleMapper[module.GetModuleName()] = module
-	tlog.ServerLogF("启动器添加新的模块 %v", module.GetModuleName())
+	tlog.InfoS("启动器添加新的模块 %v", color.RedString(module.GetModuleName()))
 }
 
 func init() {

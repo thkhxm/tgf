@@ -17,7 +17,7 @@ import "flag"
 
 var CallDepth = flag.Int("log_depth", 3, "log depth")
 
-var Modules = flag.String("modules", "Chat", "startup modules")
+var Modules = flag.String("modules", "Chat,Test", "startup modules")
 
 var Address = flag.String("address", "0.0.0.0", "server address")
 

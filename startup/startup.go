@@ -1,7 +1,9 @@
 package main
 
 import (
+	"github.com/fatih/color"
 	"strings"
+	"tframework.com/rpc/tcore/tlog"
 	"tframework.com/server/chat"
 	"tframework.com/server/common"
 	startup "tframework.com/server/startup/internal/interface"
@@ -31,6 +33,8 @@ func initModule(modules string) {
 		switch m {
 		case string(common.Chat):
 			startUpManager.AddModule(chat.Create())
+		default:
+			tlog.WarningS("初始化模块过程中，找不到对应%v模块", color.RedString(m))
 		}
 	}
 }
