@@ -15,7 +15,7 @@ import (
 //
 //***************************************************
 
-var l = newDefaultLogger()
+var l tframework.ILogPlugin
 
 // os.Stdout, "", slog.LstdFlags|slog.Lshortfile, log.LvInfo
 type TLogPlugin struct {
@@ -24,7 +24,7 @@ type TLogPlugin struct {
 }
 
 func init() {
-
+	l = newDefaultLogger()
 }
 
 func GetLogPlugin() tframework.ILogPlugin {

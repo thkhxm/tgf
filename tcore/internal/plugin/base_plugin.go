@@ -17,3 +17,6 @@ type BasePlugin struct {
 func (receiver *BasePlugin) StartPlugin() {
 
 }
+
+func (receiver *BasePlugin) InitPlugin() {
+}

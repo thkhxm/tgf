@@ -23,7 +23,6 @@ var rpcPrefix = "RPC"
 // @Description:
 type TServer[T tframework.ITModule] struct {
 	startDetails map[tframework.TServerStatus]StartDetail
-	plugs        int64
 	rpcServer    *server.Server
 
 	module T
@@ -41,19 +40,11 @@ func (s *TServer[T]) AddOptions(status tframework.TServerStatus, options ...tfra
 	return s
 }
 
-// OpenPlugs
-// @Description: 开启插件
-// @receiver s
-// @param plugs
-func (s *TServer[T]) OpenPlugs(plugs tframework.TServerPlugin) {
-	s.plugs |= int64(plugs)
-}
-
 func (s *TServer[T]) StartupServer() {
 	s.rpcServer = server.NewServer()
 	s.autoRegisterRPCService()
 	s.startupDiscovery()
-
+	s.startupServer()
 }
 
 func (s *TServer[T]) SetModule(module T) {
@@ -88,9 +79,9 @@ func (s *TServer[T]) startupServer() {
 func (s *TServer[T]) startupDiscovery() {
 	//是否开启点对点服务，不使用服务发现机制
 	switch {
-	case tframework.CheckServerPlugs(s.plugs, tframework.P2P):
+	case tframework.CheckServerPlugs(s.module.GetPlugin(), tframework.P2P):
 
-	case tframework.CheckServerPlugs(s.plugs, tframework.Consul):
+	case tframework.CheckServerPlugs(s.module.GetPlugin(), tframework.Consul):
 
 	}
 

@@ -9,4 +9,5 @@ import tframework "tframework.com/rpc/tcore/interface"
 // ***************************************************
 type IStartUpManager interface {
 	AddModule(module tframework.ITModule)
+	Start()
 }

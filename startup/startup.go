@@ -21,6 +21,7 @@ var startUpManager startup.IStartUpManager
 
 func main() {
 	initModule(common.GetModules())
+	startUpManager.Start()
 }
 
 func init() {
@@ -34,7 +35,7 @@ func initModule(modules string) {
 		case string(common.Chat):
 			startUpManager.AddModule(chat.Create())
 		default:
-			tlog.WarningS("初始化模块过程中，找不到对应%v模块", color.RedString(m))
+			tlog.WarningS("初始化模块过程中，找不到对应 %v 模块", color.RedString(m))
 		}
 	}
 }

@@ -31,9 +31,20 @@ type ITServerOptions interface {
 // ITServerPlugin
 // @Description: 服务器插件相关接口
 type ITServerPlugin interface {
+
+	// InitPlugin
+	// @Description: 初始化插件,只会运行一次
+	//
+	InitPlugin()
+	// StartPlugin
+	// @Description: 启动插件,每个module都会执行一次
+	//
 	StartPlugin()
 }
 
 type ITModule interface {
 	GetModuleName() (moduleName string)
+
+	GetPlugin() int64
+	AddPlugin(plugin TServerPlugin) int64
 }

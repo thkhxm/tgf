@@ -1,6 +1,7 @@
 package chat
 
 import (
+	"tframework.com/rpc/tcore"
 	tframework "tframework.com/rpc/tcore/interface"
 	"tframework.com/server/common"
 )
@@ -15,6 +16,7 @@ import (
 // Module
 // @Description: 聊天模块
 type Module struct {
+	tcore.BaseModule
 }
 
 func (c *Module) GetModuleName() (moduleName string) {
@@ -26,5 +28,7 @@ func (c *Module) StartUp() {
 }
 
 func Create() tframework.ITModule {
-	return &Module{}
+	m := &Module{}
+	m.AddPlugin(tframework.Log)
+	return m
 }

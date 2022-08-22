@@ -1,6 +1,9 @@
 package test
 
+import "tframework.com/rpc/tcore"
+
 type TestServer struct {
+	tcore.BaseModule
 }
 
 func (receiver *TestServer) GetModuleName() (moduleName string) {
