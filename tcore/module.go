@@ -38,8 +38,13 @@ func (b *BaseModule) AddPlugin(plugin tframework.TServerPlugin) int64 {
 	return b.plugin
 }
 
-func (c *BaseModule) GetModuleName() (moduleName string) {
+func (b *BaseModule) GetModuleName() (moduleName string) {
 	moduleName = ""
+	return
+}
+
+func (b *BaseModule) GetVersion() (_version string) {
+	_version = "1.0.0"
 	return
 }
 

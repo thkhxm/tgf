@@ -44,6 +44,7 @@ type ITServerPlugin interface {
 
 type ITModule interface {
 	GetModuleName() (moduleName string)
+	GetVersion() (_version string)
 
 	GetPlugin() int64
 	AddPlugin(plugin TServerPlugin) int64
