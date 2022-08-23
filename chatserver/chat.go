@@ -1,8 +1,10 @@
 package chat
 
 import (
+	"golang.org/x/net/context"
 	"tframework.com/rpc/tcore"
 	tframework "tframework.com/rpc/tcore/interface"
+	"tframework.com/rpc/tcore/tlog"
 	"tframework.com/server/common"
 )
 
@@ -21,6 +23,11 @@ type Module struct {
 
 func (c *Module) GetModuleName() (moduleName string) {
 	return string(common.Chat)
+}
+
+func (c *Module) RPCSayHello(ctx context.Context, args *interface{}, reply *interface{}) error {
+	tlog.Debug("rpc chat test")
+	return nil
 }
 
 func (c *Module) StartUp() {

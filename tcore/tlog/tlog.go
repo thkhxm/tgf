@@ -18,7 +18,7 @@ import (
 // @param format
 // @param v
 func InfoS(format string, v ...interface{}) {
-	plugin.GetLogPlugin().FInfo(fmt.Sprintf("%v %v", color.BlueString("[I] [Server]"), format), v...)
+	plugin.GetLogPlugin().FInfo(fmt.Sprintf("%v %v", color.BlueString("\t[I] [Server]"), format), v...)
 }
 
 // WarningS
@@ -26,8 +26,19 @@ func InfoS(format string, v ...interface{}) {
 // @param format
 // @param v
 func WarningS(format string, v ...interface{}) {
-	plugin.GetLogPlugin().FInfo(fmt.Sprintf("%v %v", color.YellowString("[W] [Server]"), format), v...)
+	plugin.GetLogPlugin().FInfo(fmt.Sprintf("%v %v", color.YellowString("\t[W] [Server]"), format), v...)
 }
 
+func Info(format string, v ...interface{}) {
+	plugin.GetLogPlugin().FInfo(fmt.Sprintf("%v %v", color.BlueString("\t[I] [Logic]"), format), v...)
+}
+
+func Debug(format string, v ...interface{}) {
+	plugin.GetLogPlugin().FInfo(fmt.Sprintf("%v %v", color.GreenString("\t[D] [Logic]"), format), v...)
+}
+
+func Warning(format string, v ...interface{}) {
+	plugin.GetLogPlugin().FInfo(fmt.Sprintf("%v %v", color.YellowString("\t[W] [Logic]"), format), v...)
+}
 func init() {
 }

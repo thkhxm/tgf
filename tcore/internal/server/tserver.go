@@ -2,11 +2,11 @@ package tserver
 
 import (
 	"fmt"
-	"github.com/smallnest/rpcx/log"
 	"github.com/smallnest/rpcx/server"
 	"reflect"
 	"strings"
 	"tframework.com/rpc/tcore/interface"
+	"tframework.com/rpc/tcore/tlog"
 	"tframework.com/server/common"
 )
 
@@ -59,8 +59,9 @@ func (s *TServer[T]) autoRegisterRPCService() {
 	for i := 0; i < types.NumMethod(); i++ {
 		method := types.Method(i)
 		if strings.HasPrefix(method.Name, rpcPrefix) {
-			//s.rpcServer.Register()
-			log.Infof("find the rpc method ,method name is %v", method.Name)
+			path := fmt.Sprintf("%v-%v@%v", s.module.GetModuleName(), method.Name, s.module.GetVersion())
+			s.rpcServer.RegisterName(path, s.module, "")
+			tlog.InfoS("注册[%v]模块的[%v]接口,请求路径:[%v]", s.module.GetModuleName(), method.Name, path)
 		}
 	}
 }
@@ -70,7 +71,9 @@ func (s *TServer[T]) autoRegisterRPCService() {
 // @receiver s
 func (s *TServer[T]) startupServer() {
 	addr := fmt.Sprintf("%v:%v", common.GetAddress(), common.GetPort())
+	tlog.InfoS("服务启动成功,绑定服务地址[%v]", addr)
 	s.rpcServer.Serve("tcp", addr)
+
 }
 
 // startupDiscovery
