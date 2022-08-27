@@ -13,22 +13,6 @@ import (
 //
 //***************************************************
 
-// InfoS
-// @Description: 服务器Info级别日志
-// @param format
-// @param v
-func InfoS(format string, v ...interface{}) {
-	plugin.GetLogPlugin().FInfo(fmt.Sprintf("%v %v", color.BlueString("\t[I] [Server]"), format), v...)
-}
-
-// WarningS
-// @Description: 服务器Warning级别日志
-// @param format
-// @param v
-func WarningS(format string, v ...interface{}) {
-	plugin.GetLogPlugin().FInfo(fmt.Sprintf("%v %v", color.YellowString("\t[W] [Server]"), format), v...)
-}
-
 func Info(format string, v ...interface{}) {
 	plugin.GetLogPlugin().FInfo(fmt.Sprintf("%v %v", color.BlueString("\t[I] [Logic]"), format), v...)
 }

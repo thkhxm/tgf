@@ -1,0 +1,3 @@
+server:
+  profiles:
+    active: local

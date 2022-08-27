@@ -32,3 +32,7 @@ func GetModules() string {
 func GetPort() int {
 	return *define.Port
 }
+
+func GetConfigPath() string {
+	return *define.ConfigPath
+}

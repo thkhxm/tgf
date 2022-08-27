@@ -1,0 +1,10 @@
+Log:
+  depth: 3
+Server:
+  Modules:
+    - ModuleName: Chat
+      ModuleVersion: 1.0.0
+    - ModuleName: Test
+      ModuleVersion: 1.0.0
+  Address: 0.0.0.0
+  Port: 8081
