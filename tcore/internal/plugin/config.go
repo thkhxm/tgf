@@ -6,7 +6,7 @@ import (
 	"reflect"
 	"strings"
 	tframework "tframework.com/rpc/tcore/interface"
-	"tframework.com/server/common"
+	"tframework.com/rpc/tcore/tlog"
 )
 
 //***************************************************
@@ -45,7 +45,7 @@ func GetData[T any](point interface{}) {
 	var key string
 	var val interface{}
 	tp := reflect.TypeOf(point).Elem()
-	va := reflect.ValueOf(point).Elem()
+	//va := reflect.ValueOf(point).Elem()
 	size := tp.NumField()
 	for i := 0; i < size; i++ {
 		field := tp.Field(i)
@@ -56,9 +56,9 @@ func GetData[T any](point interface{}) {
 		}
 		key = strings.ToLower(key)
 		val = cp.GetVI().Get(key)
-		DebugS("读取到配置文件路径[%v]，值为[%v]", key, val)
-		va.FieldByName(field.Name)
+		tlog.DebugS("读取到配置文件路径[%v]，值为[%v]", key, val)
 	}
+	cp.GetVI().Unmarshal(point)
 }
 
 //***********************    struct_end    ****************************
@@ -72,7 +72,7 @@ func init() {
 
 func createViper(configName string) (pathConf *viper.Viper) {
 	pathConf = viper.New()
-	pathConf.AddConfigPath(common.GetConfigPath())
+	pathConf.AddConfigPath(tframework.GetConfigPath())
 	pathConf.SetConfigName(configName)
 	pathConf.SetConfigType("yaml")
 

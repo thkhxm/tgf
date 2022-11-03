@@ -3,6 +3,7 @@ package main
 import (
 	"github.com/fatih/color"
 	"strings"
+	tframework "tframework.com/rpc/tcore/interface"
 	"tframework.com/rpc/tcore/tlog"
 	"tframework.com/server/chat"
 	"tframework.com/server/common"
@@ -20,7 +21,7 @@ import (
 var startUpManager startup.IStartUpManager
 
 func main() {
-	initModule(common.GetModules())
+	initModule(tframework.GetModules())
 	startUpManager.Start()
 }
 

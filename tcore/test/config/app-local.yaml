@@ -1,4 +1,6 @@
 example: 1
-example2:
-  name: tim
+Example:
+  names:
+    - name: tim
+    - name: sam
   age: 2

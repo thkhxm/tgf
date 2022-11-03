@@ -1,5 +1,5 @@
 Log:
-  depth: 2
+  depth: 3
 Server:
   Modules:
     - ModuleName: Chat

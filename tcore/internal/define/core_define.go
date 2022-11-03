@@ -38,6 +38,12 @@ var ConfigPath = flag.String("config_path", "./config/", "config path")
 
 //***********************    struct    ****************************
 
+//// ServerConfig
+//// @Description: 服务器相关配置
+//type Server struct {
+//	Modules
+//}
+
 //***********************    struct_end    ****************************
 
 func init() {

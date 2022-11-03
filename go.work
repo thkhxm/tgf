@@ -3,7 +3,6 @@ go 1.19
 use (
 	./chatserver
 	./common
-	./example
 	./startup
 	./tcore
 )

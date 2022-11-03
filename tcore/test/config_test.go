@@ -3,6 +3,7 @@ package test
 import (
 	"testing"
 	"tframework.com/rpc/tcore/internal/plugin"
+	"tframework.com/rpc/tcore/tlog"
 )
 
 //***************************************************
@@ -26,14 +27,23 @@ import (
 
 //***********************    struct    ****************************
 
-type example2 struct {
+type Example2 struct {
+	Names []*Ex
+	Age   int32
+}
+type Ex struct {
 	Name string
-	Age  int
+}
+
+type Config struct {
+	Example Example2
 }
 
 //***********************    struct_end    ****************************
 
 func TestConfig(t *testing.T) {
-	val := &example2{}
-	plugin.GetData[*example2](val)
+	val := &Config{}
+	plugin.GetData[*Config](val)
+	tlog.Debug("test config %v", val.Example.Names[1])
+	tlog.Debug("test config %v", val.Example.Age)
 }

@@ -9,10 +9,6 @@ import "github.com/spf13/viper"
 //
 //***************************************************
 
-type ILogPlugin interface {
-	Info(msg string)
-	FInfo(msg string, params ...interface{})
-}
 type IConfigPlugin interface {
 	GetVI() *viper.Viper
 }
