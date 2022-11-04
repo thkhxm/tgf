@@ -1,13 +1,8 @@
-package test
-
-import (
-	"testing"
-	"tframework.com/rpc/tcore/internal/plugin"
-)
+package tframework
 
 //***************************************************
 //author tim.huang
-//2022/8/27
+//2022/11/4
 //
 //
 //***************************************************
@@ -22,27 +17,25 @@ import (
 
 //***********************    interface    ****************************
 
+type ILogService interface {
+	Info(format string, v ...interface{})
+
+	Debug(format string, v ...interface{})
+
+	Warning(format string, v ...interface{})
+
+	WarningS(format string, v ...interface{})
+
+	InfoS(format string, v ...interface{})
+
+	DebugS(format string, v ...interface{})
+}
+
 //***********************    interface_end    ****************************
 
 //***********************    struct    ****************************
 
-type Example2 struct {
-	Names []*Ex
-	Age   int32
-}
-type Ex struct {
-	Name string
-}
-
-type Config struct {
-	Example Example2
-}
-
 //***********************    struct_end    ****************************
 
-func TestConfig(t *testing.T) {
-	val := &Config{}
-	plugin.GetData[*Config](val)
-	plugin.Debug("test config %v", val.Example.Names[1])
-	plugin.Debug("test config %v", val.Example.Age)
+func init() {
 }

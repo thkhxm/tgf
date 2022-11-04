@@ -5,8 +5,7 @@ import (
 	"github.com/spf13/viper"
 	"reflect"
 	"strings"
-	tframework "tframework.com/rpc/tcore/interface"
-	"tframework.com/rpc/tcore/tlog"
+	"tframework.com/rpc/tcore/internal/define"
 )
 
 //***************************************************
@@ -22,7 +21,7 @@ import (
 
 //***********************    var    ****************************
 
-var cp tframework.IConfigPlugin
+var cp *ConfigPlugin
 
 //***********************    var_end    ****************************
 
@@ -41,7 +40,7 @@ type ConfigPlugin struct {
 	vi *viper.Viper
 }
 
-func GetData[T any](point interface{}) {
+func getData[T any](point T) {
 	var key string
 	var val interface{}
 	tp := reflect.TypeOf(point).Elem()
@@ -56,9 +55,9 @@ func GetData[T any](point interface{}) {
 		}
 		key = strings.ToLower(key)
 		val = cp.GetVI().Get(key)
-		tlog.DebugS("读取到配置文件路径[%v]，值为[%v]", key, val)
+		InfoS("读取到配置文件路径[%v]，值为[%v]", key, val)
 	}
-	cp.GetVI().Unmarshal(point)
+	//cp.GetVI().Unmarshal(point)
 }
 
 //***********************    struct_end    ****************************
@@ -68,11 +67,12 @@ func init() {
 	baseVI := createViper("app")
 	active := baseVI.GetString("server.profiles.active")
 	newDefaultConfig(fmt.Sprintf("app-%v", active))
+
 }
 
 func createViper(configName string) (pathConf *viper.Viper) {
 	pathConf = viper.New()
-	pathConf.AddConfigPath(tframework.GetConfigPath())
+	pathConf.AddConfigPath(*define.ConfigPath)
 	pathConf.SetConfigName(configName)
 	pathConf.SetConfigType("yaml")
 
@@ -86,7 +86,7 @@ func createViper(configName string) (pathConf *viper.Viper) {
 	return
 }
 
-func GetConfigPlugin() tframework.IConfigPlugin {
+func GetConfigPlugin() *ConfigPlugin {
 	return cp
 }
 

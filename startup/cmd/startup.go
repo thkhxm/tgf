@@ -2,9 +2,8 @@ package main
 
 import (
 	"github.com/fatih/color"
-	"strings"
-	tframework "tframework.com/rpc/tcore/interface"
-	"tframework.com/rpc/tcore/tlog"
+	"tframework.com/rpc/tcore"
+	"tframework.com/rpc/tcore/config"
 	"tframework.com/server/chat"
 	"tframework.com/server/common"
 	startup "tframework.com/server/startup/internal/interface"
@@ -21,7 +20,7 @@ import (
 var startUpManager startup.IStartUpManager
 
 func main() {
-	initModule(tframework.GetModules())
+	initModule(tcore.Config.GetModules())
 	startUpManager.Start()
 }
 
@@ -29,14 +28,13 @@ func init() {
 	startUpManager = logic.GetStartupManager()
 }
 
-func initModule(modules string) {
-	module := strings.Split(modules, ",")
-	for _, m := range module {
-		switch m {
+func initModule(modules []*config.ModulesConfig) {
+	for _, m := range modules {
+		switch m.ModuleName {
 		case string(common.Chat):
-			startUpManager.AddModule(chat.Create())
+			startUpManager.AddModule(chat.Create(m))
 		default:
-			tlog.WarningS("初始化模块过程中，找不到对应 %v 模块", color.RedString(m))
+			tcore.Log.WarningS("初始化模块过程中，找不到对应 %v 模块", color.RedString(m.ModuleName))
 		}
 	}
 }

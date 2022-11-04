@@ -3,8 +3,8 @@ package chat
 import (
 	"golang.org/x/net/context"
 	"tframework.com/rpc/tcore"
+	"tframework.com/rpc/tcore/config"
 	tframework "tframework.com/rpc/tcore/interface"
-	"tframework.com/rpc/tcore/tlog"
 	"tframework.com/server/common"
 )
 
@@ -26,7 +26,7 @@ func (c *Module) GetModuleName() (moduleName string) {
 }
 
 func (c *Module) RPCSayHello(ctx context.Context, args *interface{}, reply *interface{}) error {
-	tlog.Debug("rpc chat test")
+	tcore.Log.Debug("rpc chat test")
 	return nil
 }
 
@@ -34,8 +34,9 @@ func (c *Module) StartUp() {
 
 }
 
-func Create() tframework.ITModule {
+func Create(config *config.ModulesConfig) tframework.ITModule {
 	m := &Module{}
 	m.AddPlugin(tframework.Log)
+	m.InitStruct(config)
 	return m
 }

@@ -1,7 +1,5 @@
 package tframework
 
-import "tframework.com/rpc/tcore/internal/define"
-
 //***************************************************
 //author tim.huang
 //2022/8/10
@@ -34,23 +32,3 @@ func CheckServerPlugs(base int64, val TServerPlugin) (open bool) {
 }
 
 //
-
-func GetAddress() string {
-	return *define.Address
-}
-
-func GetCallDepth() int {
-	return *define.CallDepth
-}
-
-func GetModules() string {
-	return *define.Modules
-}
-
-func GetPort() int {
-	return *define.Port
-}
-
-func GetConfigPath() string {
-	return *define.ConfigPath
-}

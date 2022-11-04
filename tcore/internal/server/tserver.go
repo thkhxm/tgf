@@ -6,7 +6,7 @@ import (
 	"reflect"
 	"strings"
 	"tframework.com/rpc/tcore/interface"
-	"tframework.com/rpc/tcore/tlog"
+	"tframework.com/rpc/tcore/internal/plugin"
 )
 
 //***************************************************
@@ -43,7 +43,7 @@ func (s *TServer[T]) StartupServer() {
 	s.rpcServer = server.NewServer()
 	s.autoRegisterRPCService()
 	s.startupDiscovery()
-	s.startupServer()
+	s.startupServer(s.module.GetAddress(), s.module.GetPort())
 }
 
 func (s *TServer[T]) SetModule(module T) {
@@ -60,7 +60,7 @@ func (s *TServer[T]) autoRegisterRPCService() {
 		if strings.HasPrefix(method.Name, rpcPrefix) {
 			path := fmt.Sprintf("%v-%v@%v", s.module.GetModuleName(), method.Name, s.module.GetVersion())
 			s.rpcServer.RegisterName(path, s.module, "")
-			tlog.InfoS("注册[%v]模块的[%v]接口,请求路径:[%v]", s.module.GetModuleName(), method.Name, path)
+			plugin.InfoS("注册[%v]模块的[%v]接口,请求路径:[%v]", s.module.GetModuleName(), method.Name, path)
 		}
 	}
 }
@@ -68,9 +68,9 @@ func (s *TServer[T]) autoRegisterRPCService() {
 // startupServer
 // @Description:
 // @receiver s
-func (s *TServer[T]) startupServer() {
-	addr := fmt.Sprintf("%v:%v", tframework.GetAddress(), tframework.GetPort())
-	tlog.InfoS("服务启动成功,绑定服务地址[%v]", addr)
+func (s *TServer[T]) startupServer(address string, port int) {
+	addr := fmt.Sprintf("%v:%v", address, port)
+	plugin.InfoS("服务启动成功,绑定服务地址[%v]", addr)
 	s.rpcServer.Serve("tcp", addr)
 }
 

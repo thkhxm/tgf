@@ -4,7 +4,7 @@ import (
 	"github.com/smallnest/rpcx/client"
 	"golang.org/x/net/context"
 	"testing"
-	"tframework.com/rpc/tcore/tlog"
+	"tframework.com/rpc/tcore/internal/plugin"
 )
 
 // ***************************************************
@@ -24,7 +24,7 @@ func TestRPC(t *testing.T) {
 	// #5
 	err := xclient.Call(context.Background(), "RPCSayHello", nil, nil)
 	if err != nil {
-		tlog.Debug("failed to call: %v", err)
+		plugin.Debug("failed to call: %v", err)
 	}
 }
 func init() {

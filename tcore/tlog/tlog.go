@@ -1,76 +1,64 @@
 package tlog
 
 import (
-	"fmt"
-	"github.com/fatih/color"
-	"log"
-	"os"
 	tframework "tframework.com/rpc/tcore/interface"
+	"tframework.com/rpc/tcore/internal/plugin"
 )
 
 //***************************************************
 //author tim.huang
-//2022/8/17
+//2022/11/4
 //
 //
 //***************************************************
 
-var l ILogPlugin
+//***********************    type    ****************************
 
-type ILogPlugin interface {
-	info(msg string)
-	fInfo(msg string, params ...interface{})
+//***********************    type_end    ****************************
+
+//***********************    var    ****************************
+
+//***********************    var_end    ****************************
+
+//***********************    interface    ****************************
+
+//***********************    interface_end    ****************************
+
+// ***********************    struct    ****************************
+type TLogService struct {
+	l *plugin.TLogPlugin
 }
 
-// os.Stdout, "", slog.LstdFlags|slog.Lshortfile, log.LvInfo
-type TLogPlugin struct {
-	*log.Logger
+//***********************    struct_end    ****************************
+
+func (this *TLogService) Info(format string, v ...interface{}) {
+	this.l.Info(format, v)
 }
 
-func init() {
-	l = newDefaultLogger()
+func (this *TLogService) Debug(format string, v ...interface{}) {
+	this.l.Debug(format, v)
 }
 
-func getLogPlugin() ILogPlugin {
-	return l
+func (this *TLogService) Warning(format string, v ...interface{}) {
+	this.l.Warning(format, v)
 }
 
-func newDefaultLogger() ILogPlugin {
-	lo := &TLogPlugin{}
-	lo.Logger = log.New(os.Stdout, "", log.LstdFlags|log.Lshortfile)
-	return lo
+func (this *TLogService) WarningS(format string, v ...interface{}) {
+	this.l.WarningS(format, v)
 }
 
-func (lp *TLogPlugin) info(msg string) {
-	lp.Output(tframework.GetCallDepth(), msg)
+func (this *TLogService) InfoS(format string, v ...interface{}) {
+	this.l.InfoS(format, v)
 }
 
-func (lp *TLogPlugin) fInfo(msg string, params ...interface{}) {
-	lp.Output(tframework.GetCallDepth(), fmt.Sprintf(msg, params...))
+func (this *TLogService) DebugS(format string, v ...interface{}) {
+	this.l.DebugS(format, v)
 }
 
-func Info(format string, v ...interface{}) {
-	getLogPlugin().fInfo(fmt.Sprintf("%v %v", color.BlueString("\t[I] [Logic]"), format), v...)
-}
-
-func Debug(format string, v ...interface{}) {
-	getLogPlugin().fInfo(fmt.Sprintf("%v %v", color.GreenString("\t[D] [Logic]"), format), v...)
-}
-
-func Warning(format string, v ...interface{}) {
-	getLogPlugin().fInfo(fmt.Sprintf("%v %v", color.YellowString("\t[W] [Logic]"), format), v...)
-}
-
-func WarningS(format string, v ...interface{}) {
-	getLogPlugin().fInfo(fmt.Sprintf("%v %v", color.YellowString("\t[W] [Server]"), format), v...)
-}
-
-func InfoS(format string, v ...interface{}) {
-	getLogPlugin().fInfo(fmt.Sprintf("%v %v", color.BlueString("\t[I] [Server]"), format), v...)
-}
-
-func DebugS(format string, v ...interface{}) {
-	getLogPlugin().fInfo(fmt.Sprintf("%v %v", color.WhiteString("\t[D] [Server]"), format), v...)
+func NewTLogService(l *plugin.TLogPlugin) tframework.ILogService {
+	t := new(TLogService)
+	t.l = l
+	return t
 }
 
 func init() {

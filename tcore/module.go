@@ -1,6 +1,7 @@
 package tcore
 
 import (
+	"tframework.com/rpc/tcore/config"
 	tframework "tframework.com/rpc/tcore/interface"
 )
 
@@ -27,6 +28,7 @@ import (
 
 type BaseModule struct {
 	plugin int64
+	config *config.ModulesConfig
 }
 
 func (b *BaseModule) GetPlugin() int64 {
@@ -39,12 +41,25 @@ func (b *BaseModule) AddPlugin(plugin tframework.TServerPlugin) int64 {
 }
 
 func (b *BaseModule) GetModuleName() (moduleName string) {
-	moduleName = ""
+	moduleName = b.config.ModuleName
 	return
 }
 
 func (b *BaseModule) GetVersion() (_version string) {
-	_version = "1.0.0"
+	_version = b.config.ModuleVersion
+	return
+}
+func (b *BaseModule) GetAddress() (_address string) {
+	_address = b.config.Address
+	return
+}
+func (b *BaseModule) GetPort() (_port int) {
+	_port = b.config.Port
+	return
+}
+
+func (b *BaseModule) InitStruct(config *config.ModulesConfig) {
+	b.config = config
 	return
 }
 
