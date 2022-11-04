@@ -28,7 +28,7 @@ func init() {
 	startUpManager = logic.GetStartupManager()
 }
 
-func initModule(modules []*config.ModulesConfig) {
+func initModule(modules []*config.ModuleConfig) {
 	for _, m := range modules {
 		switch m.ModuleName {
 		case string(common.Chat):

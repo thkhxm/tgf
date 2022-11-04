@@ -19,5 +19,6 @@ import (
 func CreateDefaultTServer(module tframework.ITModule) (tframework.ITServer, error) {
 	server := &tserver.TServer[tframework.ITModule]{}
 	server.SetModule(module)
+	server.SetConfigService(Config)
 	return server, nil
 }

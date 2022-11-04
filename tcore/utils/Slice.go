@@ -1,4 +1,6 @@
-package tframework
+package utils
+
+import "bytes"
 
 //***************************************************
 //author tim.huang
@@ -17,28 +19,30 @@ package tframework
 
 //***********************    interface    ****************************
 
-type ILogService interface {
-	Info(format string, v ...interface{})
-
-	Debug(format string, v ...interface{})
-
-	Warning(format string, v ...interface{})
-
-	WarningS(format string, v ...interface{})
-
-	InfoS(format string, v ...interface{})
-
-	DebugS(format string, v ...interface{})
-}
-
-type IConfigServer interface {
-}
-
 //***********************    interface_end    ****************************
 
 //***********************    struct    ****************************
 
-//***********************    struct_end    ****************************
+// ***********************    struct_end    ****************************
+
+// SplitJoinSlice
+// @Description: 拼接字符串切片,返回字符串
+// @param val
+// @param split
+// @return _data
+func SplitJoinSlice(val []string, split string) (_data string) {
+	var buffer bytes.Buffer
+	for _, s := range val {
+		buffer.WriteString(s)
+		buffer.WriteString(split)
+	}
+	_data = buffer.String()
+	//不是空字符,切割最后一个拼接符
+	if split != "" {
+		_data = _data[0 : len(_data)-1]
+	}
+	return
+}
 
 func init() {
 }

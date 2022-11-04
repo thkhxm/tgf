@@ -8,4 +8,8 @@ Server:
       ModuleVersion: 1.0.0
       Address: 0.0.0.0
       Port: 8081
-
+  Discovery:
+    Consul:
+      - Address: 127.0.0.1
+        Port: 8600
+    ConsulPath: /tframework

@@ -1,4 +1,4 @@
-package tframework
+package _interface
 
 //***************************************************
 //author tim.huang
@@ -15,23 +15,10 @@ package tframework
 
 //***********************    var_end    ****************************
 
-//***********************    interface    ****************************
-
-type ILogService interface {
-	Info(format string, v ...interface{})
-
-	Debug(format string, v ...interface{})
-
-	Warning(format string, v ...interface{})
-
-	WarningS(format string, v ...interface{})
-
-	InfoS(format string, v ...interface{})
-
-	DebugS(format string, v ...interface{})
-}
-
-type IConfigServer interface {
+// ***********************    interface    ****************************
+type IServerConfigService interface {
+	GetConsulPath() (_path string)
+	GetConsulAddressSlice() (_address []string)
 }
 
 //***********************    interface_end    ****************************

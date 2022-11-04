@@ -34,9 +34,10 @@ func (c *Module) StartUp() {
 
 }
 
-func Create(config *config.ModulesConfig) tframework.ITModule {
+func Create(config *config.ModuleConfig) tframework.ITModule {
 	m := &Module{}
 	m.AddPlugin(tframework.Log)
+	m.AddPlugin(tframework.Consul)
 	m.InitStruct(config)
 	return m
 }

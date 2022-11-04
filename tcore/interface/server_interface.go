@@ -46,6 +46,7 @@ type ITModule interface {
 	GetModuleName() (moduleName string)
 	GetVersion() (_version string)
 	GetAddress() (_address string)
+	GetFullAddress() (_address string)
 	GetPort() (_port int)
 	GetPlugin() int64
 	AddPlugin(plugin TServerPlugin) int64

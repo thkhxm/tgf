@@ -1,4 +1,4 @@
-package tframework
+package utils
 
 //***************************************************
 //author tim.huang
@@ -17,28 +17,11 @@ package tframework
 
 //***********************    interface    ****************************
 
-type ILogService interface {
-	Info(format string, v ...interface{})
-
-	Debug(format string, v ...interface{})
-
-	Warning(format string, v ...interface{})
-
-	WarningS(format string, v ...interface{})
-
-	InfoS(format string, v ...interface{})
-
-	DebugS(format string, v ...interface{})
-}
-
-type IConfigServer interface {
-}
-
 //***********************    interface_end    ****************************
 
 //***********************    struct    ****************************
 
-//***********************    struct_end    ****************************
+// ***********************    struct_end    ****************************
 
 func init() {
 }

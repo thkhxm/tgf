@@ -11,3 +11,10 @@ package plugin
 type ConsulPlugin struct {
 	BasePlugin
 }
+
+func (receiver *ConsulPlugin) StartPlugin() {
+
+}
+
+func (receiver *ConsulPlugin) InitPlugin() {
+}

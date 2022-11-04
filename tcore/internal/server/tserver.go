@@ -2,11 +2,16 @@ package tserver
 
 import (
 	"fmt"
+	"github.com/rcrowley/go-metrics"
+	"github.com/rpcxio/rpcx-consul/serverplugin"
 	"github.com/smallnest/rpcx/server"
 	"reflect"
 	"strings"
+	_interface "tframework.com/rpc/tcore/internal/interface"
+
 	"tframework.com/rpc/tcore/interface"
 	"tframework.com/rpc/tcore/internal/plugin"
+	"time"
 )
 
 //***************************************************
@@ -21,10 +26,10 @@ var rpcPrefix = "RPC"
 // TServer
 // @Description:
 type TServer[T tframework.ITModule] struct {
-	startDetails map[tframework.TServerStatus]StartDetail
-	rpcServer    *server.Server
-
-	module T
+	startDetails  map[tframework.TServerStatus]StartDetail
+	rpcServer     *server.Server
+	configService _interface.IServerConfigService
+	module        T
 }
 
 // StartDetail
@@ -48,6 +53,10 @@ func (s *TServer[T]) StartupServer() {
 
 func (s *TServer[T]) SetModule(module T) {
 	s.module = module //
+}
+
+func (s *TServer[T]) SetConfigService(service _interface.IServerConfigService) {
+	s.configService = service
 }
 
 // autoRegisterRPCService
@@ -83,9 +92,28 @@ func (s *TServer[T]) startupDiscovery() {
 	case tframework.CheckServerPlugs(s.module.GetPlugin(), tframework.P2P):
 
 	case tframework.CheckServerPlugs(s.module.GetPlugin(), tframework.Consul):
-
+		s.addRegistryPlugin()
 	}
 
+}
+
+func (s *TServer[T]) addRegistryPlugin() {
+	var r *serverplugin.ConsulRegisterPlugin
+	address := s.configService.GetConsulAddressSlice()
+	serviceAddress := s.module.GetFullAddress()
+	r = &serverplugin.ConsulRegisterPlugin{
+		ServiceAddress: "tcp@" + serviceAddress,
+		ConsulServers:  address,
+		BasePath:       s.configService.GetConsulPath(),
+		Metrics:        metrics.NewRegistry(),
+		UpdateInterval: time.Minute,
+	}
+
+	err := r.Start()
+	if err != nil {
+		plugin.InfoS("服务发现启动异常 %v", err)
+	}
+	s.rpcServer.Plugins.Add(r)
 }
 
 //func init() {

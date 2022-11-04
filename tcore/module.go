@@ -1,6 +1,7 @@
 package tcore
 
 import (
+	"fmt"
 	"tframework.com/rpc/tcore/config"
 	tframework "tframework.com/rpc/tcore/interface"
 )
@@ -28,7 +29,7 @@ import (
 
 type BaseModule struct {
 	plugin int64
-	config *config.ModulesConfig
+	config *config.ModuleConfig
 }
 
 func (b *BaseModule) GetPlugin() int64 {
@@ -57,8 +58,12 @@ func (b *BaseModule) GetPort() (_port int) {
 	_port = b.config.Port
 	return
 }
+func (b *BaseModule) GetFullAddress() (_address string) {
+	_address = fmt.Sprintf("%v:%v", b.GetAddress(), b.GetPort())
+	return
+}
 
-func (b *BaseModule) InitStruct(config *config.ModulesConfig) {
+func (b *BaseModule) InitStruct(config *config.ModuleConfig) {
 	b.config = config
 	return
 }
