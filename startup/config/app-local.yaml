@@ -11,5 +11,5 @@ Server:
   Discovery:
     Consul:
       - Address: 127.0.0.1
-        Port: 8600
+        Port: 8500
     ConsulPath: /tframework

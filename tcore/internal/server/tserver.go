@@ -114,6 +114,7 @@ func (s *TServer[T]) addRegistryPlugin() {
 		plugin.InfoS("服务发现启动异常 %v", err)
 	}
 	s.rpcServer.Plugins.Add(r)
+	plugin.InfoS("[Consul] 服务 [%v] 注册到 [%v] ", s.module.GetModuleName(), address)
 }
 
 //func init() {
