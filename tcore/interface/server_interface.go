@@ -21,6 +21,12 @@ type ITServer interface {
 	// @param options
 	// @return ITServer
 	AddOptions(status TServerStatus, options ...ITServerOptions) ITServer
+
+	// GetModule
+	// @Description: 获取模块数据
+	// @return ITModule
+	//
+	GetModule() ITModule
 }
 
 // ITServerOptions

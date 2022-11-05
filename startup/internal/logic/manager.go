@@ -3,6 +3,7 @@ package logic
 import (
 	"github.com/fatih/color"
 	"os"
+	"sync"
 	"tframework.com/rpc/tcore"
 	tframework "tframework.com/rpc/tcore/interface"
 	startup "tframework.com/server/startup/internal/interface"
@@ -15,7 +16,7 @@ import (
 //
 //***************************************************
 
-type ModuleMapper map[string]tframework.ITServer
+type ModuleMapper []tframework.ITServer
 
 var manager startup.IStartUpManager
 
@@ -27,7 +28,7 @@ type StartupManager struct {
 
 func (s *StartupManager) AddModule(module tframework.ITModule) {
 	if ser, er := tcore.CreateDefaultTServer(module); er == nil {
-		s.moduleMapper[module.GetModuleName()] = ser
+		s.moduleMapper = append(s.moduleMapper, ser)
 		tcore.Log.InfoS("启动器添加新的模块 [%v]", color.RedString(module.GetModuleName()))
 	} else {
 		tcore.Log.WarningS("启动器添加模块异常 [%v]", module.GetModuleName())
@@ -37,15 +38,20 @@ func (s *StartupManager) AddModule(module tframework.ITModule) {
 }
 
 func (s *StartupManager) Start() {
-	for moduleName, server := range s.moduleMapper {
-		tcore.Log.InfoS("启动器启动模块 [%v] 启动中", color.RedString(moduleName))
-		server.StartupServer()
-		tcore.Log.InfoS("启动器启动模块 [%v] 启动成功", color.RedString(moduleName))
+	for _, server := range s.moduleMapper {
+		go func(ser tframework.ITServer) {
+			tcore.Log.InfoS("启动器启动模块 [%v] 启动中", color.RedString(ser.GetModule().GetModuleName()))
+			ser.StartupServer()
+			tcore.Log.InfoS("启动器启动模块 [%v] 启动成功", color.RedString(ser.GetModule().GetModuleName()))
+		}(server)
 	}
+	wait := sync.WaitGroup{}
+	wait.Add(1)
+	wait.Wait()
 }
 
 func init() {
-	manager = &StartupManager{moduleMapper: make(map[string]tframework.ITServer)}
+	manager = &StartupManager{moduleMapper: make([]tframework.ITServer, 0)}
 }
 
 func GetStartupManager() startup.IStartUpManager {

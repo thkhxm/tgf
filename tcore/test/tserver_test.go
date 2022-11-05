@@ -1,9 +1,12 @@
 package test
 
 import (
-	"reflect"
+	"github.com/rpcxio/rpcx-consul/client"
+	client2 "github.com/smallnest/rpcx/client"
+	"golang.org/x/net/context"
 	"testing"
 	"tframework.com/rpc/tcore"
+	"time"
 )
 
 type TestServer struct {
@@ -22,13 +25,23 @@ func (receiver *TestServer) RPCFindBooks() {
 func (receiver *TestServer) RPcFindApple() {
 
 }
+
 func (receiver *TestServer) SayRed() {
 
 }
 
 func TestTag(t *testing.T) {
-	ts := TestServer{}
-	tt := reflect.TypeOf(ts)
-	st, _ := tt.FieldByName("DD")
-	t.Log(st.Tag.Get("cnf"))
+	// #1
+	d, _ := client.NewConsulDiscovery("/tframework/Chat", "Chat@1.0.0", []string{"127.0.0.1:8500"}, nil)
+	// #2
+	xclient := client2.NewXClient("Chat@1.0.0", client2.Failtry, client2.RandomSelect, d, client2.DefaultOption)
+	defer xclient.Close()
+	time.Sleep(time.Second * 10)
+	for i := 0; i < 10; i++ {
+		// #5
+		err := xclient.Call(context.Background(), "RPCSayHello", nil, nil)
+		if err != nil {
+			tcore.Log.Debug("failed to call: %v", err)
+		}
+	}
 }

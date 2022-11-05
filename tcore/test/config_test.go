@@ -2,7 +2,6 @@ package test
 
 import (
 	"testing"
-	"tframework.com/rpc/tcore/internal/plugin"
 )
 
 //***************************************************
@@ -41,8 +40,8 @@ type Config struct {
 //***********************    struct_end    ****************************
 
 func TestConfig(t *testing.T) {
-	val := &Config{}
-	plugin.GetData[*Config](val)
-	plugin.Debug("test config %v", val.Example.Names[1])
-	plugin.Debug("test config %v", val.Example.Age)
+	//val := &Config{}
+	//plugin.GetData[*Config](val)
+	//plugin.Debug("test config %v", val.Example.Names[1])
+	//plugin.Debug("test config %v", val.Example.Age)
 }

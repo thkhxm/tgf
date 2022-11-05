@@ -11,4 +11,5 @@ type ModuleName string
 
 const (
 	Chat ModuleName = "Chat"
+	Gate ModuleName = "Gate"
 )

@@ -1,6 +1,7 @@
 package main
 
 import (
+	gate "gateserver"
 	"github.com/fatih/color"
 	"tframework.com/rpc/tcore"
 	"tframework.com/rpc/tcore/config"
@@ -33,6 +34,8 @@ func initModule(modules []*config.ModuleConfig) {
 		switch m.ModuleName {
 		case string(common.Chat):
 			startUpManager.AddModule(chat.Create(m))
+		case string(common.Gate):
+			startUpManager.AddModule(gate.Create(m))
 		default:
 			tcore.Log.WarningS("初始化模块过程中，找不到对应 %v 模块", color.RedString(m.ModuleName))
 		}

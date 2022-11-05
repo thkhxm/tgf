@@ -46,11 +46,14 @@ func (s *TServer[T]) AddOptions(status tframework.TServerStatus, options ...tfra
 
 func (s *TServer[T]) StartupServer() {
 	s.rpcServer = server.NewServer()
-	s.autoRegisterRPCService()
 	s.startupDiscovery()
+	s.autoRegisterRPCService()
 	s.startupServer(s.module.GetAddress(), s.module.GetPort())
 }
 
+func (this *TServer[T]) GetModule() tframework.ITModule {
+	return this.module
+}
 func (s *TServer[T]) SetModule(module T) {
 	s.module = module //
 }
@@ -67,7 +70,7 @@ func (s *TServer[T]) autoRegisterRPCService() {
 	for i := 0; i < types.NumMethod(); i++ {
 		method := types.Method(i)
 		if strings.HasPrefix(method.Name, rpcPrefix) {
-			path := fmt.Sprintf("%v-%v@%v", s.module.GetModuleName(), method.Name, s.module.GetVersion())
+			path := fmt.Sprintf("%v@%v", s.module.GetModuleName(), s.module.GetVersion())
 			s.rpcServer.RegisterName(path, s.module, "")
 			plugin.InfoS("注册[%v]模块的[%v]接口,请求路径:[%v]", s.module.GetModuleName(), method.Name, path)
 		}
@@ -80,7 +83,9 @@ func (s *TServer[T]) autoRegisterRPCService() {
 func (s *TServer[T]) startupServer(address string, port int) {
 	addr := fmt.Sprintf("%v:%v", address, port)
 	plugin.InfoS("服务启动成功,绑定服务地址[%v]", addr)
-	s.rpcServer.Serve("tcp", addr)
+	if err := s.rpcServer.Serve("tcp", addr); err != nil {
+		plugin.InfoS("启动异常 [%v] ", err)
+	}
 }
 
 // startupDiscovery
@@ -104,7 +109,7 @@ func (s *TServer[T]) addRegistryPlugin() {
 	r = &serverplugin.ConsulRegisterPlugin{
 		ServiceAddress: "tcp@" + serviceAddress,
 		ConsulServers:  address,
-		BasePath:       s.configService.GetConsulPath(),
+		BasePath:       s.configService.GetConsulPath() + "/" + s.module.GetModuleName(),
 		Metrics:        metrics.NewRegistry(),
 		UpdateInterval: time.Minute,
 	}
