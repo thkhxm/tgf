@@ -26,15 +26,16 @@ type StartupManager struct {
 	moduleMapper ModuleMapper
 }
 
-func (s *StartupManager) AddModule(module tframework.ITModule) {
+func (s *StartupManager) AddModule(module tframework.ITModule) tframework.ITServer {
 	if ser, er := tcore.CreateDefaultTServer(module); er == nil {
 		s.moduleMapper = append(s.moduleMapper, ser)
 		tcore.Log.InfoS("启动器添加新的模块 [%v]", color.RedString(module.GetModuleName()))
+		return ser
 	} else {
 		tcore.Log.WarningS("启动器添加模块异常 [%v]", module.GetModuleName())
 		os.Exit(0)
 	}
-
+	return nil
 }
 
 func (s *StartupManager) Start() {

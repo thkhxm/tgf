@@ -1,16 +1,13 @@
-package tcore
+package rpc
 
 import (
-	"tframework.com/rpc/tcore/config"
-	tframework "tframework.com/rpc/tcore/interface"
-	"tframework.com/rpc/tcore/internal/plugin"
-	"tframework.com/rpc/tcore/tlog"
-	"tframework.com/rpc/tcore/trpcservice"
+	"tframework.com/rpc/tcore"
+	"tframework.com/server/common"
 )
 
 //***************************************************
 //author tim.huang
-//2022/11/4
+//2022/11/5
 //
 //
 //***************************************************
@@ -21,13 +18,15 @@ import (
 
 //***********************    var    ****************************
 
-var Config *config.TConfig
-var Log tframework.ILogService
-var RPCService tframework.IRPCService
+var Chat IChatRPCService
 
 //***********************    var_end    ****************************
 
 //***********************    interface    ****************************
+
+type IChatRPCService interface {
+	Say()
+}
 
 //***********************    interface_end    ****************************
 
@@ -35,12 +34,10 @@ var RPCService tframework.IRPCService
 
 //***********************    struct_end    ****************************
 
+func InitRPCService() {
+	tcore.RPCService.RegisterRPCService(new(IChatRPCService), string(common.Chat), "1.0.0")
+}
+
 func init() {
-	//加载log
-	Log = tlog.NewTLogService(plugin.NewDefaultLogger())
-	//加载配置
-	Config = new(config.TConfig)
-	plugin.GetConfigPlugin().GetVI().Unmarshal(Config)
-	//加载rpc服务
-	RPCService = trpcservice.NewRPCService()
+
 }

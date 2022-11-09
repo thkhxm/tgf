@@ -25,6 +25,12 @@ const (
 	P2P
 )
 
+type TRPCType int32
+
+const (
+	Default TRPCType = 0 //默认模式,选任意一节点发送
+)
+
 // CheckServerPlugs val & TServerPlugin == TServerPlugin 判断模块是否开启
 func CheckServerPlugs(base int64, val TServerPlugin) (open bool) {
 	open = base&int64(val) == int64(val)

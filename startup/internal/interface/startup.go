@@ -8,6 +8,6 @@ import tframework "tframework.com/rpc/tcore/interface"
 //
 // ***************************************************
 type IStartUpManager interface {
-	AddModule(module tframework.ITModule)
+	AddModule(module tframework.ITModule) tframework.ITServer
 	Start()
 }

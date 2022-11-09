@@ -5,8 +5,10 @@ import (
 	"github.com/fatih/color"
 	"tframework.com/rpc/tcore"
 	"tframework.com/rpc/tcore/config"
+	tframework "tframework.com/rpc/tcore/interface"
 	"tframework.com/server/chat"
 	"tframework.com/server/common"
+	"tframework.com/server/common/rpc"
 	startup "tframework.com/server/startup/internal/interface"
 	"tframework.com/server/startup/internal/logic"
 )
@@ -23,6 +25,7 @@ var startUpManager startup.IStartUpManager
 func main() {
 	initModule(tcore.Config.GetModules())
 	startUpManager.Start()
+
 }
 
 func init() {
@@ -33,7 +36,10 @@ func initModule(modules []*config.ModuleConfig) {
 	for _, m := range modules {
 		switch m.ModuleName {
 		case string(common.Chat):
-			startUpManager.AddModule(chat.Create(m))
+			s := startUpManager.AddModule(chat.Create(m))
+			s.AddOptions(tframework.StartAfter, func(data interface{}) {
+				rpc.InitRPCService()
+			})
 		case string(common.Gate):
 			startUpManager.AddModule(gate.Create(m))
 		default:

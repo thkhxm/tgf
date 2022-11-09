@@ -2,6 +2,9 @@ package tcore
 
 import (
 	"fmt"
+	"reflect"
+	"runtime"
+	"strings"
 	"tframework.com/rpc/tcore/config"
 	tframework "tframework.com/rpc/tcore/interface"
 )
@@ -28,8 +31,17 @@ import (
 // ***********************    struct    ****************************
 
 type BaseModule struct {
-	plugin int64
-	config *config.ModuleConfig
+	plugin    int64
+	config    *config.ModuleConfig
+	funcSlice []func(rpcType int32, args *interface{}, reply *interface{}) error
+}
+
+func (this *BaseModule) Rpc(f interface{}, rpcType tframework.TRPCType, args *interface{}, reply *interface{}) {
+	va := reflect.ValueOf(f)
+	fc := runtime.FuncForPC(va.Pointer()).Name()
+	ix := strings.LastIndex(fc, ".")
+	fc = fc[ix+1:]
+
 }
 
 func (b *BaseModule) GetPlugin() int64 {
@@ -40,7 +52,9 @@ func (b *BaseModule) AddPlugin(plugin tframework.TServerPlugin) int64 {
 	b.plugin = b.plugin | int64(plugin)
 	return b.plugin
 }
-
+func (this *BaseModule) InitRPCRequest(funcSlice []func(rpcType int32, args *interface{}, reply *interface{}) error) {
+	this.funcSlice = funcSlice
+}
 func (b *BaseModule) GetModuleName() (moduleName string) {
 	moduleName = b.config.ModuleName
 	return

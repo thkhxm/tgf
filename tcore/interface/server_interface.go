@@ -20,18 +20,13 @@ type ITServer interface {
 	// @param status
 	// @param options
 	// @return ITServer
-	AddOptions(status TServerStatus, options ...ITServerOptions) ITServer
+	AddOptions(status TServerStatus, options func(data interface{})) ITServer
 
 	// GetModule
 	// @Description: 获取模块数据
 	// @return ITModule
 	//
 	GetModule() ITModule
-}
-
-// ITServerOptions
-// @Description: 启动过程中相关切面，行为
-type ITServerOptions interface {
 }
 
 // ITServerPlugin
@@ -56,4 +51,10 @@ type ITModule interface {
 	GetPort() (_port int)
 	GetPlugin() int64
 	AddPlugin(plugin TServerPlugin) int64
+}
+
+type IRPCService interface {
+	Send(f interface{}, rpcType int32, args *interface{}, reply *interface{})
+
+	RegisterRPCService(f interface{}, moduleName, version string)
 }

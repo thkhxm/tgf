@@ -26,7 +26,8 @@ func (c *Module) GetModuleName() (moduleName string) {
 }
 
 func (c *Module) RPCSayHello(ctx context.Context, args *interface{}, reply *interface{}) error {
-	tcore.Log.Debug("chat rpc chat test %v", c.GetFullAddress())
+	a := *args
+	tcore.Log.Debug("chat rpc chat test %v  [%v]", c.GetFullAddress(), a.(int8))
 	return nil
 }
 

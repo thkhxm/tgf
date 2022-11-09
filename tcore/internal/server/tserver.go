@@ -2,16 +2,12 @@ package tserver
 
 import (
 	"fmt"
-	"github.com/rcrowley/go-metrics"
-	"github.com/rpcxio/rpcx-consul/serverplugin"
 	"github.com/smallnest/rpcx/server"
-	"reflect"
-	"strings"
+	"sync"
 	_interface "tframework.com/rpc/tcore/internal/interface"
 
 	"tframework.com/rpc/tcore/interface"
 	"tframework.com/rpc/tcore/internal/plugin"
-	"time"
 )
 
 //***************************************************
@@ -26,7 +22,7 @@ var rpcPrefix = "RPC"
 // TServer
 // @Description:
 type TServer[T tframework.ITModule] struct {
-	startDetails  map[tframework.TServerStatus]StartDetail
+	startDetails  map[tframework.TServerStatus]*StartDetail
 	rpcServer     *server.Server
 	configService _interface.IServerConfigService
 	module        T
@@ -37,10 +33,19 @@ type TServer[T tframework.ITModule] struct {
 // TODO: 名字需要修改一下，跟他的业务不太符合
 type StartDetail struct {
 	status  tframework.TServerStatus
-	options []tframework.ITServerOptions
+	options []func(data interface{})
+	data    interface{}
 }
 
-func (s *TServer[T]) AddOptions(status tframework.TServerStatus, options ...tframework.ITServerOptions) tframework.ITServer {
+func (s *TServer[T]) AddOptions(status tframework.TServerStatus, options func(data interface{})) tframework.ITServer {
+	app := s.startDetails[status]
+	if app == nil {
+		app = &StartDetail{
+			status:  status,
+			options: make([]func(data interface{}), 0),
+		}
+	}
+	app.options = append(app.options, options)
 	return s
 }
 
@@ -66,15 +71,10 @@ func (s *TServer[T]) SetConfigService(service _interface.IServerConfigService) {
 // @Description: 自动注册rpc接口
 // @receiver s
 func (s *TServer[T]) autoRegisterRPCService() {
-	types := reflect.TypeOf(s.module)
-	for i := 0; i < types.NumMethod(); i++ {
-		method := types.Method(i)
-		if strings.HasPrefix(method.Name, rpcPrefix) {
-			path := fmt.Sprintf("%v@%v", s.module.GetModuleName(), s.module.GetVersion())
-			s.rpcServer.RegisterName(path, s.module, "")
-			plugin.InfoS("注册[%v]模块的[%v]接口,请求路径:[%v]", s.module.GetModuleName(), method.Name, path)
-		}
-	}
+
+	path := fmt.Sprintf("%v@%v", s.module.GetModuleName(), s.module.GetVersion())
+	s.rpcServer.RegisterName(path, s.module, "")
+
 }
 
 // startupServer
@@ -83,6 +83,12 @@ func (s *TServer[T]) autoRegisterRPCService() {
 func (s *TServer[T]) startupServer(address string, port int) {
 	addr := fmt.Sprintf("%v:%v", address, port)
 	plugin.InfoS("服务启动成功,绑定服务地址[%v]", addr)
+	start := s.startDetails[tframework.StartAfter]
+	if start != nil && len(start.options) > 0 {
+		for _, option := range start.options {
+			option(start.data)
+		}
+	}
 	if err := s.rpcServer.Serve("tcp", addr); err != nil {
 		plugin.InfoS("启动异常 [%v] ", err)
 	}
@@ -97,32 +103,20 @@ func (s *TServer[T]) startupDiscovery() {
 	case tframework.CheckServerPlugs(s.module.GetPlugin(), tframework.P2P):
 
 	case tframework.CheckServerPlugs(s.module.GetPlugin(), tframework.Consul):
+		instanceDefaultConsulDiscovery(s.configService)
 		s.addRegistryPlugin()
 	}
 
 }
 
 func (s *TServer[T]) addRegistryPlugin() {
-	var r *serverplugin.ConsulRegisterPlugin
-	address := s.configService.GetConsulAddressSlice()
-	serviceAddress := s.module.GetFullAddress()
-	r = &serverplugin.ConsulRegisterPlugin{
-		ServiceAddress: "tcp@" + serviceAddress,
-		ConsulServers:  address,
-		BasePath:       s.configService.GetConsulPath() + "/" + s.module.GetModuleName(),
-		Metrics:        metrics.NewRegistry(),
-		UpdateInterval: time.Minute,
-	}
-
-	err := r.Start()
-	if err != nil {
-		plugin.InfoS("服务发现启动异常 %v", err)
-	}
+	r := ConsulDiscovery.RegisterServer(s.module.GetFullAddress(), s.module.GetModuleName())
 	s.rpcServer.Plugins.Add(r)
-	plugin.InfoS("[Consul] 服务 [%v] 注册到 [%v] ", s.module.GetModuleName(), address)
+	plugin.InfoS("[Consul] 服务 [%v] 注册到 [%v] ", s.module.GetModuleName(), s.configService.GetConsulAddressSlice())
 }
 
-//func init() {
-//	//初始化入参
-//	flag.Parse()
-//}
+var RequestMapping *sync.Map
+
+func init() {
+	RequestMapping = new(sync.Map)
+}
