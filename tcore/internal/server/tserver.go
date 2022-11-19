@@ -44,6 +44,7 @@ func (s *TServer[T]) AddOptions(status tframework.TServerStatus, options func(da
 			status:  status,
 			options: make([]func(data interface{}), 0),
 		}
+		s.startDetails[status] = app
 	}
 	app.options = append(app.options, options)
 	return s
@@ -65,6 +66,10 @@ func (s *TServer[T]) SetModule(module T) {
 
 func (s *TServer[T]) SetConfigService(service _interface.IServerConfigService) {
 	s.configService = service
+}
+
+func (s *TServer[T]) InitStruct() {
+	s.startDetails = make(map[tframework.TServerStatus]*StartDetail)
 }
 
 // autoRegisterRPCService
