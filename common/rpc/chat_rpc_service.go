@@ -1,6 +1,7 @@
 package rpc
 
 import (
+	"golang.org/x/net/context"
 	"tframework.com/rpc/tcore"
 	"tframework.com/server/common"
 )
@@ -18,14 +19,14 @@ import (
 
 //***********************    var    ****************************
 
-var Chat IChatRPCService
+var Chat IRPCChatService
 
 //***********************    var_end    ****************************
 
 //***********************    interface    ****************************
 
-type IChatRPCService interface {
-	Say()
+type IRPCChatService interface {
+	RPCSayHello(ctx context.Context, args *interface{}, reply *interface{})
 }
 
 //***********************    interface_end    ****************************
@@ -34,8 +35,17 @@ type IChatRPCService interface {
 
 //***********************    struct_end    ****************************
 
-func InitRPCService() {
-	tcore.RPCService.RegisterRPCService(new(IChatRPCService), string(common.Chat), "1.0.0")
+type chatServiceImpl struct {
+}
+
+func (c chatServiceImpl) RPCSayHello(ctx context.Context, args *interface{}, reply *interface{}) {
+	//TODO implement me
+	panic("implement me")
+}
+
+func InitRPCChatService() {
+	Chat = new(chatServiceImpl)
+	tcore.RPCService.RegisterRPCService(Chat, string(common.Chat), "1.0.0")
 }
 
 func init() {

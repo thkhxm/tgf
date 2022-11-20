@@ -6,6 +6,7 @@ import (
 	"tframework.com/rpc/tcore/config"
 	tframework "tframework.com/rpc/tcore/interface"
 	"tframework.com/server/common"
+	"tframework.com/server/common/rpc"
 )
 
 //***************************************************
@@ -47,6 +48,7 @@ func (c *Module) StartUp() {
 
 func (c *Module) RPCSayHello(ctx context.Context, args *interface{}, reply *interface{}) error {
 	tcore.Log.Debug("gate rpc chat test")
+	tcore.RPCService.Send(rpc.IRPCChatService.RPCSayHello, int32(tframework.Default), nil, nil)
 	return nil
 }
 

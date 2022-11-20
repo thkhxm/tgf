@@ -25,7 +25,6 @@ var startUpManager startup.IStartUpManager
 func main() {
 	initModule(tcore.Config.GetModules())
 	startUpManager.Start()
-
 }
 
 func init() {
@@ -38,10 +37,13 @@ func initModule(modules []*config.ModuleConfig) {
 		case string(common.Chat):
 			s := startUpManager.AddModule(chat.Create(m))
 			s.AddOptions(tframework.StartAfter, func(data interface{}) {
-				rpc.InitRPCService()
+				rpc.InitRPCChatService()
 			})
 		case string(common.Gate):
-			startUpManager.AddModule(gate.Create(m))
+			s := startUpManager.AddModule(gate.Create(m))
+			s.AddOptions(tframework.StartAfter, func(data interface{}) {
+				rpc.InitRPCChatService()
+			})
 		default:
 			tcore.Log.WarningS("初始化模块过程中，找不到对应 %v 模块", color.RedString(m.ModuleName))
 		}

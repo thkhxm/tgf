@@ -52,9 +52,11 @@ func (b *BaseModule) AddPlugin(plugin tframework.TServerPlugin) int64 {
 	b.plugin = b.plugin | int64(plugin)
 	return b.plugin
 }
+
 func (this *BaseModule) InitRPCRequest(funcSlice []func(rpcType int32, args *interface{}, reply *interface{}) error) {
 	this.funcSlice = funcSlice
 }
+
 func (b *BaseModule) GetModuleName() (moduleName string) {
 	moduleName = b.config.ModuleName
 	return
