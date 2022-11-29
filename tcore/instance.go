@@ -21,9 +21,10 @@ import (
 
 //***********************    var    ****************************
 
-var Config *config.TConfig
+var Config tframework.IConfigService
 var Log tframework.ILogService
 var RPCService tframework.IRPCService
+var Redis tframework.IRedisService
 
 //***********************    var_end    ****************************
 

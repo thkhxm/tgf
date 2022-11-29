@@ -1,5 +1,10 @@
 package tframework
 
+import (
+	"tframework.com/rpc/tcore/config"
+	"time"
+)
+
 //***************************************************
 //author tim.huang
 //2022/11/4
@@ -24,6 +29,10 @@ type ILogService interface {
 
 	Warning(format string, v ...interface{})
 
+	Error(format string, v ...interface{})
+
+	ErrorS(format string, v ...interface{})
+
 	WarningS(format string, v ...interface{})
 
 	InfoS(format string, v ...interface{})
@@ -31,7 +40,16 @@ type ILogService interface {
 	DebugS(format string, v ...interface{})
 }
 
-type IConfigServer interface {
+type IConfigService interface {
+	GetAPIServices() []*config.APIConfig
+	GetModules() []*config.ModuleConfig
+	GetDiscovery() *config.DiscoveryConfig
+}
+
+type IRedisService interface {
+	Get(key string, instance interface{}) error
+	GetString(key string) string
+	Set(key string, instance interface{}, expires time.Duration) error
 }
 
 //***********************    interface_end    ****************************

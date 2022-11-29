@@ -2,6 +2,7 @@ package tcore
 
 import (
 	"tframework.com/rpc/tcore/interface"
+	_interface "tframework.com/rpc/tcore/internal/interface"
 	"tframework.com/rpc/tcore/internal/server"
 )
 
@@ -19,7 +20,7 @@ import (
 func CreateDefaultTServer(module tframework.ITModule) (tframework.ITServer, error) {
 	server := &tserver.TServer[tframework.ITModule]{}
 	server.SetModule(module)
-	server.SetConfigService(Config)
+	server.SetConfigService(Config.(_interface.IServerConfigService))
 	server.InitStruct()
 	return server, nil
 }

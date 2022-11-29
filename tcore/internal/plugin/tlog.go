@@ -54,7 +54,13 @@ func (lp *TLogPlugin) Debug(format string, v ...interface{}) {
 func (lp *TLogPlugin) Warning(format string, v ...interface{}) {
 	lp.fInfo(fmt.Sprintf("%v %v", color.YellowString("\t[W] [Logic]"), format), v...)
 }
+func (lp *TLogPlugin) Error(format string, v ...interface{}) {
+	lp.fInfo(fmt.Sprintf("%v %v", color.RedString("\t[E] [Logic]"), format), v...)
+}
 
+func (lp *TLogPlugin) ErrorS(format string, v ...interface{}) {
+	lp.fInfo(fmt.Sprintf("%v %v", color.RedString("\t[E] [Server]"), format), v...)
+}
 func (lp *TLogPlugin) WarningS(format string, v ...interface{}) {
 	lp.fInfo(fmt.Sprintf("%v %v", color.YellowString("\t[W] [Server]"), format), v...)
 }

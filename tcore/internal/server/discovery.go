@@ -83,7 +83,7 @@ func (this *TConsulServiceDiscovery) RegisterClient(service interface{}, moduleN
 	it = it.Elem()
 	servicePath := fmt.Sprintf("%v@%v", moduleName, version)
 	discovery := this.GetDiscovery(moduleName, version)
-	client := client2.NewXClient(servicePath, client2.Failover, client2.RandomSelect, discovery, client2.DefaultOption)
+	client := client2.NewXClient(servicePath, client2.Failover, client2.ConsistentHash, discovery, client2.DefaultOption)
 
 	size := it.NumMethod()
 	funcSlice = make([]func(rpcType int32, args *interface{}, reply *interface{}) error, 0)

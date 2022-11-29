@@ -42,7 +42,13 @@ func (this *TLogService) Debug(format string, v ...interface{}) {
 func (this *TLogService) Warning(format string, v ...interface{}) {
 	this.l.Warning(format, v)
 }
+func (this *TLogService) Error(format string, v ...interface{}) {
+	this.l.Error(format, v)
+}
 
+func (this *TLogService) ErrorS(format string, v ...interface{}) {
+	this.l.ErrorS(format, v)
+}
 func (this *TLogService) WarningS(format string, v ...interface{}) {
 	this.l.WarningS(format, v)
 }
