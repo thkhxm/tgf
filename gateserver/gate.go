@@ -1,6 +1,7 @@
 package gate
 
 import (
+	"golang.org/x/net/context"
 	"tframework.com/rpc/tcore"
 	"tframework.com/rpc/tcore/config"
 	tframework "tframework.com/rpc/tcore/interface"
@@ -46,11 +47,10 @@ func (c *Module) StartUp() {
 
 }
 
-//func (c *Module) RPCSayHello(ctx context.Context, args *interface{}, reply *interface{}) error {
-//	tcore.Log.Debug("gate rpc chat test")
-//
-//	return nil
-//}
+func (c *Module) RPCSendToPlayer(ctx context.Context, args *interface{}, reply *interface{}) error {
+	tcore.Log.Debug("gate rpc send to player")
+	return nil
+}
 
 func Create(config *config.ModuleConfig) tframework.ITModule {
 	m := &Module{}
@@ -59,7 +59,8 @@ func Create(config *config.ModuleConfig) tframework.ITModule {
 	m.InitStruct(config)
 	go func() {
 		time.Sleep(time.Second * 5)
-		tcore.RPCService.Send(rpc.IRPCChatService.RPCSayHello, int32(tframework.Default), nil, nil)
+		arg := 5
+		tcore.RPCService.Send(rpc.IRPCChatService.RPCSayHello, int32(tframework.Default), arg, nil)
 	}()
 	return m
 }

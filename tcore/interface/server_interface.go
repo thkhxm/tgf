@@ -54,7 +54,7 @@ type ITModule interface {
 }
 
 type IRPCService interface {
-	Send(f interface{}, rpcType int32, args *interface{}, reply *interface{})
+	Send(f interface{}, rpcType int32, args interface{}, reply interface{})
 
 	RegisterRPCService(f interface{}, moduleName, version string)
 }

@@ -1,8 +1,13 @@
 package trpcservice
 
 import (
-	"sync"
+	"fmt"
+	"reflect"
+	"runtime"
+	"strings"
+	"tframework.com/rpc/tcore/config"
 	tframework "tframework.com/rpc/tcore/interface"
+	"tframework.com/rpc/tcore/internal/plugin"
 	tserver "tframework.com/rpc/tcore/internal/server"
 )
 
@@ -28,28 +33,44 @@ import (
 // ***********************    struct    ****************************
 
 type TRPCService struct {
-	funcMapping *sync.Map
+	funcMapping  map[string][]func(rpcType int32, args interface{}, reply interface{}) error
+	moduleMapper map[string]config.APIConfig
 }
 
 //***********************    struct_end    ****************************
 
-func (this *TRPCService) Send(f interface{}, rpcType int32, args *interface{}, reply *interface{}) {
-
+func (this *TRPCService) Send(f interface{}, rpcType int32, args interface{}, reply interface{}) {
+	va := reflect.ValueOf(f)
+	ty := reflect.TypeOf(f)
+	//inf := ty.Elem()
+	//va := reflect.ValueOf(it)
+	//tserver.RegisterRPCService(it, "demo", "0.0.1")
+	fc := runtime.FuncForPC(va.Pointer()).Name()
+	ix := strings.LastIndex(fc, ".")
+	fc = fc[ix+1:]
+	msg := fmt.Sprintf("%v-------%v", ty, fc)
+	plugin.InfoS("%v", msg)
+	for _, d := range this.funcMapping[fc] {
+		d(rpcType, args, reply)
+	}
+	//this.funcMapping.Load()
 }
 
 func (this *TRPCService) RegisterRPCService(f interface{}, moduleName, version string) {
-	_, funcSlice := tserver.ConsulDiscovery.RegisterClient(f, moduleName, version)
-	key := moduleName + "@" + version
-	this.funcMapping.Store(key, funcSlice)
+	tserver.ConsulDiscovery.RegisterClient(f, moduleName, version, this.funcMapping)
 }
 
-func (this *TRPCService) InitStruct() {
-	this.funcMapping = new(sync.Map)
+func (this *TRPCService) InitStruct(apiConfigs []*config.APIConfig) {
+	this.funcMapping = make(map[string][]func(rpcType int32, args interface{}, reply interface{}) error)
+	this.moduleMapper = make(map[string]config.APIConfig)
+	for _, config := range apiConfigs {
+		this.moduleMapper[config.ModuleName] = *config
+	}
 }
 
-func NewRPCService() tframework.IRPCService {
+func NewRPCService(apiConfigs []*config.APIConfig) tframework.IRPCService {
 	source := new(TRPCService)
-	source.InitStruct()
+	source.InitStruct(apiConfigs)
 	return source
 }
 

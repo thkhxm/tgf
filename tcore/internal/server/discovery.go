@@ -62,7 +62,7 @@ func (this *TConsulServiceDiscovery) RegisterServer(serviceAddress, moduleName s
 	r = &serverplugin.ConsulRegisterPlugin{
 		ServiceAddress: "tcp@" + serviceAddress,
 		ConsulServers:  address,
-		BasePath:       this.configService.GetConsulPath(),
+		BasePath:       this.configService.GetConsulPath() + "/" + moduleName,
 		Metrics:        metrics.NewRegistry(),
 		UpdateInterval: time.Minute,
 	}
@@ -74,31 +74,29 @@ func (this *TConsulServiceDiscovery) RegisterServer(serviceAddress, moduleName s
 	return
 }
 
-func (this *TConsulServiceDiscovery) RegisterClient(service interface{}, moduleName, version string) (err error, funcSlice []func(rpcType int32, args *interface{}, reply *interface{}) error) {
+func (this *TConsulServiceDiscovery) RegisterClient(service interface{}, moduleName, version string, cache map[string][]func(rpcType int32, args interface{}, reply interface{}) error) {
 	it := reflect.TypeOf(service)
-	//if it.Kind() != reflect.Interface {
-	//	return errors.New("args not interface"), nil
-	//}
-	//
 	it = it.Elem()
 	servicePath := fmt.Sprintf("%v@%v", moduleName, version)
 	discovery := this.GetDiscovery(moduleName, version)
 	client := client2.NewXClient(servicePath, client2.Failover, client2.ConsistentHash, discovery, client2.DefaultOption)
 
 	size := it.NumMethod()
-	funcSlice = make([]func(rpcType int32, args *interface{}, reply *interface{}) error, 0)
 	for i := 0; i < size; i++ {
 		m := it.Method(i)
 		if strings.HasPrefix(m.Name, rpcPrefix) {
 			plugin.InfoS("注册 [%v:%v] 模块的 [%v] 接口", moduleName, version, m.Name)
-			proxyMethod := func(rpcType int32, args *interface{}, reply *interface{}) error {
-				return client.Call(context.Background(), m.Name, args, reply)
+			proxyMethod := func(rpcType int32, args interface{}, reply interface{}) error {
+				return client.Call(context.Background(), m.Name, &args, &reply)
 			}
-			funcSlice = append(funcSlice, proxyMethod)
+			if cache[m.Name] == nil {
+				cache[m.Name] = make([]func(rpcType int32, args interface{}, reply interface{}) error, 0)
+			}
+			cache[m.Name] = append(cache[m.Name], proxyMethod)
 		}
 	}
 
-	return nil, funcSlice
+	//return nil, funcSlice
 }
 
 func instanceDefaultConsulDiscovery(configService _interface.IServerConfigService) {

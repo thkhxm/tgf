@@ -43,5 +43,5 @@ func init() {
 	Config = new(config.TConfig)
 	plugin.GetConfigPlugin().GetVI().Unmarshal(Config)
 	//加载rpc服务
-	RPCService = trpcservice.NewRPCService()
+	RPCService = trpcservice.NewRPCService(Config.GetAPIServices())
 }
