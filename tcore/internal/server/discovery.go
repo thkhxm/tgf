@@ -3,10 +3,10 @@ package tserver
 import (
 	"fmt"
 	"github.com/rcrowley/go-metrics"
+	"github.com/rpcxio/libkv/store"
 	"github.com/rpcxio/rpcx-consul/client"
 	"github.com/rpcxio/rpcx-consul/serverplugin"
 	client2 "github.com/smallnest/rpcx/client"
-	"golang.org/x/net/context"
 	"reflect"
 	"strings"
 	"sync"
@@ -47,7 +47,16 @@ func (this *TConsulServiceDiscovery) GetDiscovery(moduleName, version string) *c
 	//new discovery
 	basePath := fmt.Sprintf("/tframework/%v", moduleName)
 	servicePath := fmt.Sprintf("%v@%v", moduleName, version)
-	d, _ := client.NewConsulDiscovery(basePath, servicePath, this.configService.GetConsulAddressSlice(), nil)
+	conf := &store.Config{
+		ClientTLS:         nil,
+		TLS:               nil,
+		ConnectionTimeout: 0,
+		Bucket:            "",
+		PersistConnection: false,
+		Username:          "",
+		Password:          "",
+	}
+	d, _ := client.NewConsulDiscovery(basePath, servicePath, this.configService.GetConsulAddressSlice(), conf)
 	data := &TmpDiscovery{
 		moduleName: moduleName,
 		version:    version,
@@ -64,7 +73,7 @@ func (this *TConsulServiceDiscovery) RegisterServer(serviceAddress, moduleName s
 		ConsulServers:  address,
 		BasePath:       this.configService.GetConsulPath() + "/" + moduleName,
 		Metrics:        metrics.NewRegistry(),
-		UpdateInterval: time.Minute,
+		UpdateInterval: time.Second * 2,
 	}
 
 	err := r.Start()
@@ -74,7 +83,7 @@ func (this *TConsulServiceDiscovery) RegisterServer(serviceAddress, moduleName s
 	return
 }
 
-func (this *TConsulServiceDiscovery) RegisterClient(service interface{}, moduleName, version string, cache map[string][]func(rpcType int32, args interface{}, reply interface{}) error) {
+func (this *TConsulServiceDiscovery) RegisterClient(service interface{}, moduleName, version string, cache map[string][]client2.XClient) {
 	it := reflect.TypeOf(service)
 	it = it.Elem()
 	servicePath := fmt.Sprintf("%v@%v", moduleName, version)
@@ -86,13 +95,13 @@ func (this *TConsulServiceDiscovery) RegisterClient(service interface{}, moduleN
 		m := it.Method(i)
 		if strings.HasPrefix(m.Name, rpcPrefix) {
 			plugin.InfoS("注册 [%v:%v] 模块的 [%v] 接口", moduleName, version, m.Name)
-			proxyMethod := func(rpcType int32, args interface{}, reply interface{}) error {
-				return client.Call(context.Background(), m.Name, &args, &reply)
-			}
+			//proxyMethod := func(rpcType int32, args interface{}, reply interface{}) error {
+			//	return client.Call(context.Background(), m.Name, &args, &reply)
+			//}
 			if cache[m.Name] == nil {
-				cache[m.Name] = make([]func(rpcType int32, args interface{}, reply interface{}) error, 0)
+				cache[m.Name] = make([]client2.XClient, 0)
 			}
-			cache[m.Name] = append(cache[m.Name], proxyMethod)
+			cache[m.Name] = append(cache[m.Name], client)
 		}
 	}
 

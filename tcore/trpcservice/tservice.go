@@ -2,6 +2,8 @@ package trpcservice
 
 import (
 	"fmt"
+	client2 "github.com/smallnest/rpcx/client"
+	"golang.org/x/net/context"
 	"reflect"
 	"runtime"
 	"strings"
@@ -33,7 +35,7 @@ import (
 // ***********************    struct    ****************************
 
 type TRPCService struct {
-	funcMapping  map[string][]func(rpcType int32, args interface{}, reply interface{}) error
+	funcMapping  map[string][]client2.XClient
 	moduleMapper map[string]config.APIConfig
 }
 
@@ -51,9 +53,8 @@ func (this *TRPCService) Send(f interface{}, rpcType int32, args interface{}, re
 	msg := fmt.Sprintf("%v-------%v", ty, fc)
 	plugin.InfoS("%v", msg)
 	for _, d := range this.funcMapping[fc] {
-		d(rpcType, args, reply)
+		d.Call(context.Background(), fc, args, reply)
 	}
-	//this.funcMapping.Load()
 }
 
 func (this *TRPCService) RegisterRPCService(f interface{}, moduleName, version string) {
@@ -61,7 +62,7 @@ func (this *TRPCService) RegisterRPCService(f interface{}, moduleName, version s
 }
 
 func (this *TRPCService) InitStruct(apiConfigs []*config.APIConfig) {
-	this.funcMapping = make(map[string][]func(rpcType int32, args interface{}, reply interface{}) error)
+	this.funcMapping = make(map[string][]client2.XClient)
 	this.moduleMapper = make(map[string]config.APIConfig)
 	for _, config := range apiConfigs {
 		this.moduleMapper[config.ModuleName] = *config

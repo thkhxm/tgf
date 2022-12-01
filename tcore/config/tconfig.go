@@ -60,6 +60,9 @@ type ConsulConfig struct {
 
 // ***********************    struct_end    ****************************
 func (this TConfig) GetAPIServices() []*APIConfig {
+	if this.Server == nil {
+		return nil
+	}
 	return this.Server.API
 }
 

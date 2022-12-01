@@ -70,14 +70,14 @@ func BenchmarkFuncForPC(b *testing.B) {
 
 func TestTag(t *testing.T) {
 	// #1
-	d, _ := client.NewConsulDiscovery("/tframework", "Chat@1.0.0", []string{"127.0.0.1:8500"}, nil)
+	d, _ := client.NewConsulDiscovery("/tframework/Chat", "Chat@1.0.0", []string{"127.0.0.1:8500"}, nil)
 	// #2
 	xclient := client2.NewXClient("Chat@1.0.0", client2.Failtry, client2.RandomSelect, d, client2.DefaultOption)
 	defer xclient.Close()
 	//time.Sleep(time.Second * 10)
 	for i := 0; i < 3; i++ {
 		// #5
-		err := xclient.Broadcast(context.Background(), "RPCSayHello", i, nil)
+		err := xclient.Call(context.Background(), "RPCSayHello", i, nil)
 
 		if err != nil {
 			tcore.Log.Debug("failed to call: %v", err)
