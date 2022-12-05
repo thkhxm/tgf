@@ -73,7 +73,7 @@ func (this *TConsulServiceDiscovery) RegisterServer(serviceAddress, moduleName s
 		ConsulServers:  address,
 		BasePath:       this.configService.GetConsulPath() + "/" + moduleName,
 		Metrics:        metrics.NewRegistry(),
-		UpdateInterval: time.Second * 2,
+		UpdateInterval: time.Second * 11,
 	}
 
 	err := r.Start()

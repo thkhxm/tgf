@@ -26,6 +26,7 @@
 ```
 go get github.com/go-redsync/redsync	用 Redis 实现分布式互斥锁。
 go get github.com/go-redis/redis/v9 	Redis官方包
+go get -u github.com/panjf2000/gnet/v2  网络层框架
 ```
 
 

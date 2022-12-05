@@ -32,7 +32,7 @@ import (
 //***********************    struct    ****************************
 
 // Module
-// @Description: 聊天模块
+// @Description:网关模块
 type Module struct {
 	tcore.BaseModule
 }
