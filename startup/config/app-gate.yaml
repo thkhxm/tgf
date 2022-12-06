@@ -1,14 +1,14 @@
 Server:
   Modules:
-    - ModuleName: Gate
-      ModuleVersion: 1.0.0
-      Address: 0.0.0.0
-      Port: 8091
+    - ModuleName: Gate #当前进程启动的模块名称
+      ModuleVersion: 1.0.0 #当前模块的版本
+      Address: 0.0.0.0 #绑定的地址
+      Port: 8091 #绑定的端口
   API:
-    - ModuleName: Chat
-      ModuleVersion: 1.0.0
+    - ModuleName: Chat #调用API的模块名称
+      ModuleVersion: 1.0.0 #调用API的模块版本
   Discovery:
     Consul:
-      - Address: 127.0.0.1
-        Port: 8500
-    ConsulPath: /tframework
+      - Address: 127.0.0.1 #consul地址
+        Port: 8500 #consul端口
+    ConsulPath: /tframework #consul的basePath
