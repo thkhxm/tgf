@@ -45,7 +45,7 @@ func (this *TConsulServiceDiscovery) GetDiscovery(moduleName, version string) *c
 	}
 
 	//new discovery
-	basePath := fmt.Sprintf("/tframework/%v", moduleName)
+	basePath := fmt.Sprintf("/tframework")
 	servicePath := fmt.Sprintf("%v@%v", moduleName, version)
 	conf := &store.Config{
 		ClientTLS:         nil,
@@ -71,7 +71,7 @@ func (this *TConsulServiceDiscovery) RegisterServer(serviceAddress, moduleName s
 	r = &serverplugin.ConsulRegisterPlugin{
 		ServiceAddress: "tcp@" + serviceAddress,
 		ConsulServers:  address,
-		BasePath:       this.configService.GetConsulPath() + "/" + moduleName,
+		BasePath:       this.configService.GetConsulPath(),
 		Metrics:        metrics.NewRegistry(),
 		UpdateInterval: time.Second * 11,
 	}

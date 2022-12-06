@@ -42,7 +42,6 @@ func (r *ConsulRegistry) fetchServices() []*Service {
 	}
 
 	for _, value := range kvs {
-
 		nodes, err := r.kv.List(value.Key)
 		if err != nil {
 			log.Printf("failed to list %s: %v", value.Key, err)

@@ -1,7 +1,7 @@
 {
 	"registry_type": "consul",
 	"registry_url": "localhost:8500",
-	"service_base_url": "/tframework",
+	"service_base_url": "tframework/Chat",
 	"host": "0.0.0.0",
 	"port": 8972,
 	"user": "admin",

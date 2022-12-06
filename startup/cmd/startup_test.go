@@ -3,6 +3,7 @@ package main
 import (
 	client2 "github.com/rpcxio/rpcx-consul/client"
 	"github.com/smallnest/rpcx/client"
+	"github.com/smallnest/rpcx/server"
 	"golang.org/x/net/context"
 	"sync"
 	"testing"
@@ -30,6 +31,17 @@ func TestRPC(t *testing.T) {
 	}
 	w := sync.WaitGroup{}
 	w.Wait()
+}
+
+type DemoServer struct {
+}
+
+func TestServerRegister(t *testing.T) {
+	s := server.NewServer()
+	s.Plugins.DoRegister()
+	s.RegisterName("Arith", new(DemoServer), "")
+	s.Serve("tcp", "localhost:8083")
+
 }
 func init() {
 }
