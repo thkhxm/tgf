@@ -6,4 +6,5 @@ use (
 	./gateserver
 	./startup
 	./tcore
+	rpcx-ui
 )
