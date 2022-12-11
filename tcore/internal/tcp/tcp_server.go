@@ -2,9 +2,12 @@ package tcp
 
 import (
 	"bufio"
+	"errors"
 	"fmt"
+	"io"
 	"net"
 	"tframework.com/rpc/tcore/internal/plugin"
+	"time"
 )
 
 //***************************************************
@@ -65,10 +68,13 @@ type Server struct {
 
 type ServerConfig struct {
 	MaxConnections int32 //最大连接数
+	DeadLineTime   time.Duration
 }
 
 type UserConnectData struct {
-	conn *net.TCPConn
+	conn     *net.TCPConn
+	reqCount int32
+	reader   *bufio.Reader
 }
 
 //***********************    struct_end    ****************************
@@ -108,7 +114,8 @@ func (this *Server) Start() {
 		tcp.SetKeepAlive(true)       //保持激活
 		tcp.SetReadBuffer(1024)      //设置读缓冲区大小
 		tcp.SetWriteBuffer(8 * 1024) //设置写缓冲区大小
-		this.conChan <- tcp
+		tcp.SetDeadline(time.Now().Add(time.Second * this.config.DeadLineTime))
+		this.conChan <- tcp //将链接放入管道中
 	}
 }
 
@@ -123,40 +130,57 @@ func (this *Server) handlerConn(conn *net.TCPConn) {
 		}
 		conn.Close()
 	}()
-	buffConn := bufio.NewReader(conn)
+	connectData := &UserConnectData{
+		conn:     conn,
+		reqCount: 0,
+		reader:   bufio.NewReader(conn),
+	}
+
 	for {
 		//read head
 		// RequestHeader
 		// [1][1][2][1][1][2][n][n]
 		// magic number|message type|request method name size|data size|method name|data
-		//魔法值不对，直接断开
-		magicNumber, err := buffConn.ReadByte()
-		if err != nil || magicNumber != requestMagicNumber {
+
+		if connectData.reader.Buffered() < 2 {
+			plugin.InfoS("[tcp] 请求头长度不足2 重新等待接收数据")
+			continue
+		}
+
+		head2, err := connectData.reader.Peek(2)
+		if err != nil && err != io.EOF {
+			plugin.InfoS("[tcp] 请求头读取前两个字节数据异常,强制断开连接 %v", err)
+			break
+		}
+
+		//请求魔法值
+		magicNumber := head2[0]
+		if magicNumber != requestMagicNumber {
 			plugin.InfoS("[tcp] 请求头magic number错误,强制断开连接 %v", err)
 			break
 		}
-		messageType, err := buffConn.ReadByte()
-		if err != nil {
-			plugin.InfoS("[tcp] 请求头messageType错误,强制断开连接 %v", err)
-			break
-		}
+		//请求消息类型
+		messageType := head2[1]
 		switch messageType {
 		case byte(Heartbeat):
+			connectData.reader.Discard(2)
+			connectData.conn.SetDeadline(time.Now().Add(time.Second * this.config.DeadLineTime))
+			continue
 		case byte(Logic):
 		default:
-			er := ("123")
-			panic(error(fmt.Sprintf("message type error%v", messageType)))
-			break
+			er := errors.New(fmt.Sprintf("message type error %v", messageType))
+			panic(er)
 		}
 
-		if buffConn.Size() < 10 {
-
+		if connectData.reader.Buffered() < 10 {
+			//长度不足 读取失败 计数
+			continue
 		}
-		buffConn.Size()
+		connectData.reqCount++
 	}
 }
 
 func NewDefaultServerConfig() *ServerConfig {
-	config := &ServerConfig{MaxConnections: 10000}
+	config := &ServerConfig{MaxConnections: 10000, DeadLineTime: 30}
 	return config
 }
