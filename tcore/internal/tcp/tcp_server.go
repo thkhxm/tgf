@@ -1,6 +1,8 @@
 package tcp
 
 import (
+	"bufio"
+	"fmt"
 	"net"
 	"tframework.com/rpc/tcore/internal/plugin"
 )
@@ -15,8 +17,8 @@ import (
 //***********************    type    ****************************
 
 // RequestHeader
-// [1][1]
-// magic number|message type|
+// [1][1][2][1][1][2][n][n]
+// magic number|message type|request method name size|data size|method name|data
 type RequestHeader []byte
 
 // ResponseHeader
@@ -24,12 +26,23 @@ type RequestHeader []byte
 // message type|compress|size|
 type ResponseHeader []byte
 
+type HeaderMessageType byte
+
 //***********************    type_end    ****************************
 
 //***********************    var    ****************************
 
+var requestHeadSize = 8
+
 // 最大同时连接数
 var maxSynChanConn = 3000
+
+var requestMagicNumber byte = 250
+
+const (
+	Heartbeat HeaderMessageType = iota
+	Logic
+)
 
 //***********************    var_end    ****************************
 
@@ -104,7 +117,43 @@ func (this *Server) onDestroy() {
 }
 
 func (this *Server) handlerConn(conn *net.TCPConn) {
+	defer func() {
+		if err := recover(); err != nil {
+			plugin.InfoS("[tcp] tcp连接异常关闭 %v", err)
+		}
+		conn.Close()
+	}()
+	buffConn := bufio.NewReader(conn)
+	for {
+		//read head
+		// RequestHeader
+		// [1][1][2][1][1][2][n][n]
+		// magic number|message type|request method name size|data size|method name|data
+		//魔法值不对，直接断开
+		magicNumber, err := buffConn.ReadByte()
+		if err != nil || magicNumber != requestMagicNumber {
+			plugin.InfoS("[tcp] 请求头magic number错误,强制断开连接 %v", err)
+			break
+		}
+		messageType, err := buffConn.ReadByte()
+		if err != nil {
+			plugin.InfoS("[tcp] 请求头messageType错误,强制断开连接 %v", err)
+			break
+		}
+		switch messageType {
+		case byte(Heartbeat):
+		case byte(Logic):
+		default:
+			er := ("123")
+			panic(error(fmt.Sprintf("message type error%v", messageType)))
+			break
+		}
 
+		if buffConn.Size() < 10 {
+
+		}
+		buffConn.Size()
+	}
 }
 
 func NewDefaultServerConfig() *ServerConfig {
