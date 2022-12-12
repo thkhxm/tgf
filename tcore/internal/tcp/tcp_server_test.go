@@ -47,6 +47,17 @@ func TestNetSocketServer(t *testing.T) {
 	}
 }
 
+func TestStartTcpServer(t *testing.T) {
+	server := NewDefaultTCPServer()
+	server.Start()
+}
+
+func TestSlice(t *testing.T) {
+	d := []byte{1, 2, 3, 4, 5}
+	t.Logf("--->%v", d[0:1])
+	t.Logf("--->%v", d[1:3])
+}
+
 func handleConn(con *net.TCPConn, t *testing.T) {
 	r := bufio.NewReader(con)
 	//tcp.SetReadDeadline(time.Now().Add(3 * time.Second)) //设置读超时
