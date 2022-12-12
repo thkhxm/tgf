@@ -159,10 +159,10 @@ func (this *Server) handlerConn(conn *net.TCPConn) {
 		// [1][1][2][1][1][2][n][n]
 		// magic number|message type|request method name size|data size|method name|data
 
-		if connectData.reader.Buffered() < 2 {
-			plugin.InfoS("[tcp] 请求头长度不足2 重新等待接收数据")
-			continue
-		}
+		//if connectData.reader.Buffered() < 2 {
+		//	plugin.InfoS("[tcp] 请求头长度不足2 重新等待接收数据")
+		//	continue
+		//}
 
 		head, err = connectData.reader.Peek(2)
 		if err != nil && err != io.EOF {
@@ -215,7 +215,7 @@ func (this *Server) handlerConn(conn *net.TCPConn) {
 				Module:        reqModule,
 				Data:          allData[reqNameIndex:],
 			}
-			plugin.InfoS("[tcp] 完整包数据 [%v]", &pack)
+			plugin.InfoS("[tcp] 完整包数据 [%v]", pack)
 		default:
 			er := errors.New(fmt.Sprintf("message type error %v", messageType))
 			panic(er)
