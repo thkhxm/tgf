@@ -46,7 +46,7 @@ func (this *TConsulServiceDiscovery) GetDiscovery(moduleName, version string) *c
 
 	//new discovery
 	basePath := fmt.Sprintf("/tframework")
-	servicePath := fmt.Sprintf("%v@%v", moduleName, version)
+	servicePath := fmt.Sprintf("%v %v", moduleName, version)
 	conf := &store.Config{
 		ClientTLS:         nil,
 		TLS:               nil,
@@ -62,6 +62,16 @@ func (this *TConsulServiceDiscovery) GetDiscovery(moduleName, version string) *c
 		version:    version,
 		discovery:  d,
 	}
+	go func() {
+		for {
+			select {
+			case kv := <-d.WatchService():
+				for _, v := range kv {
+					plugin.InfoS("consul watch service %v,%v", v.Key, v.Value)
+				}
+			}
+		}
+	}()
 	this.discovery = append(this.discovery, data)
 	return d
 }
@@ -75,7 +85,6 @@ func (this *TConsulServiceDiscovery) RegisterServer(serviceAddress, moduleName s
 		Metrics:        metrics.NewRegistry(),
 		UpdateInterval: time.Second * 11,
 	}
-
 	err := r.Start()
 	if err != nil {
 		plugin.InfoS("服务发现启动异常 %v", err)
@@ -86,7 +95,7 @@ func (this *TConsulServiceDiscovery) RegisterServer(serviceAddress, moduleName s
 func (this *TConsulServiceDiscovery) RegisterClient(service interface{}, moduleName, version string, cache map[string][]client2.XClient) {
 	it := reflect.TypeOf(service)
 	it = it.Elem()
-	servicePath := fmt.Sprintf("%v@%v", moduleName, version)
+	servicePath := fmt.Sprintf("%v %v", moduleName, version)
 	discovery := this.GetDiscovery(moduleName, version)
 	client := client2.NewXClient(servicePath, client2.Failover, client2.ConsistentHash, discovery, client2.DefaultOption)
 

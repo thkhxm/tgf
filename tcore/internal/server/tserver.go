@@ -77,9 +77,8 @@ func (s *TServer[T]) InitStruct() {
 // @Description: 自动注册rpc接口
 // @receiver s
 func (s *TServer[T]) autoRegisterRPCService() {
-	path := fmt.Sprintf("%v@%v", s.module.GetModuleName(), s.module.GetVersion())
+	path := fmt.Sprintf("%v %v", s.module.GetModuleName(), s.module.GetVersion())
 	s.rpcServer.RegisterName(path, s.module, "")
-
 }
 
 // startupServer
