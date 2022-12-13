@@ -5,6 +5,7 @@ import (
 	"github.com/fatih/color"
 	"tframework.com/rpc/tcore"
 	"tframework.com/rpc/tcore/config"
+	tframework "tframework.com/rpc/tcore/interface"
 	"tframework.com/server/chat"
 	"tframework.com/server/common"
 	startup "tframework.com/server/startup/internal/interface"
@@ -36,8 +37,10 @@ func initModule(modules []*config.ModuleConfig) {
 			startUpManager.AddModule(chat.Create(m))
 
 		case string(common.Gate):
-			startUpManager.AddModule(gate.Create(m))
-
+			gateServer := startUpManager.AddModule(gate.Create(m))
+			gateServer.AddOptions(tframework.StartAfter, func(data interface{}) {
+				tcore.CreateAndStartTCPServer()
+			}, nil)
 		default:
 			tcore.Log.WarningS("初始化模块过程中，找不到对应 %v 模块", color.RedString(m.ModuleName))
 		}

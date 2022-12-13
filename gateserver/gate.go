@@ -6,8 +6,6 @@ import (
 	"tframework.com/rpc/tcore/config"
 	tframework "tframework.com/rpc/tcore/interface"
 	"tframework.com/server/common"
-	"tframework.com/server/common/rpc"
-	"time"
 )
 
 //***************************************************
@@ -57,11 +55,11 @@ func Create(config *config.ModuleConfig) tframework.ITModule {
 	m.AddPlugin(tframework.Log)
 	m.AddPlugin(tframework.Consul)
 	m.InitStruct(config)
-	go func() {
-		time.Sleep(time.Second * 5)
-		arg := 5
-		tcore.RPCService.Send(rpc.IRPCChatService.RPCSayHello, int32(tframework.Default), arg, nil)
-	}()
+	//go func() {
+	//	time.Sleep(time.Second * 5)
+	//	arg := 5
+	//	tcore.RPCService.Send(rpc.IRPCChatService.RPCSayHello, int32(tframework.Default), arg, nil)
+	//}()
 	return m
 }
 func init() {

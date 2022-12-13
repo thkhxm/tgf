@@ -2,7 +2,6 @@ package rpc
 
 import (
 	"tframework.com/rpc/tcore"
-	"tframework.com/rpc/tcore/utils"
 	"tframework.com/server/common"
 )
 
@@ -42,7 +41,7 @@ type Factory struct {
 }
 
 type FactoryDataManager struct {
-	utils.BaseDataManager
+	tcore.BaseDataManager
 }
 
 //***********************    struct_end    ****************************

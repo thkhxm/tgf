@@ -1,10 +1,9 @@
-package utils
+package tcore
 
 import (
 	"encoding/json"
 	"reflect"
 	"sync"
-	"tframework.com/rpc/tcore"
 	"time"
 )
 
@@ -50,12 +49,12 @@ func StartDBManagerTicker() {
 		//task := time.NewTicker(time.Second * 1)
 		defer func() {
 			if err := recover(); err != nil {
-				tcore.Log.ErrorS("BaseDataManager的定时器异常,", err)
+				Log.ErrorS("BaseDataManager的定时器异常,", err)
 				//移除异常的本地缓存队列
 				dataManagerList[curKey].cache = new(sync.Map)
 				//重启次数自增
 				restartCount++
-				tcore.Log.WarningS("重新启动定时器，避免数据内存溢出.重启次数：[%d]", restartCount)
+				Log.WarningS("重新启动定时器，避免数据内存溢出.重启次数：[%d]", restartCount)
 				StartDBManagerTicker()
 			}
 		}()
@@ -111,7 +110,7 @@ func (baseDataManager *BaseDataManager) InitStruct(subStruct interface{}) {
 		StartDBManagerTicker()
 	})
 	if _, err := baseDataManager.subStruct.(IDataManager); !err {
-		tcore.Log.ErrorS("BaseDBManager子类[%s]没有实现[%s]接口", reflect.TypeOf(subStruct).Name(), "IDataManager")
+		Log.ErrorS("BaseDBManager子类[%s]没有实现[%s]接口", reflect.TypeOf(subStruct).Name(), "IDataManager")
 	}
 	dataManagerList[baseDataManager.subStruct.(IDataManager).GetDBName()] = baseDataManager
 }
@@ -144,7 +143,7 @@ func (baseDataManager *BaseDataManager) Get(key interface{}, db bool) (interface
 	switch {
 	case cacheData.hit > 1000:
 		cacheData.hit = 0
-		tcore.Log.WarningS("存在数据缓存击穿风险,[%s]", sub.GetRedisKey(key))
+		Log.WarningS("存在数据缓存击穿风险,[%s]", sub.GetRedisKey(key))
 		return nil, false
 	case cacheData.value != nil:
 		//命中本地缓存，直接返回数据
@@ -159,7 +158,7 @@ func (baseDataManager *BaseDataManager) Get(key interface{}, db bool) (interface
 		if ref == nil {
 			return nil, false
 		}
-		err := tcore.Redis.Get(reKey, ref)
+		err := Redis.Get(reKey, ref)
 		if err == nil {
 			cacheData.value = ref
 			cacheData.key = key
@@ -202,7 +201,7 @@ func (baseDataManager *BaseDataManager) Store(key, value interface{}) bool {
 	reKey := sub.GetRedisKey(key)
 	if reKey != "" {
 		if da, err := json.Marshal(value); err == nil {
-			tcore.Redis.Set(reKey, da, baseDataManager.GetExpiration())
+			Redis.Set(reKey, da, baseDataManager.GetExpiration())
 		}
 	}
 	return true
@@ -213,7 +212,7 @@ func (baseDataManager *BaseDataManager) OnRemove(key interface{}, val *CacheData
 	reKey := sub.GetRedisKey(key)
 	if reKey != "" {
 		if da, err := json.Marshal(val.value); err == nil {
-			tcore.Redis.Set(reKey, da, baseDataManager.GetExpiration())
+			Redis.Set(reKey, da, baseDataManager.GetExpiration())
 		}
 	}
 }
@@ -226,7 +225,7 @@ func (baseDataManager *BaseDataManager) OnDestroy() {
 		reKey := sub.GetRedisKey(key)
 		if reKey != "" {
 			if da, err := json.Marshal(value.(*CacheData).value); err == nil {
-				tcore.Redis.Set(reKey, da, baseDataManager.GetExpiration())
+				Redis.Set(reKey, da, baseDataManager.GetExpiration())
 			}
 		}
 		return true

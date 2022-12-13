@@ -43,7 +43,6 @@ var m map[interface{}]string
 func TestRef(t *testing.T) {
 	//m = make(map[interface{}]string)
 	//GetRefObj(TestInterface.SayRed)
-	ty := reflect.TypeOf(TestInterface)
 
 }
 

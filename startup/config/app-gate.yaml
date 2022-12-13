@@ -12,3 +12,7 @@ Server:
       - Address: 127.0.0.1 #consul地址
         Port: 8500 #consul端口
     ConsulPath: /tframework #consul的basePath
+  TCP:
+    Address: 0.0.0.0 #地址
+    Port: 8880 #端口
+    DeadLineTime: 300 #连接失效时间

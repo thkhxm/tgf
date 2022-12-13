@@ -8,6 +8,7 @@ import (
 	"io"
 	"net"
 	"strings"
+	"tframework.com/rpc/tcore/config"
 	"tframework.com/rpc/tcore/internal/plugin"
 	"tframework.com/rpc/tcore/utils"
 	"time"
@@ -43,6 +44,9 @@ var requestHeadSize uint16 = 6
 // 最大同时连接数
 var maxSynChanConn = 3000
 
+// 连接超时时间
+var deadLineTime time.Duration = 30
+
 var requestMagicNumber byte = 250
 
 const (
@@ -70,7 +74,9 @@ type Server struct {
 }
 
 type ServerConfig struct {
-	MaxConnections int32 //最大连接数
+	Address        string //地址
+	Port           int    //端口
+	MaxConnections int32  //最大连接数
 	DeadLineTime   time.Duration
 }
 
@@ -88,12 +94,16 @@ type RequestData struct {
 
 //***********************    struct_end    ****************************
 
-func (this *Server) InitStruct(config *ServerConfig) {
-	if config == nil {
-		this.config = NewDefaultServerConfig()
-	} else {
-		this.config = config
-	}
+func (this *Server) InitPlugin() {
+
+}
+
+func (this *Server) StartPlugin() {
+
+}
+
+func (this *Server) initStruct(config *ServerConfig) {
+	this.config = config
 	//
 	this.conChan = make(chan *net.TCPConn, maxSynChanConn)
 	this.closeChan = make(chan bool, 1)
@@ -111,7 +121,7 @@ func (this *Server) selectorChan() {
 }
 
 func (this *Server) Start() {
-	add, _ := net.ResolveTCPAddr("tcp", "192.168.1.90:8880")
+	add, _ := net.ResolveTCPAddr("tcp", fmt.Sprintf("%v:%v", this.config.Address, this.config.Port))
 	listen, err := net.ListenTCP("tcp", add)
 	if err != nil {
 		plugin.InfoS("[tcp] tcp服务 启动异常 %v", err)
@@ -154,16 +164,6 @@ func (this *Server) handlerConn(conn *net.TCPConn) {
 	}
 
 	for {
-		//read head
-		// RequestHeader
-		// [1][1][2][1][1][2][n][n]
-		// magic number|message type|request method name size|data size|method name|data
-
-		//if connectData.reader.Buffered() < 2 {
-		//	plugin.InfoS("[tcp] 请求头长度不足2 重新等待接收数据")
-		//	continue
-		//}
-
 		head, err = connectData.reader.Peek(2)
 		if err != nil && err != io.EOF {
 			plugin.InfoS("[tcp] 请求头读取前两个字节数据异常,强制断开连接 %v", err)
@@ -200,7 +200,7 @@ func (this *Server) handlerConn(conn *net.TCPConn) {
 				plugin.InfoS("[tcp] 包长度不足，重新读取等待长度足够 %v--%v", connectData.reader.Buffered(), totalLen)
 				continue
 			}
-			allData := make([]byte, totalLen)
+			allData := make(RequestHeader, totalLen)
 			rdLen, err = connectData.reader.Read(allData)
 			if rdLen != int(totalLen) || err != nil {
 				plugin.InfoS("[tcp] 包长度不足 有异常 %v--%v", connectData.reader.Buffered(), totalLen)
@@ -225,12 +225,32 @@ func (this *Server) handlerConn(conn *net.TCPConn) {
 }
 
 func NewDefaultServerConfig() *ServerConfig {
-	config := &ServerConfig{MaxConnections: 10000, DeadLineTime: 30}
-	return config
+	serverConfig := &ServerConfig{
+		Address:        "0.0.0.0",
+		Port:           8880,
+		DeadLineTime:   300,
+		MaxConnections: 10000,
+	}
+	return serverConfig
 }
 
-func NewDefaultTCPServer() *Server {
+func NewDefaultTCPServer(config *config.TCPServerConfig) *Server {
+	if config == nil {
+		panic(errors.New("[server] 缺少TCP配置"))
+	}
 	server := &Server{}
-	server.InitStruct(NewDefaultServerConfig())
+	serverConfig := &ServerConfig{
+		Address:        config.Address,
+		Port:           config.Port,
+		MaxConnections: 10000,
+		DeadLineTime:   config.DeadLineTime,
+	}
+	server.initStruct(serverConfig)
+	return server
+}
+
+func NewDefaultTCPServerTest() *Server {
+	server := &Server{}
+	server.initStruct(NewDefaultServerConfig())
 	return server
 }

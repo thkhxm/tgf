@@ -32,7 +32,7 @@ func (s *StartupManager) AddModule(module tframework.ITModule) tframework.ITServ
 		s.moduleMapper = append(s.moduleMapper, ser)
 		ser.AddOptions(tframework.StartAfter, func(data interface{}) {
 			rpc.RPCFactory.InitFactory()
-		})
+		}, nil)
 		tcore.Log.InfoS("启动器添加新的模块 [%v]", color.RedString(module.GetModuleName()))
 		return ser
 	} else {

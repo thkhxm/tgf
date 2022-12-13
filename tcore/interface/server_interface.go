@@ -20,7 +20,7 @@ type ITServer interface {
 	// @param status
 	// @param options
 	// @return ITServer
-	AddOptions(status TServerStatus, options func(data interface{})) ITServer
+	AddOptions(status TServerStatus, options func(data interface{}), data interface{}) ITServer
 
 	// GetModule
 	// @Description: 获取模块数据

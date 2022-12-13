@@ -4,6 +4,7 @@ import (
 	"tframework.com/rpc/tcore/interface"
 	_interface "tframework.com/rpc/tcore/internal/interface"
 	"tframework.com/rpc/tcore/internal/server"
+	"tframework.com/rpc/tcore/internal/tcp"
 )
 
 //***************************************************
@@ -23,4 +24,13 @@ func CreateDefaultTServer(module tframework.ITModule) (tframework.ITServer, erro
 	server.SetConfigService(Config.(_interface.IServerConfigService))
 	server.InitStruct()
 	return server, nil
+}
+
+// CreateAndStartTCPServer
+// @Description: 创建一个新的TCP服务
+// @return *ITServer
+// @return error
+func CreateAndStartTCPServer() {
+	server := tcp.NewDefaultTCPServer(Config.GetTCPServer())
+	go server.Start()
 }

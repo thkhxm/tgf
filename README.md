@@ -10,6 +10,7 @@
 3. 接入mysql数据库
 4. 接入时序型数据库（clickHouse之类的）
 5. 增加goroutine的管理器
+6. plugin管理
 
 #### 软件架构
 软件架构说明
@@ -56,6 +57,10 @@ Server:
       - Address: 127.0.0.1 #consul地址
         Port: 8500 #consul端口
     ConsulPath: /tframework #consul的basePath
+  TCP:
+    Address: 0.0.0.0 #地址
+    Port: 8880 #端口
+    DeadLineTime: 300 #连接失效时间
 ```
 
 

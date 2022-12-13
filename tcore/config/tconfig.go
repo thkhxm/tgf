@@ -2,6 +2,7 @@ package config
 
 import (
 	"fmt"
+	"time"
 )
 
 //***************************************************
@@ -33,6 +34,7 @@ type ServerConfig struct {
 	Modules   []*ModuleConfig  //模块配置
 	Discovery *DiscoveryConfig //服务发现配置
 	API       []*APIConfig     //客户端服务
+	TCP       *TCPServerConfig //TCP服务
 }
 
 type ModuleConfig struct {
@@ -55,36 +57,43 @@ type APIConfig struct {
 type ConsulConfig struct {
 	Address string //consul地址
 	Port    int    //端口
+}
 
+type TCPServerConfig struct {
+	Address      string //地址
+	Port         int    //端口
+	DeadLineTime time.Duration
 }
 
 // ***********************    struct_end    ****************************
-func (this TConfig) GetAPIServices() []*APIConfig {
+func (this *TConfig) GetAPIServices() []*APIConfig {
 	if this.Server == nil {
 		return nil
 	}
 	return this.Server.API
 }
 
-func (this TConfig) GetModules() []*ModuleConfig {
+func (this *TConfig) GetModules() []*ModuleConfig {
 	return this.Server.Modules
 }
 
-func (this TConfig) GetDiscovery() *DiscoveryConfig {
+func (this *TConfig) GetDiscovery() *DiscoveryConfig {
 	return this.Server.Discovery
 }
-
+func (this *TConfig) GetTCPServer() *TCPServerConfig {
+	return this.Server.TCP
+}
 func (this *ConsulConfig) getFullAddress() (_address string) {
 	_address = fmt.Sprintf("%v:%v", this.Address, this.Port)
 	return
 }
 
-func (this TConfig) GetConsulPath() (_path string) {
+func (this *TConfig) GetConsulPath() (_path string) {
 	_path = this.Server.Discovery.ConsulPath
 	return
 }
 
-func (this TConfig) GetConsulAddressSlice() (_address []string) {
+func (this *TConfig) GetConsulAddressSlice() (_address []string) {
 	discovery := this.GetDiscovery()
 	_address = make([]string, len(discovery.Consul))
 	for i, consul := range discovery.Consul {

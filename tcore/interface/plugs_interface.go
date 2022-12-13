@@ -44,6 +44,7 @@ type IConfigService interface {
 	GetAPIServices() []*config.APIConfig
 	GetModules() []*config.ModuleConfig
 	GetDiscovery() *config.DiscoveryConfig
+	GetTCPServer() *config.TCPServerConfig
 }
 
 type IRedisService interface {

@@ -37,12 +37,13 @@ type StartDetail struct {
 	data    interface{}
 }
 
-func (s *TServer[T]) AddOptions(status tframework.TServerStatus, options func(data interface{})) tframework.ITServer {
+func (s *TServer[T]) AddOptions(status tframework.TServerStatus, options func(data interface{}), data interface{}) tframework.ITServer {
 	app := s.startDetails[status]
 	if app == nil {
 		app = &StartDetail{
 			status:  status,
 			options: make([]func(data interface{}), 0),
+			data:    data,
 		}
 		s.startDetails[status] = app
 	}
