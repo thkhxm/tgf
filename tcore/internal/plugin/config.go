@@ -3,6 +3,7 @@ package plugin
 import (
 	"fmt"
 	"github.com/spf13/viper"
+	"os"
 	"reflect"
 	"strings"
 	"tframework.com/rpc/tcore/internal/define"
@@ -66,6 +67,9 @@ func init() {
 	//	读取默认环境配置文件,判断当前运行环境和相关基础配置或者通用配置
 	baseVI := createViper("app")
 	active := baseVI.GetString("server.profiles.active")
+	if os.Getenv("active") != "" {
+		active = os.Getenv("active")
+	}
 	newDefaultConfig(fmt.Sprintf("app-%v", active))
 
 }

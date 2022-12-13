@@ -30,6 +30,7 @@ var initOne = &sync.Once{}
 type TConsulServiceDiscovery struct {
 	discovery     []*TmpDiscovery
 	configService _interface.IServerConfigService
+	lock          *sync.Mutex
 }
 type TmpDiscovery struct {
 	moduleName string
@@ -43,7 +44,14 @@ func (this *TConsulServiceDiscovery) GetDiscovery(moduleName, version string) *c
 			return discovery.discovery
 		}
 	}
-
+	this.lock.Lock()
+	defer this.lock.Unlock()
+	//重复校验，避免并发场景下多次注册
+	for _, discovery := range this.discovery {
+		if discovery.moduleName == moduleName && discovery.version == version {
+			return discovery.discovery
+		}
+	}
 	//new discovery
 	basePath := fmt.Sprintf("/tframework")
 	servicePath := fmt.Sprintf("%v %v", moduleName, version)
@@ -113,8 +121,6 @@ func (this *TConsulServiceDiscovery) RegisterClient(service interface{}, moduleN
 			cache[m.Name] = append(cache[m.Name], client)
 		}
 	}
-
-	//return nil, funcSlice
 }
 
 func instanceDefaultConsulDiscovery(configService _interface.IServerConfigService) {
@@ -123,5 +129,6 @@ func instanceDefaultConsulDiscovery(configService _interface.IServerConfigServic
 			ConsulDiscovery = new(TConsulServiceDiscovery)
 			ConsulDiscovery.discovery = make([]*TmpDiscovery, 0)
 			ConsulDiscovery.configService = configService
+			ConsulDiscovery.lock = new(sync.Mutex)
 		})
 }
