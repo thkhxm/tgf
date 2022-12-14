@@ -10,6 +10,7 @@ import (
 	"reflect"
 	"strings"
 	"sync"
+	tframework "tframework.com/rpc/tcore/interface"
 	_interface "tframework.com/rpc/tcore/internal/interface"
 	"tframework.com/rpc/tcore/internal/plugin"
 	"time"
@@ -84,7 +85,7 @@ func (this *TConsulServiceDiscovery) GetDiscovery(moduleName, version string) *c
 	return d
 }
 
-func (this *TConsulServiceDiscovery) RegisterServer(serviceAddress, moduleName string) (r *serverplugin.ConsulRegisterPlugin) {
+func (this *TConsulServiceDiscovery) RegisterServer(serviceAddress, moduleName string, module tframework.ITModule) (r *serverplugin.ConsulRegisterPlugin) {
 	address := this.configService.GetConsulAddressSlice()
 	r = &serverplugin.ConsulRegisterPlugin{
 		ServiceAddress: "tcp@" + serviceAddress,

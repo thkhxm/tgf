@@ -54,7 +54,21 @@ type ITModule interface {
 }
 
 type IRPCService interface {
-	Send(f interface{}, rpcType int32, args interface{}, reply interface{})
+	SendOne(f interface{}, rpcType int32, args interface{}, reply interface{}) (IRPCCallBack, error)
 
 	RegisterRPCService(f interface{}, moduleName, version string)
+}
+
+type IRPCCallBack interface {
+	// Done
+	// @Description: 阻塞获取，等待结果
+	// @receiver this
+	// @return reply
+	Done() (reply interface{})
+
+	// Time
+	// @Description: 耗时
+	// @receiver this
+	// @return mill
+	Time() (mill int64)
 }

@@ -114,7 +114,7 @@ func (s *TServer[T]) startupDiscovery() {
 }
 
 func (s *TServer[T]) addRegistryPlugin() {
-	r := ConsulDiscovery.RegisterServer(s.module.GetFullAddress(), s.module.GetModuleName())
+	r := ConsulDiscovery.RegisterServer(s.module.GetFullAddress(), s.module.GetModuleName(), s.module)
 	s.rpcServer.Plugins.Add(r)
 	plugin.InfoS("[Consul] 服务 [%v] 注册到 [%v] ", s.module.GetModuleName(), s.configService.GetConsulAddressSlice())
 }

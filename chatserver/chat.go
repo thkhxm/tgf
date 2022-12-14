@@ -2,10 +2,13 @@ package chat
 
 import (
 	"golang.org/x/net/context"
+	"math/rand"
 	"tframework.com/rpc/tcore"
 	"tframework.com/rpc/tcore/config"
 	tframework "tframework.com/rpc/tcore/interface"
 	"tframework.com/server/common"
+	"tframework.com/server/common/rpc"
+	"time"
 )
 
 //***************************************************
@@ -25,9 +28,12 @@ func (c *Module) GetModuleName() (moduleName string) {
 	return string(common.Chat)
 }
 
-func (c *Module) RPCSayHello(ctx context.Context, args *interface{}, reply *interface{}) error {
-	a := *args
-	tcore.Log.Debug("chat rpc chat test %v  [%v]", c.GetFullAddress(), a)
+func (c *Module) RPCSayHello(ctx context.Context, args *rpc.RPCSayHelloRequest, reply *rpc.RPCSayHelloResponse) error {
+	tcore.Log.Debug("chat rpc chat test %v", c.GetFullAddress())
+	reply.Message = "ok"
+	reply.Data = new(rpc.RPCResponseData)
+	reply.Data.Friends = []int32{int32(rand.Intn(10)), int32(rand.Intn(10)), int32(rand.Intn(10))}
+	time.Sleep(time.Second * 5)
 	return nil
 }
 

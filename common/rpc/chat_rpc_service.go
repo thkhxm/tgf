@@ -24,19 +24,38 @@ var Chat IRPCChatService
 //***********************    interface    ****************************
 
 type IRPCChatService interface {
-	RPCSayHello(ctx context.Context, args *interface{}, reply *interface{})
+	RPCSayHello(ctx context.Context, args *RPCSayHelloRequest, reply *RPCSayHelloResponse) error
 }
 
 //***********************    interface_end    ****************************
 
 //***********************    struct    ****************************
 
+type RPCSayHelloRequest struct {
+	Name       string
+	Friends    []int32
+	SampleData map[string]*RPCSampleData
+}
+
+type RPCSayHelloResponse struct {
+	Code    int32
+	Message string
+	Data    *RPCResponseData
+}
+type RPCResponseData struct {
+	Friends []int32
+}
+type RPCSampleData struct {
+	Car   map[string]string
+	Money int64
+}
+
 //***********************    struct_end    ****************************
 
 type chatServiceImpl struct {
 }
 
-func (c chatServiceImpl) RPCSayHello(ctx context.Context, args *interface{}, reply *interface{}) {
+func (c chatServiceImpl) RPCSayHello(ctx context.Context, args *RPCSayHelloRequest, reply *RPCSayHelloResponse) error {
 	//TODO implement me
 	panic("implement me")
 }

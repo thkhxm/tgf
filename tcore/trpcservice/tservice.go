@@ -1,7 +1,6 @@
 package trpcservice
 
 import (
-	"fmt"
 	client2 "github.com/smallnest/rpcx/client"
 	"golang.org/x/net/context"
 	"reflect"
@@ -9,8 +8,8 @@ import (
 	"strings"
 	"tframework.com/rpc/tcore/config"
 	tframework "tframework.com/rpc/tcore/interface"
-	"tframework.com/rpc/tcore/internal/plugin"
 	tserver "tframework.com/rpc/tcore/internal/server"
+	"time"
 )
 
 //***************************************************
@@ -39,22 +38,47 @@ type TRPCService struct {
 	moduleMapper map[string]config.APIConfig
 }
 
+type RPCCallback struct {
+	call  *client2.Call
+	start int64
+	end   int64
+}
+
 //***********************    struct_end    ****************************
 
-func (this *TRPCService) Send(f interface{}, rpcType int32, args interface{}, reply interface{}) {
+func (this *RPCCallback) Done() (reply interface{}) {
+	if this.call == nil {
+		return nil
+	}
+	call := <-this.call.Done
+	this.end = time.Now().UnixMilli()
+	return call.Reply
+}
+
+func (this *RPCCallback) Time() (mill int64) {
+	return this.end - this.start
+}
+
+func (this *TRPCService) SendOne(f interface{}, rpcType int32, args interface{}, reply interface{}) (tframework.IRPCCallBack, error) {
+	var (
+		err error
+	)
 	va := reflect.ValueOf(f)
-	ty := reflect.TypeOf(f)
-	//inf := ty.Elem()
-	//va := reflect.ValueOf(it)
-	//tserver.RegisterRPCService(it, "demo", "0.0.1")
 	fc := runtime.FuncForPC(va.Pointer()).Name()
 	ix := strings.LastIndex(fc, ".")
 	fc = fc[ix+1:]
-	msg := fmt.Sprintf("%v-------%v", ty, fc)
-	plugin.InfoS("%v", msg)
-	for _, d := range this.funcMapping[fc] {
-		d.Call(context.Background(), fc, args, reply)
+	callback := &RPCCallback{
+		start: time.Now().UnixMilli(),
 	}
+	for _, d := range this.funcMapping[fc] {
+		callback.call, err = d.Go(context.Background(), fc, args, reply, nil)
+		//d.Call(context.Background(), fc, args, reply)
+		if err != nil {
+			continue
+		}
+		break
+	}
+	return callback, nil
 }
 
 func (this *TRPCService) RegisterRPCService(f interface{}, moduleName, version string) {
