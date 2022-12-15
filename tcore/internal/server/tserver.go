@@ -18,6 +18,7 @@ import (
 //***************************************************
 
 var rpcPrefix = "RPC"
+var servicePrefix = "Service"
 
 // TServer
 // @Description:
@@ -79,6 +80,9 @@ func (s *TServer[T]) InitStruct() {
 func (s *TServer[T]) autoRegisterRPCService() {
 	path := fmt.Sprintf("%v %v", s.module.GetModuleName(), s.module.GetVersion())
 	s.rpcServer.RegisterName(path, s.module, "")
+	//if s.configService.IsGateway() {
+	s.rpcServer.RegisterName(s.module.GetModuleName()+" Service", s.module, "")
+	//}
 }
 
 // startupServer

@@ -37,6 +37,11 @@ func (c *Module) RPCSayHello(ctx context.Context, args *rpc.RPCSayHelloRequest, 
 	return nil
 }
 
+func (this *Module) StartFightService(ctx context.Context, args []byte, reply []byte) error {
+	tcore.Log.Debug("StartFightService test %v", args)
+	return nil
+}
+
 func (c *Module) StartUp() {
 
 }

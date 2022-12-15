@@ -35,6 +35,7 @@ type ServerConfig struct {
 	Discovery *DiscoveryConfig //服务发现配置
 	API       []*APIConfig     //客户端服务
 	TCP       *TCPServerConfig //TCP服务
+	Gateway   bool             //是否网关
 }
 
 type ModuleConfig struct {
@@ -100,6 +101,9 @@ func (this *TConfig) GetConsulAddressSlice() (_address []string) {
 		_address[i] = consul.getFullAddress()
 	}
 	return
+}
+func (this *TConfig) IsGateway() bool {
+	return this.Server.Gateway
 }
 
 func init() {

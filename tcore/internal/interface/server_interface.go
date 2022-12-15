@@ -19,6 +19,7 @@ package _interface
 type IServerConfigService interface {
 	GetConsulPath() (_path string)
 	GetConsulAddressSlice() (_address []string)
+	IsGateway() bool
 }
 
 //***********************    interface_end    ****************************

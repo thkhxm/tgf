@@ -16,3 +16,4 @@ Server:
     Address: 0.0.0.0 #地址
     Port: 8880 #端口
     DeadLineTime: 300 #连接失效时间
+  Gateway: false

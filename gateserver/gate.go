@@ -6,8 +6,6 @@ import (
 	"tframework.com/rpc/tcore/config"
 	tframework "tframework.com/rpc/tcore/interface"
 	"tframework.com/server/common"
-	"tframework.com/server/common/rpc"
-	"time"
 )
 
 //***************************************************
@@ -58,37 +56,37 @@ func Create(config *config.ModuleConfig) tframework.ITModule {
 	m.AddPlugin(tframework.Consul)
 	m.InitStruct(config)
 
-	go func() {
-		time.Sleep(time.Second * 5)
-		sample := make(map[string]*rpc.RPCSampleData)
-		cars := make(map[string]string)
-		cars["ad"] = "aodi"
-		sample["demo"] = &rpc.RPCSampleData{
-			Car:   cars,
-			Money: 99999,
-		}
-		req := &rpc.RPCSayHelloRequest{
-			Name:       "tim",
-			Friends:    []int32{1, 2, 3},
-			SampleData: sample,
-		}
-
-		for i := 0; i < 10; i++ {
-			response := &rpc.RPCSayHelloResponse{
-				Code:    0,
-				Message: "123",
-				Data:    new(rpc.RPCResponseData),
-			}
-			callBack, _ := tcore.RPCService.SendOne(rpc.IRPCChatService.RPCSayHello, int32(tframework.Default), req, response)
-			go func(cb tframework.IRPCCallBack) {
-				data := cb.Done()
-				if data != nil {
-					tcore.Log.InfoS("-------->%v", data.(*rpc.RPCSayHelloResponse).Data)
-				}
-			}(callBack)
-
-		}
-	}()
+	//go func() {
+	//	time.Sleep(time.Second * 5)
+	//	sample := make(map[string]*rpc.RPCSampleData)
+	//	cars := make(map[string]string)
+	//	cars["ad"] = "aodi"
+	//	sample["demo"] = &rpc.RPCSampleData{
+	//		Car:   cars,
+	//		Money: 99999,
+	//	}
+	//	req := &rpc.RPCSayHelloRequest{
+	//		Name:       "tim",
+	//		Friends:    []int32{1, 2, 3},
+	//		SampleData: sample,
+	//	}
+	//
+	//	for i := 0; i < 10; i++ {
+	//		response := &rpc.RPCSayHelloResponse{
+	//			Code:    0,
+	//			Message: "123",
+	//			Data:    new(rpc.RPCResponseData),
+	//		}
+	//		callBack, _ := tcore.RPCService.SendOne(rpc.IRPCChatService.RPCSayHello, int32(tframework.Default), req, response)
+	//		go func(cb tframework.IRPCCallBack) {
+	//			data := cb.Done()
+	//			if data != nil {
+	//				tcore.Log.InfoS("-------->%v", data.(*rpc.RPCSayHelloResponse).Data)
+	//			}
+	//		}(callBack)
+	//
+	//	}
+	//}()
 	return m
 }
 func init() {

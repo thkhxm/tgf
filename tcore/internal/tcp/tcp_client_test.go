@@ -47,7 +47,7 @@ func TestNetSocketClient(t *testing.T) {
 			for i := 0; i < 100; i++ {
 				var msg = "say hello - " + strconv.Itoa(i)
 				data := []byte(msg)
-				reqName := []byte("Chat.SayHello")
+				reqName := []byte("Chat.StartFightService")
 				tmp := make([]byte, 0, 6+len(data)+len(reqName))
 				buff := bytes.NewBuffer(tmp)
 				buff.WriteByte(250)

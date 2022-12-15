@@ -5,11 +5,15 @@ import (
 	"encoding/binary"
 	"errors"
 	"fmt"
+	client2 "github.com/smallnest/rpcx/client"
+	"golang.org/x/net/context"
 	"io"
 	"net"
 	"strings"
+	"sync"
 	"tframework.com/rpc/tcore/config"
 	"tframework.com/rpc/tcore/internal/plugin"
+	tserver "tframework.com/rpc/tcore/internal/server"
 	"tframework.com/rpc/tcore/utils"
 	"time"
 )
@@ -71,6 +75,7 @@ type Server struct {
 	config    *ServerConfig     //tcp连接配置
 	conChan   chan *net.TCPConn //客户端连接chan
 	closeChan chan bool         //关闭chan
+	clients   *sync.Map
 }
 
 type ServerConfig struct {
@@ -84,6 +89,7 @@ type UserConnectData struct {
 	conn     *net.TCPConn
 	reqCount int32
 	reader   *bufio.Reader
+	reqChan  chan *RequestData
 }
 
 type RequestData struct {
@@ -107,6 +113,7 @@ func (this *Server) initStruct(config *ServerConfig) {
 	//
 	this.conChan = make(chan *net.TCPConn, maxSynChanConn)
 	this.closeChan = make(chan bool, 1)
+	this.clients = new(sync.Map)
 
 	go this.selectorChan()
 }
@@ -151,18 +158,36 @@ func (this *Server) handlerConn(conn *net.TCPConn) {
 		methodSize, dataSize uint16
 		rdLen                int
 	)
+	connectData := &UserConnectData{
+		conn:     conn,
+		reqCount: 0,
+		reader:   bufio.NewReader(conn),
+		reqChan:  make(chan *RequestData),
+	}
+
 	defer func() {
 		if err := recover(); err != nil {
 			plugin.InfoS("[tcp] tcp连接异常关闭 %v", err)
 		}
 		conn.Close()
+		close(connectData.reqChan)
 	}()
-	connectData := &UserConnectData{
-		conn:     conn,
-		reqCount: 0,
-		reader:   bufio.NewReader(conn),
-	}
 
+	go func() {
+		defer func() {
+			if err := recover(); err != nil {
+				plugin.InfoS("[tcp] 业务逻辑chan关闭 %v", err)
+			}
+			conn.Close()
+			close(connectData.reqChan)
+		}()
+		for {
+			select {
+			case req := <-connectData.reqChan:
+				this.DoLogic(req)
+			}
+		}
+	}()
 	for {
 		head, err = connectData.reader.Peek(2)
 		if err != nil && err != io.EOF {
@@ -209,19 +234,41 @@ func (this *Server) handlerConn(conn *net.TCPConn) {
 			reqNameIndex := methodSize + 6 + 1
 			reqName := utils.ConvertStringByByteSlice(allData[6:reqNameIndex])
 			ix := strings.LastIndex(reqName, ".")
-			reqModule := reqName[ix+1:]
+			reqMethodName := reqName[ix+1:]
+			reqModule := reqName[:ix]
 			pack := &RequestData{
-				RequestMethod: reqName,
+				RequestMethod: reqMethodName,
 				Module:        reqModule,
 				Data:          allData[reqNameIndex:],
 			}
 			plugin.InfoS("[tcp] 完整包数据 [%v]", pack)
+			connectData.reqChan <- pack
 		default:
 			er := errors.New(fmt.Sprintf("message type error %v", messageType))
 			panic(er)
 		}
 		connectData.reqCount++
 	}
+}
+
+func (this *Server) DoLogic(data *RequestData) {
+	client := this.GetClient(data.Module)
+	reply := make([]byte, 0)
+	err := client.Call(context.Background(), data.RequestMethod, data.Data, reply)
+	if err != nil {
+		plugin.InfoS("[tcp] 请求异常 数据 [%v]", data, err)
+		return
+	}
+	plugin.InfoS("[tcp] 请求数据 [%v]", reply)
+}
+
+func (this *Server) GetClient(moduleName string) client2.XClient {
+	if val, ok := this.clients.Load(moduleName); ok {
+		return val.(client2.XClient)
+	}
+	val := tserver.ConsulDiscovery.RegisterTCPService(moduleName)
+	this.clients.Store(moduleName, val)
+	return val
 }
 
 func NewDefaultServerConfig() *ServerConfig {

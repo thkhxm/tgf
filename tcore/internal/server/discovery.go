@@ -7,6 +7,7 @@ import (
 	"github.com/rpcxio/rpcx-consul/client"
 	"github.com/rpcxio/rpcx-consul/serverplugin"
 	client2 "github.com/smallnest/rpcx/client"
+	"github.com/smallnest/rpcx/protocol"
 	"reflect"
 	"strings"
 	"sync"
@@ -101,12 +102,34 @@ func (this *TConsulServiceDiscovery) RegisterServer(serviceAddress, moduleName s
 	return
 }
 
+func (this *TConsulServiceDiscovery) RegisterTCPService(moduleName string) client2.XClient {
+	var (
+		option = client2.DefaultOption
+	)
+	if this.configService.IsGateway() {
+		option.SerializeType = protocol.SerializeNone
+	}
+	discovery := this.GetDiscovery(moduleName, "service")
+	servicePath := fmt.Sprintf("%v %v", moduleName, "service")
+	client := client2.NewXClient(servicePath, client2.Failover, client2.RandomSelect, discovery, option)
+	return client
+}
+
 func (this *TConsulServiceDiscovery) RegisterClient(service interface{}, moduleName, version string, cache map[string][]client2.XClient) {
+	var (
+		option = client2.DefaultOption
+	)
 	it := reflect.TypeOf(service)
 	it = it.Elem()
 	servicePath := fmt.Sprintf("%v %v", moduleName, version)
 	discovery := this.GetDiscovery(moduleName, version)
-	client := client2.NewXClient(servicePath, client2.Failover, client2.ConsistentHash, discovery, client2.DefaultOption)
+
+	if this.configService.IsGateway() {
+		option.SerializeType = protocol.SerializeNone
+	}
+
+	//client.option.SerializeType
+	client := client2.NewXClient(servicePath, client2.Failover, client2.ConsistentHash, discovery, option)
 
 	size := it.NumMethod()
 	for i := 0; i < size; i++ {
