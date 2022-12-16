@@ -109,8 +109,8 @@ func (this *TConsulServiceDiscovery) RegisterTCPService(moduleName string) clien
 	if this.configService.IsGateway() {
 		option.SerializeType = protocol.SerializeNone
 	}
-	discovery := this.GetDiscovery(moduleName, "service")
-	servicePath := fmt.Sprintf("%v %v", moduleName, "service")
+	discovery := this.GetDiscovery(moduleName, "Service")
+	servicePath := fmt.Sprintf("%v %v", moduleName, "Service")
 	client := client2.NewXClient(servicePath, client2.Failover, client2.RandomSelect, discovery, option)
 	return client
 }

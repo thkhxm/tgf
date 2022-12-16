@@ -6,6 +6,8 @@ import (
 	"errors"
 	"fmt"
 	client2 "github.com/smallnest/rpcx/client"
+	"github.com/smallnest/rpcx/util"
+	"github.com/valyala/bytebufferpool"
 	"golang.org/x/net/context"
 	"io"
 	"net"
@@ -33,8 +35,8 @@ import (
 type RequestHeader []byte
 
 // ResponseHeader
-// [1][1][4]
-// message type|compress|size|
+// [1][1][2][4][n][n]
+// message type|compress|request method name size|data size|method name|data
 type ResponseHeader []byte
 
 type HeaderMessageType byte
@@ -52,6 +54,9 @@ var maxSynChanConn = 3000
 var deadLineTime time.Duration = 30
 
 var requestMagicNumber byte = 250
+
+// 最低压缩大小
+var compressMinSize = 1024 * 8
 
 const (
 	Heartbeat HeaderMessageType = iota
@@ -76,6 +81,7 @@ type Server struct {
 	conChan   chan *net.TCPConn //客户端连接chan
 	closeChan chan bool         //关闭chan
 	clients   *sync.Map
+	users     *sync.Map
 }
 
 type ServerConfig struct {
@@ -89,13 +95,14 @@ type UserConnectData struct {
 	conn     *net.TCPConn
 	reqCount int32
 	reader   *bufio.Reader
-	reqChan  chan *RequestData
 }
 
 type RequestData struct {
+	User          *UserConnectData
 	RequestMethod string
 	Module        string
 	Data          []byte
+	MessageType   HeaderMessageType
 }
 
 //***********************    struct_end    ****************************
@@ -114,6 +121,7 @@ func (this *Server) initStruct(config *ServerConfig) {
 	this.conChan = make(chan *net.TCPConn, maxSynChanConn)
 	this.closeChan = make(chan bool, 1)
 	this.clients = new(sync.Map)
+	this.users = new(sync.Map)
 
 	go this.selectorChan()
 }
@@ -151,26 +159,26 @@ func (this *Server) onDestroy() {
 }
 
 func (this *Server) handlerConn(conn *net.TCPConn) {
-
 	var (
 		err                  error
 		head                 []byte
 		methodSize, dataSize uint16
 		rdLen                int
 	)
+
 	connectData := &UserConnectData{
 		conn:     conn,
 		reqCount: 0,
 		reader:   bufio.NewReader(conn),
-		reqChan:  make(chan *RequestData),
 	}
-
+	stop := make(chan struct{})
+	reqChan := make(chan *RequestData)
 	defer func() {
 		if err := recover(); err != nil {
 			plugin.InfoS("[tcp] tcp连接异常关闭 %v", err)
 		}
 		conn.Close()
-		close(connectData.reqChan)
+		stop <- struct{}{}
 	}()
 
 	go func() {
@@ -178,20 +186,21 @@ func (this *Server) handlerConn(conn *net.TCPConn) {
 			if err := recover(); err != nil {
 				plugin.InfoS("[tcp] 业务逻辑chan关闭 %v", err)
 			}
-			conn.Close()
-			close(connectData.reqChan)
 		}()
 		for {
 			select {
-			case req := <-connectData.reqChan:
+			case req := <-reqChan:
 				this.DoLogic(req)
+			case <-stop:
+				close(stop)
+				close(reqChan)
 			}
 		}
 	}()
 	for {
 		head, err = connectData.reader.Peek(2)
 		if err != nil && err != io.EOF {
-			plugin.InfoS("[tcp] 请求头读取前两个字节数据异常,强制断开连接 %v", err)
+			plugin.InfoS("[tcp] 请求头读取数据异常,强制断开连接 %v", err)
 			break
 		}
 
@@ -208,6 +217,7 @@ func (this *Server) handlerConn(conn *net.TCPConn) {
 		case byte(Heartbeat): //处理心跳逻辑
 			connectData.reader.Discard(2)
 			connectData.conn.SetDeadline(time.Now().Add(time.Second * this.config.DeadLineTime))
+			connectData.conn.Write([]byte{byte(Heartbeat)})
 			continue
 		case byte(Logic): //处理请求业务逻辑
 			head, err = connectData.reader.Peek(int(requestHeadSize))
@@ -231,7 +241,7 @@ func (this *Server) handlerConn(conn *net.TCPConn) {
 				plugin.InfoS("[tcp] 包长度不足 有异常 %v--%v", connectData.reader.Buffered(), totalLen)
 				continue
 			}
-			reqNameIndex := methodSize + 6 + 1
+			reqNameIndex := methodSize + 6
 			reqName := utils.ConvertStringByByteSlice(allData[6:reqNameIndex])
 			ix := strings.LastIndex(reqName, ".")
 			reqMethodName := reqName[ix+1:]
@@ -240,9 +250,10 @@ func (this *Server) handlerConn(conn *net.TCPConn) {
 				RequestMethod: reqMethodName,
 				Module:        reqModule,
 				Data:          allData[reqNameIndex:],
+				User:          connectData,
 			}
 			plugin.InfoS("[tcp] 完整包数据 [%v]", pack)
-			connectData.reqChan <- pack
+			reqChan <- pack
 		default:
 			er := errors.New(fmt.Sprintf("message type error %v", messageType))
 			panic(er)
@@ -252,14 +263,43 @@ func (this *Server) handlerConn(conn *net.TCPConn) {
 }
 
 func (this *Server) DoLogic(data *RequestData) {
+	var (
+		compress byte = 0
+		err      error
+	)
 	client := this.GetClient(data.Module)
 	reply := make([]byte, 0)
-	err := client.Call(context.Background(), data.RequestMethod, data.Data, reply)
+	err = client.Call(context.Background(), data.RequestMethod, data.Data, &reply)
 	if err != nil {
-		plugin.InfoS("[tcp] 请求异常 数据 [%v]", data, err)
+		plugin.InfoS("[tcp] 请求异常 数据 [%v] [%v]", data, err)
 		return
 	}
 	plugin.InfoS("[tcp] 请求数据 [%v]", reply)
+	bp := bytebufferpool.Get()
+	// [1][1][2][4][n][n]
+	// message type|compress|request method name size|data size|method name|data
+
+	//逻辑响应
+	bp.WriteByte(byte(Logic))
+
+	//放回池子
+	defer bytebufferpool.Put(bp)
+
+	if len(reply) >= compressMinSize {
+		compress = 1
+	}
+
+	//是否压缩
+	bp.WriteByte(compress)
+	//压缩数据
+	if compress == 1 {
+		reply, err = util.Zip(reply)
+		if err != nil {
+			plugin.InfoS("[tcp] 数据压缩异常 [%v] 压缩数据 [%v] [%v]", data, reply, err)
+			return
+		}
+	}
+	data.User.conn.Write(bp.Bytes())
 }
 
 func (this *Server) GetClient(moduleName string) client2.XClient {
