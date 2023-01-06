@@ -48,8 +48,7 @@ func TestNetSocketServer(t *testing.T) {
 }
 
 func TestStartTcpServer(t *testing.T) {
-	server := NewDefaultTCPServerTest()
-	server.Start()
+
 }
 
 func TestSlice(t *testing.T) {

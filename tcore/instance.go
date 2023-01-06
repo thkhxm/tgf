@@ -3,6 +3,7 @@ package tcore
 import (
 	"tframework.com/rpc/tcore/config"
 	tframework "tframework.com/rpc/tcore/interface"
+	_interface "tframework.com/rpc/tcore/internal/interface"
 	"tframework.com/rpc/tcore/internal/plugin"
 	"tframework.com/rpc/tcore/tlog"
 	"tframework.com/rpc/tcore/trpcservice"
@@ -44,4 +45,6 @@ func init() {
 	plugin.GetConfigPlugin().GetVI().Unmarshal(Config)
 	//加载rpc服务
 	RPCService = trpcservice.NewRPCService(Config.GetAPIServices())
+	//加载redis
+	Redis = plugin.NewRedisClient(Config.(_interface.IServerConfigService))
 }

@@ -17,6 +17,7 @@ require (
 	github.com/alitto/pond v1.8.2 // indirect
 	github.com/apache/thrift v0.17.0 // indirect
 	github.com/armon/go-metrics v0.4.0 // indirect
+	github.com/bwmarrin/snowflake v0.3.0 // indirect
 	github.com/cenk/backoff v2.2.1+incompatible // indirect
 	github.com/cenkalti/backoff v2.2.1+incompatible // indirect
 	github.com/dgryski/go-jump v0.0.0-20211018200510-ba001c3ffce0 // indirect

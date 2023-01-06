@@ -16,4 +16,9 @@ Server:
     Address: 0.0.0.0 #地址
     Port: 8880 #端口
     DeadLineTime: 300 #连接失效时间
+  Redis:
+    Address: 192.168.1.82 #地址
+    Port: 6382 #端口
+    Password: #密码
+    DB: 9 #db
   Gateway: true

@@ -23,6 +23,7 @@ const (
 	Log    TServerPlugin = 0 //log模块，默认启动
 	Consul               = 1 << iota
 	P2P
+	Redis
 )
 
 type TRPCType int32
@@ -36,5 +37,11 @@ func CheckServerPlugs(base int64, val TServerPlugin) (open bool) {
 	open = base&int64(val) == int64(val)
 	return
 }
+
+type ContextKey string
+
+const (
+	ContextKey_UserId ContextKey = "UserId"
+)
 
 //

@@ -5,15 +5,19 @@ import (
 	"encoding/binary"
 	"errors"
 	"fmt"
+	"github.com/edwingeng/doublejump"
 	client2 "github.com/smallnest/rpcx/client"
+	"github.com/smallnest/rpcx/share"
 	"github.com/smallnest/rpcx/util"
 	"github.com/valyala/bytebufferpool"
 	"golang.org/x/net/context"
 	"io"
 	"net"
+	"sort"
 	"strings"
 	"sync"
 	"tframework.com/rpc/tcore/config"
+	tframework "tframework.com/rpc/tcore/interface"
 	"tframework.com/rpc/tcore/internal/plugin"
 	tserver "tframework.com/rpc/tcore/internal/server"
 	"tframework.com/rpc/tcore/utils"
@@ -46,6 +50,7 @@ type HeaderMessageType byte
 //***********************    var    ****************************
 
 var requestHeadSize uint16 = 6
+var requestLoginHeadSize uint16 = 4
 
 // 最大同时连接数
 var maxSynChanConn = 3000
@@ -61,6 +66,7 @@ var compressMinSize = 1024 * 8
 const (
 	Heartbeat HeaderMessageType = iota
 	Logic
+	Login
 )
 
 //***********************    var_end    ****************************
@@ -82,6 +88,12 @@ type Server struct {
 	closeChan chan bool         //关闭chan
 	clients   *sync.Map
 	users     *sync.Map
+	service   tframework.ITCPService
+}
+
+type CustomSelector struct {
+	h       *doublejump.Hash
+	servers []string
 }
 
 type ServerConfig struct {
@@ -92,9 +104,11 @@ type ServerConfig struct {
 }
 
 type UserConnectData struct {
-	conn     *net.TCPConn
-	reqCount int32
-	reader   *bufio.Reader
+	conn        *net.TCPConn
+	reqCount    int32
+	reader      *bufio.Reader
+	userId      string
+	contextData context.Context
 }
 
 type RequestData struct {
@@ -115,14 +129,14 @@ func (this *Server) StartPlugin() {
 
 }
 
-func (this *Server) initStruct(config *ServerConfig) {
+func (this *Server) initStruct(config *ServerConfig, service tframework.ITCPService) {
 	this.config = config
 	//
 	this.conChan = make(chan *net.TCPConn, maxSynChanConn)
 	this.closeChan = make(chan bool, 1)
 	this.clients = new(sync.Map)
 	this.users = new(sync.Map)
-
+	this.service = service
 	go this.selectorChan()
 }
 
@@ -167,9 +181,10 @@ func (this *Server) handlerConn(conn *net.TCPConn) {
 	)
 
 	connectData := &UserConnectData{
-		conn:     conn,
-		reqCount: 0,
-		reader:   bufio.NewReader(conn),
+		conn:        conn,
+		reqCount:    0,
+		reader:      bufio.NewReader(conn),
+		contextData: share.NewContext(context.Background()),
 	}
 	stop := make(chan struct{})
 	reqChan := make(chan *RequestData)
@@ -177,10 +192,9 @@ func (this *Server) handlerConn(conn *net.TCPConn) {
 		if err := recover(); err != nil {
 			plugin.InfoS("[tcp] tcp连接异常关闭 %v", err)
 		}
-		conn.Close()
 		stop <- struct{}{}
+		conn.Close()
 	}()
-
 	go func() {
 		defer func() {
 			if err := recover(); err != nil {
@@ -194,6 +208,7 @@ func (this *Server) handlerConn(conn *net.TCPConn) {
 			case <-stop:
 				close(stop)
 				close(reqChan)
+				return
 			}
 		}
 	}()
@@ -219,10 +234,30 @@ func (this *Server) handlerConn(conn *net.TCPConn) {
 			connectData.conn.SetDeadline(time.Now().Add(time.Second * this.config.DeadLineTime))
 			connectData.conn.Write([]byte{byte(Heartbeat)})
 			continue
+		case byte(Login):
+			//	[1][1][2][n]
+			//magic number|message type|data size|data
+			head, err = connectData.reader.Peek(int(requestLoginHeadSize))
+			if err != nil {
+				plugin.InfoS("[tcp] Login 请求头数据异常,强制断开连接 %v", err)
+				break
+			}
+			dataSize = binary.BigEndian.Uint16(head[2:4])
+			totalLen := requestLoginHeadSize + dataSize
+			if connectData.reader.Buffered() < int(totalLen) {
+				plugin.InfoS("[tcp] Login 包长度不足，重新读取等待长度足够 %v--%v", connectData.reader.Buffered(), totalLen)
+				continue
+			}
+			allData := make(RequestHeader, totalLen)
+			rdLen, err = connectData.reader.Read(allData)
+			data := allData[requestLoginHeadSize:]
+			//
+			this.service.Login(connectData.contextData.(*share.Context), string(data))
+
 		case byte(Logic): //处理请求业务逻辑
 			head, err = connectData.reader.Peek(int(requestHeadSize))
 			if err != nil {
-				plugin.InfoS("[tcp] 请求头数据异常,强制断开连接 %v", err)
+				plugin.InfoS("[tcp] Logic 请求头数据异常,强制断开连接 %v", err)
 				break
 			}
 			//	[1][1][2][2][n][n]
@@ -232,13 +267,13 @@ func (this *Server) handlerConn(conn *net.TCPConn) {
 			//算出完整包长度
 			totalLen := requestHeadSize + methodSize + dataSize
 			if connectData.reader.Buffered() < int(totalLen) {
-				plugin.InfoS("[tcp] 包长度不足，重新读取等待长度足够 %v--%v", connectData.reader.Buffered(), totalLen)
+				plugin.InfoS("[tcp] Logic 包长度不足，重新读取等待长度足够 %v--%v", connectData.reader.Buffered(), totalLen)
 				continue
 			}
 			allData := make(RequestHeader, totalLen)
 			rdLen, err = connectData.reader.Read(allData)
 			if rdLen != int(totalLen) || err != nil {
-				plugin.InfoS("[tcp] 包长度不足 有异常 %v--%v", connectData.reader.Buffered(), totalLen)
+				plugin.InfoS("[tcp] Logic 包长度不足 有异常 %v--%v", connectData.reader.Buffered(), totalLen)
 				continue
 			}
 			reqNameIndex := methodSize + 6
@@ -252,7 +287,7 @@ func (this *Server) handlerConn(conn *net.TCPConn) {
 				Data:          allData[reqNameIndex:],
 				User:          connectData,
 			}
-			plugin.InfoS("[tcp] 完整包数据 [%v]", pack)
+			plugin.InfoS("[tcp] Logic 完整包数据 [%v]", pack)
 			reqChan <- pack
 		default:
 			er := errors.New(fmt.Sprintf("message type error %v", messageType))
@@ -269,7 +304,7 @@ func (this *Server) DoLogic(data *RequestData) {
 	)
 	client := this.GetClient(data.Module)
 	reply := make([]byte, 0)
-	err = client.Call(context.Background(), data.RequestMethod, data.Data, &reply)
+	err = client.Call(data.User.contextData, data.RequestMethod, data.Data, &reply)
 	if err != nil {
 		plugin.InfoS("[tcp] 请求异常 数据 [%v] [%v]", data, err)
 		return
@@ -307,8 +342,67 @@ func (this *Server) GetClient(moduleName string) client2.XClient {
 		return val.(client2.XClient)
 	}
 	val := tserver.ConsulDiscovery.RegisterTCPService(moduleName)
+	selector := new(CustomSelector)
+	selector.initStruct()
+	val.SetSelector(selector)
+	val.GetPlugins().Add(this)
 	this.clients.Store(moduleName, val)
 	return val
+}
+
+// PostCall
+// @Description: 执行完业务之后的处理切片
+// @receiver this
+// @param ctx
+// @param servicePath
+// @param serviceMethod
+// @param args
+// @param reply
+// @param err
+// @return error
+func (this *Server) PostCall(ctx context.Context, servicePath, serviceMethod string, args interface{}, reply interface{}, err error) error {
+	return nil
+}
+
+func (this *CustomSelector) Select(ctx context.Context, servicePath, serviceMethod string, args interface{}) string {
+	ss := this.servers
+	if len(ss) == 0 {
+		return ""
+	}
+	if sc, ok := ctx.(*share.Context); ok {
+		if uid, uok := sc.Value(tframework.ContextKey_UserId).(string); uok {
+			key := client2.HashString(uid)
+			selected, _ := this.h.Get(key).(string)
+			return selected
+		}
+	}
+
+	return ""
+}
+
+func (this *CustomSelector) UpdateServer(servers map[string]string) {
+	//TODO: 新增虚拟节点，优化hash的命中分布
+	ss := make([]string, 0, len(servers))
+	for k := range servers {
+		this.h.Add(k)
+		ss = append(ss, k)
+	}
+
+	sort.Slice(ss, func(i, j int) bool { return ss[i] < ss[j] })
+
+	for _, k := range this.servers {
+		if servers[k] == "" { // remove
+			this.h.Remove(k)
+		}
+	}
+	this.servers = ss
+	plugin.InfoS("更新服务节点%v", this.servers)
+}
+
+// s
+func (this *CustomSelector) initStruct() {
+	this.servers = make([]string, 0, 0)
+	this.h = doublejump.NewHash()
 }
 
 func NewDefaultServerConfig() *ServerConfig {
@@ -321,7 +415,7 @@ func NewDefaultServerConfig() *ServerConfig {
 	return serverConfig
 }
 
-func NewDefaultTCPServer(config *config.TCPServerConfig) *Server {
+func NewDefaultTCPServer(config *config.TCPServerConfig, service tframework.ITCPService) *Server {
 	if config == nil {
 		panic(errors.New("[server] 缺少TCP配置"))
 	}
@@ -332,12 +426,7 @@ func NewDefaultTCPServer(config *config.TCPServerConfig) *Server {
 		MaxConnections: 10000,
 		DeadLineTime:   config.DeadLineTime,
 	}
-	server.initStruct(serverConfig)
-	return server
-}
 
-func NewDefaultTCPServerTest() *Server {
-	server := &Server{}
-	server.initStruct(NewDefaultServerConfig())
+	server.initStruct(serverConfig, service)
 	return server
 }

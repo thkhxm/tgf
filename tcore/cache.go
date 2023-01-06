@@ -166,8 +166,6 @@ func (baseDataManager *BaseDataManager) Get(key interface{}, db bool) (interface
 		}
 		//redis没取到数据，从mdb尝试获取/
 		if cacheData.value == nil && db {
-			//TODO:目前看到只有userData会从mdb中取数据，所以先不增加处理
-			//mongoClient.GetContext().Value(baseDataManager.subStruct.(IDataManager).GetMongoKey(key))
 		}
 	}
 

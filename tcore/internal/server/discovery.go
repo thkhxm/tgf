@@ -111,7 +111,7 @@ func (this *TConsulServiceDiscovery) RegisterTCPService(moduleName string) clien
 	}
 	discovery := this.GetDiscovery(moduleName, "Service")
 	servicePath := fmt.Sprintf("%v %v", moduleName, "Service")
-	client := client2.NewXClient(servicePath, client2.Failover, client2.RandomSelect, discovery, option)
+	client := client2.NewXClient(servicePath, client2.Failover, client2.SelectByUser, discovery, option)
 	return client
 }
 

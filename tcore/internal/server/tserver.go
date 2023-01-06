@@ -117,6 +117,14 @@ func (s *TServer[T]) startupDiscovery() {
 
 }
 
+func (s *TServer[T]) startupPlugins() {
+	//是否开启点对点服务，不使用服务发现机制
+	if tframework.CheckServerPlugs(s.module.GetPlugin(), tframework.Redis) {
+
+	}
+
+}
+
 func (s *TServer[T]) addRegistryPlugin() {
 	r := ConsulDiscovery.RegisterServer(s.module.GetFullAddress(), s.module.GetModuleName(), s.module)
 	s.rpcServer.Plugins.Add(r)

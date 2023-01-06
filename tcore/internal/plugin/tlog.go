@@ -75,5 +75,8 @@ func (lp *TLogPlugin) DebugS(format string, v ...interface{}) {
 func InfoS(format string, v ...interface{}) {
 	l.fInfoInsert(fmt.Sprintf("%v %v", color.BlueString("\t[I] [Server]"), format), v...)
 }
+func ErrorS(format string, v ...interface{}) {
+	l.fInfoInsert(fmt.Sprintf("%v %v", color.BlueString("\t[E] [Server]"), format), v...)
+}
 func init() {
 }

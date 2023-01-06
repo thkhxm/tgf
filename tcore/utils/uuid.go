@@ -1,10 +1,10 @@
 package utils
 
-import "bytes"
+import "github.com/bwmarrin/snowflake"
 
 //***************************************************
 //author tim.huang
-//2022/11/4
+//2022/12/27
 //
 //
 //***************************************************
@@ -15,6 +15,8 @@ import "bytes"
 
 //***********************    var    ****************************
 
+var Snowflake *snowflake.Node
+
 //***********************    var_end    ****************************
 
 //***********************    interface    ****************************
@@ -23,23 +25,8 @@ import "bytes"
 
 //***********************    struct    ****************************
 
-// ***********************    struct_end    ****************************
+//***********************    struct_end    ****************************
 
-// SplitJoinSlice
-// @Description: 拼接字符串切片,返回字符串
-// @param val
-// @param split
-// @return _data
-func SplitJoinSlice(val []string, split string) (_data string) {
-	var buffer bytes.Buffer
-	for _, s := range val {
-		buffer.WriteString(s)
-		buffer.WriteString(split)
-	}
-	_data = buffer.String()
-	//不是空字符,切割最后一个拼接符
-	if split != "" {
-		_data = _data[0 : len(_data)-1]
-	}
-	return
+func GenerateSnowflakeId() string {
+	return Snowflake.Generate().Base64()
 }

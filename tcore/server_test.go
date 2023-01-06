@@ -22,9 +22,7 @@ func TestCreateDefaultTServer(t *testing.T) {
 		args    args
 		want    tframework.ITServer
 		wantErr bool
-	}{
-		// TODO: Add test cases.
-	}
+	}{}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			got, err := CreateDefaultTServer(tt.args.module)

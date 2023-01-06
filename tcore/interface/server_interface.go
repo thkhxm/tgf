@@ -1,5 +1,7 @@
 package tframework
 
+import "github.com/smallnest/rpcx/share"
+
 //***************************************************
 //author tim.huang
 //2022/8/10
@@ -41,6 +43,7 @@ type ITServerPlugin interface {
 	// @Description: 启动插件,每个module都会执行一次
 	//
 	StartPlugin()
+	GetPluginType() TServerPlugin
 }
 
 type ITModule interface {
@@ -71,4 +74,8 @@ type IRPCCallBack interface {
 	// @receiver this
 	// @return mill
 	Time() (mill int64)
+}
+
+type ITCPService interface {
+	Login(ct *share.Context, token string)
 }
