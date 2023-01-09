@@ -371,6 +371,10 @@ func (this *CustomSelector) Select(ctx context.Context, servicePath, serviceMeth
 	}
 	if sc, ok := ctx.(*share.Context); ok {
 		if uid, uok := sc.Value(tframework.ContextKey_UserId).(string); uok {
+			if selected, sok := sc.Value(servicePath).(string); sok {
+				return selected
+			}
+
 			key := client2.HashString(uid)
 			selected, _ := this.h.Get(key).(string)
 			return selected
