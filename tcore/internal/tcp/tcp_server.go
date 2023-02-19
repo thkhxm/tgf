@@ -304,9 +304,15 @@ func (this *Server) DoLogic(data *RequestData) {
 	)
 	client := this.GetClient(data.Module)
 	reply := make([]byte, 0)
-	err = client.Call(data.User.contextData, data.RequestMethod, data.Data, &reply)
+	done := make(chan *client2.Call)
+	_, err = client.Go(data.User.contextData, data.RequestMethod, data.Data, &reply, done)
 	if err != nil {
 		plugin.InfoS("[tcp] 请求异常 数据 [%v] [%v]", data, err)
+		return
+	}
+	callback := <-done
+	if callback.Error != nil {
+		plugin.InfoS("[tcp] 请求异常 数据 [%v] [%v]", data, callback.Error)
 		return
 	}
 	plugin.InfoS("[tcp] 请求数据 [%v]", reply)
@@ -361,6 +367,7 @@ func (this *Server) GetClient(moduleName string) client2.XClient {
 // @param err
 // @return error
 func (this *Server) PostCall(ctx context.Context, servicePath, serviceMethod string, args interface{}, reply interface{}, err error) error {
+
 	return nil
 }
 
@@ -385,7 +392,7 @@ func (this *CustomSelector) Select(ctx context.Context, servicePath, serviceMeth
 }
 
 func (this *CustomSelector) UpdateServer(servers map[string]string) {
-	//TODO: 新增虚拟节点，优化hash的命中分布
+	// TODO: 新增虚拟节点，优化hash的命中分布
 	ss := make([]string, 0, len(servers))
 	for k := range servers {
 		this.h.Add(k)
