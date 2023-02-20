@@ -144,6 +144,7 @@ func (this *Server) selectorChan() {
 	for {
 		select {
 		case con := <-this.conChan:
+			//TODO 管理一个线程池
 			go this.handlerConn(con)
 		}
 	}
@@ -304,7 +305,7 @@ func (this *Server) DoLogic(data *RequestData) {
 	)
 	client := this.GetClient(data.Module)
 	reply := make([]byte, 0)
-	done := make(chan *client2.Call)
+	done := make(chan *client2.Call, 10)
 	_, err = client.Go(data.User.contextData, data.RequestMethod, data.Data, &reply, done)
 	if err != nil {
 		plugin.InfoS("[tcp] 请求异常 数据 [%v] [%v]", data, err)
@@ -367,30 +368,45 @@ func (this *Server) GetClient(moduleName string) client2.XClient {
 // @param err
 // @return error
 func (this *Server) PostCall(ctx context.Context, servicePath, serviceMethod string, args interface{}, reply interface{}, err error) error {
-
 	return nil
 }
 
 func (this *CustomSelector) Select(ctx context.Context, servicePath, serviceMethod string, args interface{}) string {
-	ss := this.servers
-	if len(ss) == 0 {
-		return ""
-	}
 	if sc, ok := ctx.(*share.Context); ok {
-		if uid, uok := sc.Value(tframework.ContextKey_UserId).(string); uok {
-			if selected, sok := sc.Value(servicePath).(string); sok {
+		size := len(this.servers)
+		switch size {
+		case 0:
+			return ""
+		default:
+			reqMetaData := sc.Value(share.ReqMetaDataKey).(map[string]string)
+			//用户级别的请求
+			uid := reqMetaData[tframework.ContextKey_UserId]
+			if uid != "" {
+				//判断之前的节点是否存活,如果存活,直接命中
+				selected := reqMetaData[servicePath]
+				if selected != "" && this.checkServerAlive(selected) {
+					return selected
+				}
+				//通过一致性hash的方式,命中一个活跃的业务节点
+				key := client2.HashString(uid)
+				selected, _ = this.h.Get(key).(string)
+				reqMetaData[servicePath] = selected
 				return selected
 			}
-
-			key := client2.HashString(uid)
-			selected, _ := this.h.Get(key).(string)
-			return selected
 		}
 	}
 
 	return ""
 }
-
+func (this *CustomSelector) checkServerAlive(server string) bool {
+	var ()
+	for _, s := range this.servers {
+		if s == server {
+			return true
+		}
+	}
+	return false
+}
 func (this *CustomSelector) UpdateServer(servers map[string]string) {
 	// TODO: 新增虚拟节点，优化hash的命中分布
 	ss := make([]string, 0, len(servers))

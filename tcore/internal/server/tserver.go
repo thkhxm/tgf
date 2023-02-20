@@ -53,14 +53,15 @@ func (s *TServer[T]) AddOptions(status tframework.TServerStatus, options func(da
 }
 
 func (s *TServer[T]) StartupServer() {
-	s.rpcServer = server.NewServer()
+	s.rpcServer = server.NewServer(server.WithPool(1e4, 1e4))
+
 	s.startupDiscovery()
 	s.autoRegisterRPCService()
 	s.startupServer(s.module.GetAddress(), s.module.GetPort())
 }
 
-func (this *TServer[T]) GetModule() tframework.ITModule {
-	return this.module
+func (s *TServer[T]) GetModule() tframework.ITModule {
+	return s.module
 }
 func (s *TServer[T]) SetModule(module T) {
 	s.module = module //

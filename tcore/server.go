@@ -56,5 +56,8 @@ func (this *DefaultTCPService) Login(ct *share.Context, token string) {
 		register = true
 	}
 	ct.SetValue(tframework.ContextKey_UserId, uuid)
+	reqMetaData := make(map[string]string)
+	reqMetaData[tframework.ContextKey_UserId] = uuid
+	ct.SetValue(share.ReqMetaDataKey, reqMetaData)
 	Log.InfoS("[TCP] login token %v , uuid %v register %v", token, uuid, register)
 }

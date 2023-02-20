@@ -38,10 +38,8 @@ func CheckServerPlugs(base int64, val TServerPlugin) (open bool) {
 	return
 }
 
-type ContextKey string
-
 const (
-	ContextKey_UserId ContextKey = "UserId"
+	ContextKey_UserId string = "UserId"
 )
 
 //

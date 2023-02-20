@@ -1,6 +1,7 @@
 package chat
 
 import (
+	"github.com/smallnest/rpcx/share"
 	"golang.org/x/net/context"
 	"math/rand"
 	"tframework.com/rpc/tcore"
@@ -39,8 +40,12 @@ func (c *Module) RPCSayHello(ctx context.Context, args *rpc.RPCSayHelloRequest, 
 
 func (this *Module) StartFightService(ctx context.Context, args *[]byte, reply *[]byte) error {
 	tcore.Log.Debug("StartFightService test %v", args)
+	cc := ctx.(*share.Context)
+	reqMetaData := cc.Value(share.ReqMetaDataKey).(map[string]string)
 	dd := []byte("reply data")
 	*reply = dd
+	reqMetaData["callback"] = "11111"
+	tcore.Log.Debug("StartFightService uid %v", reqMetaData[tframework.ContextKey_UserId])
 	//reflect.Indirect(reflect.ValueOf(reply)).SetBytes(dd)
 	//reply = &dd
 	return nil
