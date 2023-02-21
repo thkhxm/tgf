@@ -68,6 +68,22 @@ func (r *RedisPlugin) GetString(key string) string {
 	return res
 }
 
+func (r *RedisPlugin) GetMap(key string) map[string]string {
+	var ()
+	if res, err := r.client.HGetAll(context.Background(), key).Result(); err != nil {
+		return res
+	}
+	return make(map[string]string)
+}
+
+func (r *RedisPlugin) PutMapFiled(key, filedKey, val string, expires time.Duration) {
+	var ()
+	r.client.HSet(context.Background(), key, filedKey, val)
+	if expires > 0 {
+		r.client.Expire(context.Background(), key, expires)
+	}
+}
+
 func (r *RedisPlugin) Set(key string, instance interface{}, expires time.Duration) error {
 	var (
 		res string

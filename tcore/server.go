@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"github.com/smallnest/rpcx/share"
 	"tframework.com/rpc/tcore/interface"
+	"tframework.com/rpc/tcore/internal/define"
 	_interface "tframework.com/rpc/tcore/internal/interface"
 	"tframework.com/rpc/tcore/internal/server"
 	"tframework.com/rpc/tcore/internal/tcp"
@@ -43,12 +44,11 @@ type DefaultTCPService struct {
 
 func (this *DefaultTCPService) Login(ct *share.Context, token string) {
 	var (
-		key      string
-		uuid     string
-		register bool
+		key, uuid, reqMetaDataKey string
+		register                  bool
 	)
 
-	key = fmt.Sprintf("user:login:token:Mapping:%v", token)
+	key = fmt.Sprintf(define.User_LoginToken_RedisKey, token)
 	uuid = Redis.GetString(key)
 	if uuid == "" {
 		uuid = utils.GenerateSnowflakeId()
@@ -56,7 +56,9 @@ func (this *DefaultTCPService) Login(ct *share.Context, token string) {
 		register = true
 	}
 	ct.SetValue(tframework.ContextKey_UserId, uuid)
-	reqMetaData := make(map[string]string)
+	//
+	reqMetaDataKey = fmt.Sprintf(define.User_NodeMeta_RedisKey, uuid)
+	reqMetaData := Redis.GetMap(reqMetaDataKey)
 	reqMetaData[tframework.ContextKey_UserId] = uuid
 	ct.SetValue(share.ReqMetaDataKey, reqMetaData)
 	Log.InfoS("[TCP] login token %v , uuid %v register %v", token, uuid, register)

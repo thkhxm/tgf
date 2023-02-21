@@ -27,6 +27,11 @@ var CallDepth = flag.Int("log_depth", 4, "log depth")
 // ConfigPath 配置文件所在路径
 var ConfigPath = flag.String("config_path", "./config/", "config path")
 
+var (
+	User_LoginToken_RedisKey = "user:login:token:Mapping:%v"
+	User_NodeMeta_RedisKey   = "user:node:meta:%v"
+)
+
 //***********************    var_end    ****************************
 
 //***********************    interface    ****************************

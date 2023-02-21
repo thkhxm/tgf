@@ -16,8 +16,10 @@ import (
 	"sort"
 	"strings"
 	"sync"
+	"tframework.com/rpc/tcore"
 	"tframework.com/rpc/tcore/config"
 	tframework "tframework.com/rpc/tcore/interface"
+	"tframework.com/rpc/tcore/internal/define"
 	"tframework.com/rpc/tcore/internal/plugin"
 	tserver "tframework.com/rpc/tcore/internal/server"
 	"tframework.com/rpc/tcore/utils"
@@ -341,6 +343,7 @@ func (this *Server) DoLogic(data *RequestData) {
 			return
 		}
 	}
+	bp.Write(reply)
 	data.User.conn.Write(bp.Bytes())
 }
 
@@ -391,6 +394,8 @@ func (this *CustomSelector) Select(ctx context.Context, servicePath, serviceMeth
 				key := client2.HashString(uid)
 				selected, _ = this.h.Get(key).(string)
 				reqMetaData[servicePath] = selected
+				reqMetaDataKey := fmt.Sprintf(define.User_NodeMeta_RedisKey, uid)
+				tcore.Redis.PutMapFiled(reqMetaDataKey, servicePath, selected, time.Hour*24*3)
 				return selected
 			}
 		}

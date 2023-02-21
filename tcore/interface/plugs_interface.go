@@ -50,6 +50,9 @@ type IConfigService interface {
 type IRedisService interface {
 	Get(key string, instance interface{}) error
 	GetString(key string) string
+	GetMap(key string) map[string]string
+
+	PutMapFiled(key, filedKey, val string, expires time.Duration)
 	Set(key string, instance interface{}, expires time.Duration) error
 }
 
