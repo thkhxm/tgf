@@ -71,7 +71,6 @@ func init() {
 		active = os.Getenv("active")
 	}
 	newDefaultConfig(fmt.Sprintf("app-%v", active))
-
 }
 
 func createViper(configName string) (pathConf *viper.Viper) {

@@ -7,4 +7,5 @@ use (
 	./startup
 	./tcore
 	rpcx-ui
+	tgf
 )
