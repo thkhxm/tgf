@@ -1,39 +1,34 @@
 package tgf
 
-import "os"
-
 //***************************************************
-//author tim.huang
-//2023/2/21
-//
-//
+//@Link  https://github.com/thkhxm/tgf
+//@Link  https://gitee.com/timgame/tgf
+//@QQ 277949041
+//author tim.huang<thkhxm@gmail.com>
+//@Description
+//2023/2/22
 //***************************************************
 
-// ***********************    type    ****************************
-type RuntimeModule string
+const (
+	// RuntimeModuleDev 开发环境
+	RuntimeModuleDev = "dev"
 
-var (
-	RuntimeModule_Dev     RuntimeModule = "dev"
-	RuntimeModule_Test                  = "test"
-	RuntimeModule_Release               = "release"
+	// RuntimeModuleTest 测试环境
+	RuntimeModuleTest = "test"
+
+	// RuntimeModuleRelease 生产环境
+	RuntimeModuleRelease = "release"
 )
 
-//***********************    type_end    ****************************
+const (
+	// EnvironmentLoggerPath 日志输出路径
+	EnvironmentLoggerPath = "LOG_PATH"
 
-//***********************    var    ****************************
+	// EnvironmentLoggerLevel 日志最低输出级别
+	EnvironmentLoggerLevel = "LOG_LEVEL"
 
-var Module RuntimeModule = RuntimeModule_Dev
-
-//***********************    var_end    ****************************
-
-//***********************    interface    ****************************
-
-//***********************    interface_end    ****************************
-
-//***********************    struct    ****************************
-
-//***********************    struct_end    ****************************
-
-func init() {
-	os.Getenv("RuntimeModule")
-}
+	// EnvironmentRuntimeModule 运行环境,有以下可选运行环境
+	//
+	// RuntimeModuleDev RuntimeModuleTest RuntimeModuleRelease
+	EnvironmentRuntimeModule = "RuntimeModule"
+)

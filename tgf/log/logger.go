@@ -1,61 +1,103 @@
 package log
 
 import (
-	"github.com/joho/godotenv"
+	"fmt"
+	"github.com/thkhxm/tgf"
 	"go.uber.org/zap"
+	"go.uber.org/zap/zapcore"
+	"gopkg.in/natefinch/lumberjack.v2"
 	"os"
+	"time"
 )
 
 //***************************************************
-//author tim.huang
-//2023/2/21
-//
-//
+//@Link  https://github.com/thkhxm/tgf
+//@Link  https://gitee.com/timgame/tgf
+//@QQ 277949041
+//author tim.huang<thkhxm@gmail.com>
+//@Description
+//2023/2/22
 //***************************************************
 
-//***********************    type    ****************************
+var logger *zap.Logger
 
-//***********************    type_end    ****************************
-
-// ***********************    var    ****************************
-
-var logger zap.Logger
-var logger_level = 3
-
-//***********************    var_end    ****************************
-
-//***********************    interface    ****************************
-
-//***********************    interface_end    ****************************
-
-//***********************    struct    ****************************
-
-//***********************    struct_end    ****************************
-
-func initLogger() {
-
-	env := os.Getenv("GODAILYLIB_ENV")
-	if env == "" {
-		env = "development"
-	}
-
-	err := godotenv.Load(".env." + env)
-	if err != nil {
-
-	}
-
-	err = godotenv.Load()
-	if err != nil {
-
-	}
-
-	var (
-	//cfg zap.Config
-	)
-	//cfg = zap.NewProductionConfig()
-
+func Info(msg string, params ...interface{}) {
+	logger.Info(fmt.Sprintf(msg, params...))
 }
 
-func init() {
-	initLogger()
+func Debug(msg string, params ...interface{}) {
+	logger.Debug(fmt.Sprintf(msg, params...))
+}
+
+func Error(msg string, params ...interface{}) {
+	logger.Error(fmt.Sprintf(msg, params...))
+}
+
+func Warn(msg string, params ...interface{}) {
+	logger.Warn(fmt.Sprintf(msg, params...))
+}
+
+func initLogger() {
+	var (
+		/*自定义时间格式*/
+		customTimeEncoder = func(t time.Time, enc zapcore.PrimitiveArrayEncoder) {
+			enc.AppendString(t.Format("2006-01-02 15:04:05.000"))
+		}
+		/*自定义日志级别显示*/
+		customLevelEncoder = func(level zapcore.Level, enc zapcore.PrimitiveArrayEncoder) {
+			enc.AppendString(level.CapitalString())
+		}
+		/*自定义代码路径、行号输出*/
+		customCallerEncoder = func(caller zapcore.EntryCaller, enc zapcore.PrimitiveArrayEncoder) {
+			enc.AppendString("[" + caller.TrimmedPath() + "]")
+		}
+		logLevel = tgf.GetLogLevel()
+	)
+
+	zapLoggerEncoderConfig := zapcore.EncoderConfig{
+		TimeKey:          "time",
+		LevelKey:         "level",
+		NameKey:          "logger",
+		CallerKey:        "caller",
+		MessageKey:       "message",
+		StacktraceKey:    "stacktrace",
+		EncodeCaller:     customCallerEncoder,
+		EncodeTime:       customTimeEncoder,
+		EncodeLevel:      customLevelEncoder,
+		EncodeDuration:   zapcore.SecondsDurationEncoder,
+		LineEnding:       "\n",
+		ConsoleSeparator: " ",
+	}
+
+	//Dev环境,日志级别使用带颜色的标识
+	if tgf.GetRuntimeModule() == tgf.RuntimeModuleDev {
+		zapLoggerEncoderConfig.EncodeLevel = zapcore.CapitalColorLevelEncoder
+	}
+
+	//syncWriter = zapcore.NewMultiWriteSyncer(zapcore.AddSync(os.Stdout))
+
+	syncWriter := zapcore.NewMultiWriteSyncer(zapcore.AddSync(os.Stdout), zapcore.AddSync(&lumberjack.Logger{
+		Filename:  tgf.GetLogPath(), // ⽇志⽂件路径
+		MaxSize:   100,              // 单位为MB,默认为512MB
+		MaxAge:    5,                // 文件最多保存多少天
+		LocalTime: true,             // 采用本地时间
+		Compress:  false,            // 是否压缩日志
+	}))
+
+	//syncWriter = &zapcore.BufferedWriteSyncer{
+	//	WS: zapcore.AddSync(&lumberjack.Logger{
+	//		Filename:  "logs/app/app.log", // ⽇志⽂件路径
+	//		MaxSize:   100,                                                                                                        // 单位为MB,默认为512MB
+	//		MaxAge:    5,                                                                                                          // 文件最多保存多少天
+	//		LocalTime: true,                                                                                                       // 采用本地时间
+	//		Compress:  false,                                                                                                      // 是否压缩日志
+	//	}),
+	//	Size: 4096,
+	//}
+	//在原有日志基础上增加一层
+	level, _ := zapcore.ParseLevel(logLevel)
+	zapCore := zapcore.NewCore(zapcore.NewConsoleEncoder(zapLoggerEncoderConfig), syncWriter, level)
+	logger = zap.New(zapCore, zap.AddCaller(), zap.AddCallerSkip(1))
+	defer logger.Sync()
+	Info("[init] 日志初始化完成 日志文件:%v 日志级别:%v", tgf.GetLogPath(), tgf.GetLogLevel())
 }
