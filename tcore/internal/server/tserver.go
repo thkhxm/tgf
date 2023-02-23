@@ -82,7 +82,7 @@ func (s *TServer[T]) autoRegisterRPCService() {
 	path := fmt.Sprintf("%v %v", s.module.GetModuleName(), s.module.GetVersion())
 	s.rpcServer.RegisterName(path, s.module, "")
 	//if s.configService.IsGateway() {
-	s.rpcServer.RegisterName(s.module.GetModuleName()+" Service", s.module, "")
+	//s.rpcServer.RegisterName(s.module.GetModuleName()+" Service", s.module, "")
 	//}
 }
 

@@ -7,7 +7,6 @@ import (
 	"tframework.com/rpc/tcore/internal/define"
 	_interface "tframework.com/rpc/tcore/internal/interface"
 	"tframework.com/rpc/tcore/internal/server"
-	"tframework.com/rpc/tcore/internal/tcp"
 	"tframework.com/rpc/tcore/utils"
 )
 
@@ -35,8 +34,8 @@ func CreateDefaultTServer(module tframework.ITModule) (tframework.ITServer, erro
 // @return *ITServer
 // @return error
 func CreateAndStartTCPServer() {
-	server := tcp.NewDefaultTCPServer(Config.GetTCPServer(), new(DefaultTCPService))
-	go server.Start()
+	//server := tcp.NewDefaultTCPServer(Config.GetTCPServer(), new(DefaultTCPService))
+	//go server.Start()
 }
 
 type DefaultTCPService struct {

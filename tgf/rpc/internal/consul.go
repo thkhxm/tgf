@@ -7,7 +7,6 @@ import (
 	"github.com/smallnest/rpcx/server"
 	"github.com/thkhxm/tgf"
 	"github.com/thkhxm/tgf/log"
-	"github.com/thkhxm/tgf/util"
 	"time"
 )
 
@@ -20,14 +19,20 @@ import (
 //2023/2/23
 //***************************************************
 
+// TODO 修改consul的配置，调整心跳间隔
+
 type ConsulDiscovery struct {
 }
 
-func (this *ConsulDiscovery) RegisterServer() server.Plugin {
-	var ()
-	address := tgf.GetConsulAddress()
+func (this *ConsulDiscovery) RegisterServer(ip string) server.Plugin {
+	var (
+		address        = tgf.GetConsulAddress()
+		serviceAddress = fmt.Sprintf("tcp@%v", ip)
+		_logAddressMsg string
+	)
+	//注册服务发现根目录
 	r := &serverplugin.ConsulRegisterPlugin{
-		ServiceAddress: fmt.Sprintf("tcp@%v:%v", util.GetLocalHost(), tgf.GetServicePort()),
+		ServiceAddress: serviceAddress,
 		ConsulServers:  address,
 		BasePath:       tgf.GetConsulPath(),
 		Metrics:        metrics.NewRegistry(),
@@ -35,11 +40,16 @@ func (this *ConsulDiscovery) RegisterServer() server.Plugin {
 	}
 	err := r.Start()
 	if err != nil {
-		log.Error("服务发现启动异常 %v", err)
+		log.Error("[init] 服务发现启动异常 %v", err)
 	}
-	return this
+	for _, s := range address {
+		_logAddressMsg += s + ","
+	}
+	log.Info("[init] 服务发现加载成功 注册根目录 consulAddress=%v serviceAddress=%v path=%v", r.ServiceAddress, _logAddressMsg, tgf.GetConsulPath())
+	return r
 }
 
 func NewConsulDiscovery() IRPCDiscovery {
-	return nil
+	discovery := new(ConsulDiscovery)
+	return discovery
 }
