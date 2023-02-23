@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"github.com/joho/godotenv"
 	"os"
+	"strings"
 )
 
 //***************************************************
@@ -18,25 +19,53 @@ import (
 
 // 配置默认值
 const (
-	defaultLogPath       = "./log/tgf.log"
-	defaultLogLevel      = "debug"
+	defaultLogPath  = "./log/tgf.log"
+	defaultLogLevel = "debug"
+
 	defaultRuntimeModule = "dev"
+
+	defaultConsulAddress = "127.0.0.1:8500"
+	defaultConsulPath    = "/tgf"
+
+	defaultServicePort = "8082"
 )
 
 // 配置缓存
-var (
-	logPath  = defaultLogPath
-	logLevel = defaultLogLevel
-	module   = RuntimeModuleDev
-)
 
-// GetRuntimeModule
-// @Description:
-// @return res
+var ()
+
+func GetConsulPath() (res string) {
+	res = os.Getenv(EnvironmentConsulPath)
+	if res == "" {
+		res = defaultConsulPath
+	}
+	return
+}
+
+func GetConsulAddress() []string {
+	vals := os.Getenv(EnvironmentConsulAddress)
+	if vals == "" {
+		return []string{defaultConsulAddress}
+	}
+	res := make([]string, 0)
+	for _, s := range strings.Split(vals, ",") {
+		res = append(res, s)
+	}
+	return res
+}
+
+func GetServicePort() (res string) {
+	res = os.Getenv(EnvironmentServicePort)
+	if res == "" {
+		res = defaultServicePort
+	}
+	return
+}
+
 func GetRuntimeModule() (res string) {
 	res = os.Getenv(EnvironmentRuntimeModule)
 	if res == "" {
-		res = module
+		res = RuntimeModuleDev
 	}
 	return
 }
@@ -44,7 +73,7 @@ func GetRuntimeModule() (res string) {
 func GetLogPath() (res string) {
 	res = os.Getenv(EnvironmentLoggerPath)
 	if res == "" {
-		res = logPath
+		res = defaultLogPath
 	}
 	return
 }
@@ -52,7 +81,7 @@ func GetLogPath() (res string) {
 func GetLogLevel() (res string) {
 	res = os.Getenv(EnvironmentLoggerLevel)
 	if res == "" {
-		res = logLevel
+		res = defaultLogLevel
 	}
 	return
 }
@@ -63,7 +92,7 @@ func InitConfig() {
 	if env == "" {
 		env = *flag.String("TGFMODULE", RuntimeModuleDev, "RuntimeModule")
 		if env == "" {
-			env = "dev"
+			env = defaultRuntimeModule
 		}
 	}
 	fmt.Printf("[tgf/init.go] 当前运行模式 [TGFMODULE] 为 %v", env)

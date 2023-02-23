@@ -31,4 +31,9 @@ const (
 	//
 	// RuntimeModuleDev RuntimeModuleTest RuntimeModuleRelease
 	EnvironmentRuntimeModule = "RuntimeModule"
+
+	EnvironmentConsulAddress = "ConsulAddress"
+	EnvironmentConsulPath    = "ConsulPath"
+
+	EnvironmentServicePort = "ServicePort"
 )

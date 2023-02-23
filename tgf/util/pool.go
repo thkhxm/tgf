@@ -15,6 +15,8 @@ import (
 //***************************************************
 
 var goroutinePool *ants.Pool
+
+// 默认通用协程池大小
 var defaultPoolSize int = 2e5
 
 // Go

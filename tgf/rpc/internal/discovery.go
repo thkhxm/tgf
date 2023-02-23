@@ -1,0 +1,15 @@
+package internal
+
+//***************************************************
+//@Link  https://github.com/thkhxm/tgf
+//@Link  https://gitee.com/timgame/tgf
+//@QQ 277949041
+//author tim.huang<thkhxm@gmail.com>
+//@Description
+//2023/2/23
+//***************************************************
+
+// IRPCDiscovery
+// @Description: rpc服务注册接口
+type IRPCDiscovery interface {
+}
