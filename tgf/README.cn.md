@@ -1,3 +1,7 @@
+# tgf
+
+
+
 ####  zap
 
 日志框架
@@ -21,5 +25,13 @@ go get github.com/joho/godotenv
 
 ```
 go get -u github.com/panjf2000/ants/v2
+```
+
+#### hashmap
+
+线程安全的集合工具
+
+```
+go get github.com/cornelk/hashmap
 ```
 

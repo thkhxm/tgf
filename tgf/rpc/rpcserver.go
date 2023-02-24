@@ -66,6 +66,14 @@ func (this *Server) WithService(service IService) *Server {
 	return this
 }
 
+func (this *Server) WithTCPServer(port string) *Server {
+
+	this.optionals = append(this.optionals, func(server *Server) {
+		//log.Info("[init] 装载逻辑服务[%v@%v]", service.GetName(), service.GetVersion())
+	})
+	return this
+}
+
 // WithServiceClient
 //
 //	@Description: 注册rpcx的客户端程序

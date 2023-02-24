@@ -37,3 +37,8 @@ const (
 
 	EnvironmentServicePort = "ServicePort"
 )
+
+const (
+	RedisKeyUserNodeMeta   = "user:node:meta:%v"
+	RedisKeyUserLoginToken = "user:login:token:Mapping:%v"
+)
