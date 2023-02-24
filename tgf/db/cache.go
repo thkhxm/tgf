@@ -1,6 +1,7 @@
 package db
 
 import (
+	"github.com/thkhxm/tgf"
 	"github.com/thkhxm/tgf/util"
 )
 
@@ -15,8 +16,11 @@ import (
 
 var cache ICacheService
 
+var cacheModule = tgf.CacheModuleRedis
+
 type ICacheService interface {
 	Get(key string) (res string)
+	Run() (bool, error)
 }
 
 // Get [Res any]
@@ -27,4 +31,8 @@ func Get[Res any](key string) (res Res) {
 	val := cache.Get(key)
 	res, _ = util.StrToAny[Res](val)
 	return
+}
+
+func WithCacheModule(module tgf.CacheModule) {
+	cacheModule = module
 }

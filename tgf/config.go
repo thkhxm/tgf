@@ -4,6 +4,8 @@ import (
 	"flag"
 	"fmt"
 	"github.com/joho/godotenv"
+	"github.com/thkhxm/tgf/log"
+	"github.com/thkhxm/tgf/util"
 	"os"
 	"strings"
 )
@@ -17,6 +19,31 @@ import (
 //2023/2/22
 //***************************************************
 
+type config struct {
+	env Environment
+	val string
+}
+
+var mapping = make(map[Environment]*config)
+
+func initMapping() {
+	mapping[EnvironmentLoggerPath] = &config{env: EnvironmentLoggerPath, val: defaultLogPath}
+	mapping[EnvironmentLoggerLevel] = &config{env: EnvironmentLoggerLevel, val: defaultLogLevel}
+	mapping[EnvironmentRuntimeModule] = &config{env: EnvironmentRuntimeModule, val: defaultRuntimeModule}
+	mapping[EnvironmentConsulAddress] = &config{env: EnvironmentConsulAddress, val: defaultConsulAddress}
+	mapping[EnvironmentConsulPath] = &config{env: EnvironmentConsulPath, val: defaultConsulPath}
+	mapping[EnvironmentRedisAddr] = &config{env: EnvironmentRedisAddr, val: defaultRedisAddr}
+	mapping[EnvironmentRedisPort] = &config{env: EnvironmentRedisPort, val: defaultRedisPort}
+	mapping[EnvironmentRedisPassword] = &config{env: EnvironmentRedisPassword, val: defaultRedisPassword}
+	mapping[EnvironmentRedisDB] = &config{env: EnvironmentRedisDB, val: defaultRedisDB}
+	mapping[EnvironmentServicePort] = &config{env: EnvironmentServicePort, val: defaultServicePort}
+
+	//初始化配置数据
+	for _, m := range mapping {
+		m.initVal()
+	}
+}
+
 // 配置默认值
 const (
 	defaultLogPath  = "./log/tgf.log"
@@ -28,60 +55,35 @@ const (
 	defaultConsulPath    = "/tgf"
 
 	defaultServicePort = "8082"
+
+	defaultRedisAddr     = "127.0.0.1"
+	defaultRedisPort     = "6379"
+	defaultRedisPassword = ""
+	defaultRedisDB       = "0"
 )
+
+func (this *config) initVal() *config {
+	var (
+		res = os.Getenv(string(this.env))
+	)
+	if res != "" {
+		log.Info("[init] 配置 env=%v 从 %v 修改为 %v", this.env, this.val, res)
+		this.val = res
+	}
+	return this
+}
 
 // 配置缓存
 
-var ()
-
-func GetConsulPath() (res string) {
-	res = os.Getenv(EnvironmentConsulPath)
-	if res == "" {
-		res = defaultConsulPath
-	}
+func GetStrConfig[T int | int32 | string | int64 | float32 | float64](env Environment) (res T) {
+	res, _ = util.StrToAny[T](mapping[env].val)
 	return
 }
 
-func GetConsulAddress() []string {
-	vals := os.Getenv(EnvironmentConsulAddress)
-	if vals == "" {
-		return []string{defaultConsulAddress}
-	}
-	res := make([]string, 0)
-	for _, s := range strings.Split(vals, ",") {
+func GetStrListConfig(env Environment) (res []string) {
+	res = make([]string, 0)
+	for _, s := range strings.Split(mapping[env].val, ",") {
 		res = append(res, s)
-	}
-	return res
-}
-
-func GetServicePort() (res string) {
-	res = os.Getenv(EnvironmentServicePort)
-	if res == "" {
-		res = defaultServicePort
-	}
-	return
-}
-
-func GetRuntimeModule() (res string) {
-	res = os.Getenv(EnvironmentRuntimeModule)
-	if res == "" {
-		res = RuntimeModuleDev
-	}
-	return
-}
-
-func GetLogPath() (res string) {
-	res = os.Getenv(EnvironmentLoggerPath)
-	if res == "" {
-		res = defaultLogPath
-	}
-	return
-}
-
-func GetLogLevel() (res string) {
-	res = os.Getenv(EnvironmentLoggerLevel)
-	if res == "" {
-		res = defaultLogLevel
 	}
 	return
 }
@@ -104,4 +106,5 @@ func InitConfig() {
 		fmt.Printf("[init] [tgf/init.go] 找不到指定的env文件 %v", fileName)
 		fmt.Println()
 	}
+	initMapping()
 }

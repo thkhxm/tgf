@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"github.com/smallnest/rpcx/server"
 	"github.com/thkhxm/tgf"
+	"github.com/thkhxm/tgf/db"
 	"github.com/thkhxm/tgf/log"
 	"github.com/thkhxm/tgf/rpc/internal"
 	"github.com/thkhxm/tgf/util"
@@ -66,6 +67,14 @@ func (this *Server) WithService(service IService) *Server {
 	return this
 }
 
+func (this *Server) WithCache(addr string, module tgf.CacheModule) {
+	var ()
+	switch module {
+	case tgf.CacheModuleRedis:
+		db.WithCacheModule(module)
+	}
+}
+
 func (this *Server) WithTCPServer(port string) *Server {
 
 	this.optionals = append(this.optionals, func(server *Server) {
@@ -100,7 +109,7 @@ func (this *Server) Run() {
 	this.rpcServer = server.NewServer(server.WithPool(this.maxWorkers, this.maxCapacity))
 
 	//rpcx加入服务发现组件
-	ip = fmt.Sprintf("%v:%v", util.GetLocalHost(), tgf.GetServicePort())
+	ip = fmt.Sprintf("%v:%v", util.GetLocalHost(), tgf.GetStrConfig[string](tgf.EnvironmentServicePort))
 
 	//如果加入了服务注册，那么走服务注册的流程
 	if this.discovery != nil {

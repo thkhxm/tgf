@@ -9,6 +9,7 @@ package tgf
 //2023/2/22
 //***************************************************
 
+// 运行环境
 const (
 	// RuntimeModuleDev 开发环境
 	RuntimeModuleDev = "dev"
@@ -20,24 +21,41 @@ const (
 	RuntimeModuleRelease = "release"
 )
 
+type Environment string
+
+// 环境变量
 const (
 	// EnvironmentLoggerPath 日志输出路径
-	EnvironmentLoggerPath = "LOG_PATH"
+	EnvironmentLoggerPath Environment = "LOG_PATH"
 
 	// EnvironmentLoggerLevel 日志最低输出级别
-	EnvironmentLoggerLevel = "LOG_LEVEL"
+	EnvironmentLoggerLevel Environment = "LOG_LEVEL"
 
 	// EnvironmentRuntimeModule 运行环境,有以下可选运行环境
 	//
 	// RuntimeModuleDev RuntimeModuleTest RuntimeModuleRelease
-	EnvironmentRuntimeModule = "RuntimeModule"
+	EnvironmentRuntimeModule Environment = "RuntimeModule"
 
-	EnvironmentConsulAddress = "ConsulAddress"
-	EnvironmentConsulPath    = "ConsulPath"
+	EnvironmentConsulAddress Environment = "ConsulAddress"
+	EnvironmentConsulPath    Environment = "ConsulPath"
+
+	EnvironmentRedisAddr     Environment = "RedisAddr"
+	EnvironmentRedisPort     Environment = "RedisPort"
+	EnvironmentRedisPassword Environment = "RedisPassword"
+	EnvironmentRedisDB       Environment = "RedisDB"
 
 	EnvironmentServicePort = "ServicePort"
 )
 
+type CacheModule int
+
+const (
+	CacheModuleRedis CacheModule = iota
+	CacheModuleMysql
+	CacheModuleMongodb
+)
+
+// redisKey
 const (
 	RedisKeyUserNodeMeta   = "user:node:meta:%v"
 	RedisKeyUserLoginToken = "user:login:token:Mapping:%v"

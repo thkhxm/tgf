@@ -2,7 +2,8 @@ package db
 
 import (
 	"context"
-	"github.com/redis/go-redis/v9"
+	"github.com/go-redis/redis/v8"
+	"github.com/thkhxm/tgf"
 	"github.com/thkhxm/tgf/log"
 )
 
@@ -14,6 +15,7 @@ import (
 // @Description
 // 2023/2/24
 // ***************************************************
+
 var service *redisService
 
 type redisService struct {
@@ -31,10 +33,13 @@ func (this *redisService) Get(key string) (res string) {
 	return
 }
 
-func Run() {
+func (this *redisService) Run() (bool, error) {
 	service = new(redisService)
 	service.client = redis.NewClient(&redis.Options{
-		Network: "tcp",
-		Addr:    "127.0.0.1:6379",
+		Network:  "tcp",
+		Addr:     tgf.GetStrConfig[string](tgf.EnvironmentRedisAddr),
+		Password: tgf.GetStrConfig[string](tgf.EnvironmentRedisPassword),
+		DB:       tgf.GetStrConfig[int](tgf.EnvironmentRedisAddr),
 	})
+	return true, nil
 }

@@ -35,7 +35,7 @@ func TestStartRpcServer(t *testing.T) {
 func TestClientSender(t *testing.T) {
 	service := new(Demo2Service)
 	serviceName := fmt.Sprintf("%v", service.GetName())
-	d, _ := client2.NewConsulDiscovery(tgf.GetConsulPath(), serviceName, tgf.GetConsulAddress(), nil)
+	d, _ := client2.NewConsulDiscovery(tgf.GetStrConfig[string](tgf.EnvironmentConsulPath), serviceName, tgf.GetStrListConfig[string](tgf.EnvironmentConsulAddress), nil)
 	xclient := client.NewXClient(serviceName, client.Failtry, client.RandomSelect, d, client.DefaultOption)
 	defer xclient.Close()
 	xclient.Call(context.Background(), "RPCSayHello", nil, nil)

@@ -26,15 +26,16 @@ type ConsulDiscovery struct {
 
 func (this *ConsulDiscovery) RegisterServer(ip string) server.Plugin {
 	var (
-		address        = tgf.GetConsulAddress()
+		address        = tgf.GetStrListConfig(tgf.EnvironmentConsulAddress)
 		serviceAddress = fmt.Sprintf("tcp@%v", ip)
 		_logAddressMsg string
+		_basePath      = tgf.GetStrConfig[string](tgf.EnvironmentConsulPath)
 	)
 	//注册服务发现根目录
 	r := &serverplugin.ConsulRegisterPlugin{
 		ServiceAddress: serviceAddress,
 		ConsulServers:  address,
-		BasePath:       tgf.GetConsulPath(),
+		BasePath:       _basePath,
 		Metrics:        metrics.NewRegistry(),
 		UpdateInterval: time.Second * 11,
 	}
@@ -45,7 +46,7 @@ func (this *ConsulDiscovery) RegisterServer(ip string) server.Plugin {
 	for _, s := range address {
 		_logAddressMsg += s + ","
 	}
-	log.Info("[init] 服务发现加载成功 注册根目录 consulAddress=%v serviceAddress=%v path=%v", r.ServiceAddress, _logAddressMsg, tgf.GetConsulPath())
+	log.Info("[init] 服务发现加载成功 注册根目录 consulAddress=%v serviceAddress=%v path=%v", r.ServiceAddress, _logAddressMsg, _basePath)
 	return r
 }
 
