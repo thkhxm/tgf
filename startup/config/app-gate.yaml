@@ -1,0 +1,24 @@
+Server:
+  Modules:
+    - ModuleName: Gate #当前进程启动的模块名称
+      ModuleVersion: 1.0.0 #当前模块的版本
+      Address: 0.0.0.0 #绑定的地址
+      Port: 8091 #绑定的端口
+  API:
+    - ModuleName: Chat #调用API的模块名称
+      ModuleVersion: 1.0.0 #调用API的模块版本
+  Discovery:
+    Consul:
+      - Address: 127.0.0.1 #consul地址
+        Port: 8500 #consul端口
+    ConsulPath: /tframework #consul的basePath
+  TCP:
+    Address: 0.0.0.0 #地址
+    Port: 8880 #端口
+    DeadLineTime: 300 #连接失效时间
+  Redis:
+    Address: 192.168.1.82 #地址
+    Port: 6382 #端口
+    Password: #密码
+    DB: 9 #db
+  Gateway: true
