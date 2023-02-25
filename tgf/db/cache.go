@@ -33,7 +33,9 @@ type ICacheService interface {
 // @return res
 func Get[Res any](key string) (res Res) {
 	val := cache.Get(key)
-	res, _ = util.StrToAny[Res](val)
+	if val != "" {
+		res, _ = util.StrToAny[Res](val)
+	}
 	return
 }
 
