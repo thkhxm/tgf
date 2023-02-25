@@ -28,7 +28,7 @@ func (this *redisService) Get(key string) (res string) {
 	var (
 		err error
 	)
-	if res, err = this.client.Get(context.Background(), key).Result(); err == nil {
+	if res, err = this.client.Get(context.Background(), key).Result(); err == nil || err == redis.Nil {
 		return
 	}
 	log.Error("[redis] 获取缓存数据异常 key=%v,err=%v", key, err)
