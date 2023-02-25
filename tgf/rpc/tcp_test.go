@@ -1,7 +1,4 @@
-// Package db
-// @Description: 数据缓存相关
-// @Link  https://github.com/bsm/redislock redis分布式锁
-package db
+package rpc
 
 //***************************************************
 //@Link  https://github.com/thkhxm/tgf
@@ -11,7 +8,3 @@ package db
 //@Description
 //2023/2/25
 //***************************************************
-
-func init() {
-	run()
-}

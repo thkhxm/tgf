@@ -7,11 +7,10 @@ import (
 	client2 "github.com/smallnest/rpcx/client"
 	"github.com/smallnest/rpcx/share"
 	"github.com/thkhxm/tgf"
+	"github.com/thkhxm/tgf/db"
 	"github.com/thkhxm/tgf/log"
 	"golang.org/x/net/context"
 	"sort"
-	"tframework.com/rpc/tcore"
-	tframework "tframework.com/rpc/tcore/interface"
 	"time"
 )
 
@@ -23,6 +22,10 @@ import (
 //@Description
 //2023/2/24
 //***************************************************
+
+var (
+	reqMetaDataTimeout = time.Hour * 24 * 3
+)
 
 type CustomSelector struct {
 	h       *doublejump.Hash
@@ -38,7 +41,7 @@ func (this *CustomSelector) Select(ctx context.Context, servicePath, serviceMeth
 		default:
 			reqMetaData := sc.Value(share.ReqMetaDataKey).(map[string]string)
 			//用户级别的请求
-			uid := reqMetaData[tframework.ContextKey_UserId]
+			uid := reqMetaData[tgf.ContextKeyUserId]
 			if uid != "" {
 				//判断之前的节点是否存活,如果存活,直接命中
 				selected := reqMetaData[servicePath]
@@ -50,7 +53,7 @@ func (this *CustomSelector) Select(ctx context.Context, servicePath, serviceMeth
 				selected, _ = this.h.Get(key).(string)
 				reqMetaData[servicePath] = selected
 				reqMetaDataKey := fmt.Sprintf(tgf.RedisKeyUserNodeMeta, uid)
-				tcore.Redis.PutMapFiled(reqMetaDataKey, servicePath, selected, time.Hour*24*3)
+				db.PutMap(reqMetaDataKey, servicePath, selected, reqMetaDataTimeout)
 				return selected
 			}
 		}
@@ -86,6 +89,7 @@ func (this *CustomSelector) checkServerAlive(server string) bool {
 	}
 	return false
 }
+
 func (this *CustomSelector) initStruct() {
 	this.servers = make([]string, 0, 0)
 	this.h = doublejump.NewHash()
@@ -96,4 +100,19 @@ type RPCXClientHandler struct {
 
 func (this *RPCXClientHandler) PostCall(ctx context2.Context, servicePath, serviceMethod string, args interface{}, reply interface{}, err error) error {
 	return nil
+}
+
+type ILoginCheck interface {
+	CheckLogin(token string) (bool, string)
+}
+
+func NewCustomSelector() client2.Selector {
+	res := &CustomSelector{}
+	res.initStruct()
+	return res
+}
+
+func NewRPCXClientHandler() client2.PostCallPlugin {
+	res := &RPCXClientHandler{}
+	return res
 }

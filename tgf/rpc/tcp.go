@@ -1,4 +1,4 @@
-package internal
+package rpc
 
 import (
 	"bufio"
@@ -9,14 +9,17 @@ import (
 	client2 "github.com/smallnest/rpcx/client"
 	"github.com/smallnest/rpcx/share"
 	util2 "github.com/smallnest/rpcx/util"
+	"github.com/thkhxm/tgf"
+	"github.com/thkhxm/tgf/db"
 	"github.com/thkhxm/tgf/log"
+	"github.com/thkhxm/tgf/rpc/internal"
 	"github.com/thkhxm/tgf/util"
 	"github.com/valyala/bytebufferpool"
 	"golang.org/x/net/context"
 	"io"
 	"net"
 	"strings"
-	"tframework.com/rpc/tcore/utils"
+	"sync"
 	"time"
 )
 
@@ -55,6 +58,8 @@ var (
 	requestMagicNumber byte = 250
 	//最低压缩大小
 	compressMinSize = 1024 * 4
+
+	loginTokenTimeOut = time.Hour * 12
 )
 
 const (
@@ -79,7 +84,7 @@ const (
 type IUserConnectData interface {
 }
 
-type Server struct {
+type TCPServer struct {
 	config    *ServerConfig     //tcp连接配置
 	conChan   chan *net.TCPConn //客户端连接chan
 	closeChan chan bool         //关闭chan
@@ -89,9 +94,11 @@ type Server struct {
 	//
 	//是否采用懒加载,rpc的连接.默认为true
 	lazyInitRPC bool
+	loginCheck  internal.ILoginCheck
+	startup     *sync.Once //是否已经启动
 }
 
-type optional func(server *Server)
+type optional func(server *TCPServer)
 
 type ServerConfig struct {
 	address         string //地址
@@ -118,7 +125,7 @@ type RequestData struct {
 	MessageType   HeaderMessageType
 }
 
-func (this *Server) selectorChan() {
+func (this *TCPServer) selectorChan() {
 	for {
 		select {
 		case con := <-this.conChan:
@@ -128,31 +135,10 @@ func (this *Server) selectorChan() {
 		}
 	}
 }
-
-func (this *Server) Start() {
-	add, _ := net.ResolveTCPAddr("tcp", fmt.Sprintf("%v:%v", this.config.address, this.config.port))
-	listen, err := net.ListenTCP("tcp", add)
-	if err != nil {
-		log.Info("[init] tcp服务 启动异常 %v", err)
-		return
-	}
-	log.Info("[init] tcp服务 启动成功 %v", add)
-	for {
-		tcp, _ := listen.AcceptTCP()
-		tcp.SetNoDelay(true)         //无延迟
-		tcp.SetKeepAlive(true)       //保持激活
-		tcp.SetReadBuffer(1024)      //设置读缓冲区大小
-		tcp.SetWriteBuffer(8 * 1024) //设置写缓冲区大小
-		tcp.SetDeadline(time.Now().Add(time.Second * this.config.deadLineTime))
-		this.conChan <- tcp //将链接放入管道中
-	}
-}
-
-func (this *Server) onDestroy() {
+func (this *TCPServer) onDestroy() {
 	this.closeChan <- true
 }
-
-func (this *Server) handlerConn(conn *net.TCPConn) {
+func (this *TCPServer) handlerConn(conn *net.TCPConn) {
 	var (
 		err                  error
 		head                 []byte
@@ -166,7 +152,7 @@ func (this *Server) handlerConn(conn *net.TCPConn) {
 		reader:      bufio.NewReader(conn),
 		contextData: share.NewContext(context.Background()),
 	}
-	log.Debug("[tcp] 接收到一条新的连接 addr=%v ", conn.RemoteAddr().Network())
+	log.Debug("[tcp] 接收到一条新的连接 addr=%v ", conn.RemoteAddr().String())
 	//
 	stop := make(chan struct{})
 	reqChan := make(chan *RequestData)
@@ -186,7 +172,7 @@ func (this *Server) handlerConn(conn *net.TCPConn) {
 		for {
 			select {
 			case req := <-reqChan:
-				this.DoLogic(req)
+				this.doLogic(req)
 			case <-stop:
 				close(stop)
 				close(reqChan)
@@ -234,7 +220,7 @@ func (this *Server) handlerConn(conn *net.TCPConn) {
 			rdLen, err = connectData.reader.Read(allData)
 			data := allData[requestLoginHeadSize:]
 			//
-			this.DoLogin(connectData.contextData.(*share.Context), string(data))
+			this.doLogin(connectData.contextData.(*share.Context), string(data))
 		case byte(Logic): //处理请求业务逻辑
 			head, err = connectData.reader.Peek(int(requestHeadSize))
 			if err != nil {
@@ -258,7 +244,7 @@ func (this *Server) handlerConn(conn *net.TCPConn) {
 				continue
 			}
 			reqNameIndex := methodSize + 6
-			reqName := utils.ConvertStringByByteSlice(allData[6:reqNameIndex])
+			reqName := util.ConvertStringByByteSlice(allData[6:reqNameIndex])
 			ix := strings.LastIndex(reqName, ".")
 			reqMethodName := reqName[ix+1:]
 			reqModule := reqName[:ix]
@@ -278,42 +264,47 @@ func (this *Server) handlerConn(conn *net.TCPConn) {
 	}
 }
 
-func (this *Server) DoLogin(context *share.Context, token string) {
-	//var (
-	//	key, uuid, reqMetaDataKey string
-	//	register                  bool
-	//)
+func (this *TCPServer) doLogin(ct *share.Context, token string) {
+	var (
+		key, uuid, reqMetaDataKey string
+		ok                        bool
+	)
 
-	//key = fmt.Sprintf(tgf.RedisKeyUserLoginToken, token)
-	//uuid = Redis.GetString(key)
-	//if uuid == "" {
-	//	uuid = utils.GenerateSnowflakeId()
-	//	Redis.Set(key, uuid, 0)
-	//	register = true
-	//}
-	//ct.SetValue(tframework.ContextKey_UserId, uuid)
-	////
-	//reqMetaDataKey = fmt.Sprintf(define.User_NodeMeta_RedisKey, uuid)
-	//reqMetaData := Redis.GetMap(reqMetaDataKey)
-	//reqMetaData[tframework.ContextKey_UserId] = uuid
-	//ct.SetValue(share.ReqMetaDataKey, reqMetaData)
-	//Log.InfoS("[TCP] login token %v , uuid %v register %v", token, uuid, register)
+	// TODO 通过jwt验证token有效性
+	//通过token,获取到uuid
+	if ok, uuid = this.loginCheck.CheckLogin(token); !ok {
+		log.Warn("[tcp] login failed token %v , uuid %v", token, uuid)
+		return
+	}
+
+	//判断当前uuid的token是否一致
+	key = fmt.Sprintf(tgf.RedisKeyUserLoginToken, uuid)
+	curToken := db.Get[string](key)
+	//token不一致,拒绝登录,用户刷新token,广播网关协议,移除旧token的用户连接
+	if token != curToken {
+		// TODO 重复登录,踢出之前登录的用户
+	}
+	db.Set(key, token, loginTokenTimeOut)
+	ct.SetValue(tgf.ContextKeyUserId, uuid)
+	//
+	reqMetaDataKey = fmt.Sprintf(tgf.RedisKeyUserNodeMeta, uuid)
+	reqMetaData := db.GetMap[string, string](reqMetaDataKey)
+	reqMetaData[tgf.ContextKeyUserId] = uuid
+	ct.SetValue(share.ReqMetaDataKey, reqMetaData)
+	log.Info("[tcp] login token %v , uuid %v", token, uuid)
 }
-
-func (this *Server) DoLogic(data *RequestData) {
+func (this *TCPServer) doLogic(data *RequestData) {
 	var (
 		compress byte = 0
 		err      error
 	)
-	client := this.GetClient(data.Module)
 	reply := make([]byte, 0)
-	done := make(chan *client2.Call, 10)
-	_, err = client.Go(data.User.contextData, data.RequestMethod, data.Data, &reply, done)
+	callback, _ := SendRPCMessage(data.Module, data.RequestMethod, data.Data, &reply)
 	if err != nil {
 		log.Info("[tcp] 请求异常 数据 [%v] [%v]", data, err)
 		return
 	}
-	callback := <-done
+	<-callback.Done
 	if callback.Error != nil {
 		log.Info("[tcp] 请求异常 数据 [%v] [%v]", data, callback.Error)
 		return
@@ -347,28 +338,26 @@ func (this *Server) DoLogic(data *RequestData) {
 	data.User.conn.Write(bp.Bytes())
 }
 
-func (this *Server) GetClient(moduleName string) client2.XClient {
-	//if val, ok := this.clients.Load(moduleName); ok {
-	//	return val.(client2.XClient)
-	//}
-	//val := tserver.ConsulDiscovery.RegisterTCPService(moduleName)
-	//selector := new(CustomSelector)
-	//selector.initStruct()
-	//val.SetSelector(selector)
-	//val.GetPlugins().Add(this)
-	//this.clients.Store(moduleName, val)
-	//return val
-	return nil
-}
-
-func (this *Server) WithPort(port string) *Server {
+func (this *TCPServer) WithPort(port string) *TCPServer {
 	var ()
-	this.config.port = port
+	this.optionals = append(this.optionals, func(server *TCPServer) {
+		server.config.port = port
+	})
 	return this
 }
-func (this *Server) WithBuffer(readBuffer, writeBuffer int) {
+func (this *TCPServer) WithBuffer(readBuffer, writeBuffer int) {
 	var ()
+	this.optionals = append(this.optionals, func(server *TCPServer) {
+		server.config.readBufferSize = readBuffer
+		server.config.writeBufferSize = writeBuffer
+	})
 
+}
+func (this *TCPServer) WithLoginCheck(f internal.ILoginCheck) {
+	var ()
+	this.optionals = append(this.optionals, func(server *TCPServer) {
+		server.loginCheck = f
+	})
 }
 
 // PostCall
@@ -381,36 +370,39 @@ func (this *Server) WithBuffer(readBuffer, writeBuffer int) {
 // @param reply
 // @param err
 // @return error
-func (this *Server) PostCall(ctx context.Context, servicePath, serviceMethod string, args interface{}, reply interface{}, err error) error {
-	return nil
-}
 
-func (this *Server) Run() {
+func (this *TCPServer) Run() {
 	var ()
-	add, _ := net.ResolveTCPAddr("tcp", fmt.Sprintf("%v:%v", this.config.address, this.config.port))
-	listen, err := net.ListenTCP("tcp", add)
-	if err != nil {
-		log.Info("[init] tcp服务 启动异常 %v", err)
-		return
-	}
-	log.Info("[init] tcp服务 启动成功 %v", add)
+	//保证每个tcp只会被启动一次,避免误操作
+	this.startup.Do(func() {
+		//执行optional
+		for _, optional := range this.optionals {
+			optional(this)
+		}
+		//
+		add, _ := net.ResolveTCPAddr("tcp", fmt.Sprintf("%v:%v", this.config.address, this.config.port))
+		listen, err := net.ListenTCP("tcp", add)
+		if err != nil {
+			log.Info("[init] tcp服务 启动异常 %v", err)
+			return
+		}
+		log.Info("[init] tcp服务 启动成功 %v", add)
 
-	//启动selector线程，等待连接接入
-	util.Go(func() {
-		log.Info("[init] tcp selector 启动成功")
-		this.selectorChan()
+		//启动selector线程，等待连接接入
+		util.Go(func() {
+			log.Info("[init] tcp selector 启动成功")
+			this.selectorChan()
+		})
+		for {
+			tcp, _ := listen.AcceptTCP()
+			tcp.SetNoDelay(true)                            //无延迟
+			tcp.SetKeepAlive(true)                          //保持激活
+			tcp.SetReadBuffer(this.config.readBufferSize)   //设置读缓冲区大小
+			tcp.SetWriteBuffer(this.config.writeBufferSize) //设置写缓冲区大小
+			tcp.SetDeadline(time.Now().Add(this.config.deadLineTime))
+			this.conChan <- tcp //将链接放入管道中
+		}
 	})
-
-	for {
-		tcp, _ := listen.AcceptTCP()
-		tcp.SetNoDelay(true)                            //无延迟
-		tcp.SetKeepAlive(true)                          //保持激活
-		tcp.SetReadBuffer(this.config.readBufferSize)   //设置读缓冲区大小
-		tcp.SetWriteBuffer(this.config.writeBufferSize) //设置写缓冲区大小
-		tcp.SetDeadline(time.Now().Add(this.config.deadLineTime))
-		this.conChan <- tcp //将链接放入管道中
-	}
-
 }
 
 func newDefaultServerConfig(port string) *ServerConfig {
@@ -425,13 +417,15 @@ func newDefaultServerConfig(port string) *ServerConfig {
 	return serverConfig
 }
 
-func NewDefaultTCPServer() *Server {
-	server := &Server{}
+func NewDefaultTCPServer() *TCPServer {
+	server := &TCPServer{}
 	server.optionals = make([]optional, 0)
 	server.lazyInitRPC = defaultLazyInitRPC
 	server.config = newDefaultServerConfig(defaultTcpServerPort)
 	server.clients = hashmap.New[string, client2.XClient]()
 	server.conChan = make(chan *net.TCPConn, maxSynChanConn)
 	server.closeChan = make(chan bool, 1)
+	server.startup = new(sync.Once)
+	server.loginCheck = &internal.LoginCheck{}
 	return server
 }

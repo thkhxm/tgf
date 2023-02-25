@@ -4,8 +4,8 @@ import (
 	"flag"
 	"fmt"
 	"github.com/joho/godotenv"
-	"github.com/thkhxm/tgf/log"
 	"github.com/thkhxm/tgf/util"
+
 	"os"
 	"strings"
 )
@@ -33,7 +33,6 @@ func initMapping() {
 	mapping[EnvironmentConsulAddress] = &config{env: EnvironmentConsulAddress, val: defaultConsulAddress}
 	mapping[EnvironmentConsulPath] = &config{env: EnvironmentConsulPath, val: defaultConsulPath}
 	mapping[EnvironmentRedisAddr] = &config{env: EnvironmentRedisAddr, val: defaultRedisAddr}
-	mapping[EnvironmentRedisPort] = &config{env: EnvironmentRedisPort, val: defaultRedisPort}
 	mapping[EnvironmentRedisPassword] = &config{env: EnvironmentRedisPassword, val: defaultRedisPassword}
 	mapping[EnvironmentRedisDB] = &config{env: EnvironmentRedisDB, val: defaultRedisDB}
 	mapping[EnvironmentServicePort] = &config{env: EnvironmentServicePort, val: defaultServicePort}
@@ -41,6 +40,8 @@ func initMapping() {
 	//初始化配置数据
 	for _, m := range mapping {
 		m.initVal()
+		fmt.Sprintf("env=%v val=%v", m.env, m.val)
+		fmt.Println()
 	}
 }
 
@@ -56,10 +57,9 @@ const (
 
 	defaultServicePort = "8082"
 
-	defaultRedisAddr     = "127.0.0.1"
-	defaultRedisPort     = "6379"
+	defaultRedisAddr     = "192.168.1.82:6382"
 	defaultRedisPassword = ""
-	defaultRedisDB       = "0"
+	defaultRedisDB       = "9"
 )
 
 func (this *config) initVal() *config {
@@ -67,7 +67,8 @@ func (this *config) initVal() *config {
 		res = os.Getenv(string(this.env))
 	)
 	if res != "" {
-		log.Info("[init] 配置 env=%v 从 %v 修改为 %v", this.env, this.val, res)
+		fmt.Sprintf("[init] 配置 env=%v 从 %v 修改为 %v", this.env, this.val, res)
+		fmt.Println()
 		this.val = res
 	}
 	return this

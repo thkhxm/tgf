@@ -40,7 +40,6 @@ const (
 	EnvironmentConsulPath    Environment = "ConsulPath"
 
 	EnvironmentRedisAddr     Environment = "RedisAddr"
-	EnvironmentRedisPort     Environment = "RedisPort"
 	EnvironmentRedisPassword Environment = "RedisPassword"
 	EnvironmentRedisDB       Environment = "RedisDB"
 
@@ -59,4 +58,8 @@ const (
 const (
 	RedisKeyUserNodeMeta   = "user:node:meta:%v"
 	RedisKeyUserLoginToken = "user:login:token:Mapping:%v"
+)
+
+const (
+	ContextKeyUserId = "UserId"
 )

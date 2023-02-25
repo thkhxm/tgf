@@ -1,7 +1,4 @@
-// Package db
-// @Description: 数据缓存相关
-// @Link  https://github.com/bsm/redislock redis分布式锁
-package db
+package internal
 
 //***************************************************
 //@Link  https://github.com/thkhxm/tgf
@@ -12,6 +9,9 @@ package db
 //2023/2/25
 //***************************************************
 
-func init() {
-	run()
+type LoginCheck struct {
+}
+
+func (l LoginCheck) CheckLogin(token string) (bool, string) {
+	return true, token
 }

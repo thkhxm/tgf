@@ -1,7 +1,6 @@
-// Package db
-// @Description: 数据缓存相关
-// @Link  https://github.com/bsm/redislock redis分布式锁
-package db
+package util
+
+import "github.com/bwmarrin/snowflake"
 
 //***************************************************
 //@Link  https://github.com/thkhxm/tgf
@@ -12,6 +11,8 @@ package db
 //2023/2/25
 //***************************************************
 
-func init() {
-	run()
+var Snowflake *snowflake.Node
+
+func GenerateSnowflakeId() string {
+	return Snowflake.Generate().Base64()
 }

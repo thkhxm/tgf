@@ -2,11 +2,16 @@ package internal
 
 import (
 	"fmt"
+	"github.com/cornelk/hashmap"
 	"github.com/rcrowley/go-metrics"
+	"github.com/rpcxio/libkv/store"
+	"github.com/rpcxio/rpcx-consul/client"
 	"github.com/rpcxio/rpcx-consul/serverplugin"
+	client2 "github.com/smallnest/rpcx/client"
 	"github.com/smallnest/rpcx/server"
 	"github.com/thkhxm/tgf"
 	"github.com/thkhxm/tgf/log"
+	"github.com/thkhxm/tgf/util"
 	"time"
 )
 
@@ -22,6 +27,12 @@ import (
 // TODO 修改consul的配置，调整心跳间隔
 
 type ConsulDiscovery struct {
+	discoveryMap *hashmap.Map[string, *client.ConsulDiscovery]
+}
+
+func (this *ConsulDiscovery) initStruct() {
+	var ()
+	this.discoveryMap = hashmap.New[string, *client.ConsulDiscovery]()
 }
 
 func (this *ConsulDiscovery) RegisterServer(ip string) server.Plugin {
@@ -50,7 +61,50 @@ func (this *ConsulDiscovery) RegisterServer(ip string) server.Plugin {
 	return r
 }
 
-func NewConsulDiscovery() IRPCDiscovery {
-	discovery := new(ConsulDiscovery)
-	return discovery
+func (this *ConsulDiscovery) RegisterClient(serviceName string) client2.XClient {
+	var (
+		option = client2.DefaultOption
+	)
+	//if this.configService.IsGateway() {
+	//	option.SerializeType = protocol.SerializeNone
+	//}
+	discovery := this.GetDiscovery(serviceName)
+	client := client2.NewXClient(serviceName, client2.Failover, client2.SelectByUser, discovery, option)
+	return client
+}
+
+func (this *ConsulDiscovery) GetDiscovery(moduleName string) *client.ConsulDiscovery {
+	if val, ok := this.discoveryMap.Get(moduleName); ok {
+		return val
+	}
+	var (
+		address     = tgf.GetStrListConfig(tgf.EnvironmentConsulAddress)
+		basePath    = tgf.GetStrConfig[string](tgf.EnvironmentConsulPath)
+		servicePath = moduleName
+	)
+
+	//new discovery
+
+	conf := &store.Config{
+		ClientTLS:         nil,
+		TLS:               nil,
+		ConnectionTimeout: 0,
+		Bucket:            "",
+		PersistConnection: false,
+		Username:          "",
+		Password:          "",
+	}
+	d, _ := client.NewConsulDiscovery(basePath, servicePath, address, conf)
+	this.discoveryMap.Set(moduleName, d)
+	util.Go(func() {
+		for {
+			select {
+			case kv := <-d.WatchService():
+				for _, v := range kv {
+					log.Debug("consul watch service %v,%v", v.Key, v.Value)
+				}
+			}
+		}
+	})
+	return d
 }

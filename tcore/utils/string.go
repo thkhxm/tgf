@@ -22,7 +22,3 @@ package utils
 //***********************    struct    ****************************
 
 // ***********************    struct_end    ****************************
-
-func ConvertStringByByteSlice(bytes []byte) string {
-	return string(bytes)
-}

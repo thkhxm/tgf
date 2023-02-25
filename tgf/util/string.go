@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"strconv"
+	"unsafe"
 )
 
 //***************************************************
@@ -40,7 +41,7 @@ func StrToAny[T any](a string) (T, error) {
 		if err != nil {
 			return t, err
 		}
-		t = any(v).(T)
+		t = *(*T)(unsafe.Pointer(&v))
 	case int64:
 		v, err := strconv.ParseInt(a, 10, 64)
 		if err != nil {
@@ -68,4 +69,36 @@ func StrToAny[T any](a string) (T, error) {
 		return t, fmt.Errorf("the type %T is not supported", t)
 	}
 	return t, nil
+}
+
+func AnyToStr(a interface{}) (string, error) {
+	switch a.(type) {
+	case bool:
+		return strconv.FormatBool(a.(bool)), nil
+	case int32:
+		return strconv.FormatInt(int64(a.(int32)), 10), nil
+	case int:
+		return strconv.FormatInt(int64(a.(int)), 10), nil
+	case int64:
+		return strconv.FormatInt(a.(int64), 10), nil
+	case float32:
+		return strconv.FormatFloat(float64(a.(float32)), 'f', -1, 32), nil
+	case float64:
+		return strconv.FormatFloat(a.(float64), 'f', -1, 64), nil
+	case string:
+		return a.(string), nil
+	case interface{}:
+		js, _ := json.Marshal(a)
+		return ConvertStringByByteSlice(js), nil
+	default:
+		return "", fmt.Errorf("the type %T is not supported", a)
+	}
+}
+
+// ConvertStringByByteSlice
+// @Description: 字节转字符串
+// @param bytes
+// @return string
+func ConvertStringByByteSlice(bytes []byte) string {
+	return string(bytes)
 }
