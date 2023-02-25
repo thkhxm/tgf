@@ -22,3 +22,11 @@ package utils
 //***********************    struct    ****************************
 
 // ***********************    struct_end    ****************************
+
+// ConvertStringByByteSlice
+// @Description: 字节转字符串
+// @param bytes
+// @return string
+func ConvertStringByByteSlice(bytes []byte) string {
+	return string(bytes)
+}

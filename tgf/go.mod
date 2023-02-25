@@ -3,11 +3,18 @@ module github.com/thkhxm/tgf
 go 1.19
 
 require (
+	github.com/bsm/redislock v0.9.0
+	github.com/bwmarrin/snowflake v0.3.0
+	github.com/cornelk/hashmap v1.0.8
+	github.com/edwingeng/doublejump v1.0.0
 	github.com/joho/godotenv v1.5.1
 	github.com/panjf2000/ants/v2 v2.7.1
 	github.com/rcrowley/go-metrics v0.0.0-20201227073835-cf1acfcdf475
+	github.com/redis/go-redis/v9 v9.0.1
+	github.com/rpcxio/libkv v0.5.1
 	github.com/rpcxio/rpcx-consul v0.0.0-20220730062257-1ff0472e730f
 	github.com/smallnest/rpcx v1.8.0
+	github.com/valyala/bytebufferpool v1.0.0
 	go.uber.org/zap v1.24.0
 	golang.org/x/net v0.0.0-20220708220712-1185a9018129
 	gopkg.in/natefinch/lumberjack.v2 v2.2.1
@@ -18,15 +25,12 @@ require (
 	github.com/alitto/pond v1.8.0 // indirect
 	github.com/apache/thrift v0.16.0 // indirect
 	github.com/armon/go-metrics v0.4.0 // indirect
-	github.com/bsm/redislock v0.9.0 // indirect
 	github.com/cenk/backoff v2.2.1+incompatible // indirect
 	github.com/cenkalti/backoff v2.2.1+incompatible // indirect
 	github.com/cespare/xxhash/v2 v2.2.0 // indirect
 	github.com/cheekybits/genny v1.0.0 // indirect
-	github.com/cornelk/hashmap v1.0.8 // indirect
 	github.com/dgryski/go-jump v0.0.0-20211018200510-ba001c3ffce0 // indirect
 	github.com/dgryski/go-rendezvous v0.0.0-20200823014737-9f7001d12a5f // indirect
-	github.com/edwingeng/doublejump v1.0.0 // indirect
 	github.com/facebookgo/clock v0.0.0-20150410010913-600d898af40a // indirect
 	github.com/fatih/color v1.13.0 // indirect
 	github.com/fsnotify/fsnotify v1.5.4 // indirect
@@ -64,8 +68,6 @@ require (
 	github.com/onsi/ginkgo v1.16.5 // indirect
 	github.com/philhofer/fwd v1.1.1 // indirect
 	github.com/pkg/errors v0.9.1 // indirect
-	github.com/redis/go-redis/v9 v9.0.1 // indirect
-	github.com/rpcxio/libkv v0.5.1 // indirect
 	github.com/rs/cors v1.8.2 // indirect
 	github.com/rubyist/circuitbreaker v2.2.1+incompatible // indirect
 	github.com/smallnest/quick v0.0.0-20220703133648-f13409fa6c67 // indirect

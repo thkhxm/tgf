@@ -57,9 +57,9 @@ const (
 
 	defaultServicePort = "8082"
 
-	defaultRedisAddr     = "192.168.1.82:6382"
+	defaultRedisAddr     = "127.0.0.1:6379"
 	defaultRedisPassword = ""
-	defaultRedisDB       = "9"
+	defaultRedisDB       = "1"
 )
 
 func (this *config) initVal() *config {

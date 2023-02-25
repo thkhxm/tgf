@@ -28,7 +28,7 @@ const (
 	defaultMaxCapacity = 1e4
 )
 
-// TCPServer
+// Server
 // @Description:
 type Server struct {
 	rpcServer *server.Server
@@ -72,7 +72,7 @@ func (this *Server) WithService(service IService) *Server {
 	return this
 }
 
-func (this *Server) WithCache(addr string, module tgf.CacheModule) {
+func (this *Server) WithCache(module tgf.CacheModule) {
 	var ()
 	switch module {
 	case tgf.CacheModuleRedis:

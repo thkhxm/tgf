@@ -46,7 +46,7 @@ func TestTcpClientSender(t *testing.T) {
 	// magic number|message type|request method name size|data size|method name|data
 	//for i := 0; i < 10; i++ {
 	//	go func() {
-	add, err := net.ResolveTCPAddr("tcp", "192.168.1.90:8839")
+	add, err := net.ResolveTCPAddr("tcp", "127.0.0.1:8839")
 	client, err := net.DialTCP("tcp", nil, add)
 	if err != nil {
 		t.Logf("client error: %v", err)
