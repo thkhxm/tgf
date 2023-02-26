@@ -1,6 +1,7 @@
 package util
 
 import (
+	"bytes"
 	"encoding/json"
 	"fmt"
 	"strconv"
@@ -17,6 +18,7 @@ import (
 //***************************************************
 
 // StrToAny
+//
 // @Description: string转任意类型
 // @param a
 // @return T
@@ -64,13 +66,22 @@ func StrToAny[T any](a string) (T, error) {
 		v := a
 		t = any(v).(T)
 	case interface{}:
-		json.Unmarshal([]byte(a), &t)
+		err := json.Unmarshal([]byte(a), &t)
+		if err != nil {
+			return t, err
+		}
 	default:
 		return t, fmt.Errorf("the type %T is not supported", t)
 	}
 	return t, nil
 }
 
+// AnyToStr
+//
+//	@Description: 任意数据转换成字符串，默认结构化数据使用json序列化
+//	@param a
+//	@return string
+//	@return error
 func AnyToStr(a interface{}) (string, error) {
 	switch a.(type) {
 	case bool:
@@ -101,4 +112,23 @@ func AnyToStr(a interface{}) (string, error) {
 // @return string
 func ConvertStringByByteSlice(bytes []byte) string {
 	return string(bytes)
+}
+
+// SplitJoinSlice
+// @Description: 拼接字符串切片,返回字符串
+// @param val
+// @param split
+// @return _data
+func SplitJoinSlice(val []string, split string) (_data string) {
+	var buffer bytes.Buffer
+	for _, s := range val {
+		buffer.WriteString(s)
+		buffer.WriteString(split)
+	}
+	_data = buffer.String()
+	//不是空字符,切割最后一个拼接符
+	if split != "" {
+		_data = _data[0 : len(_data)-1]
+	}
+	return
 }

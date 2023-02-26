@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"github.com/cornelk/hashmap"
 	"github.com/smallnest/rpcx/client"
+	"github.com/smallnest/rpcx/protocol"
 	"github.com/smallnest/rpcx/server"
 	"github.com/thkhxm/tgf"
 	"github.com/thkhxm/tgf/db"
@@ -105,7 +106,6 @@ func (this *Server) WithServiceClient() *Server {
 	return this
 }
 
-// TODO 是否预留部分aop相关的切面
 func (this *Server) Run() {
 	var (
 		serviceName    string
@@ -130,15 +130,17 @@ func (this *Server) Run() {
 		for _, service := range this.service {
 			serviceName = fmt.Sprintf("%v", service.GetName())
 			metaData := fmt.Sprintf("version=%v", service.GetVersion())
-			this.rpcServer.RegisterName(serviceName, service, metaData)
+			err := this.rpcServer.RegisterName(serviceName, service, metaData)
+			if err != nil {
+				log.Error("[init] 注册服务发现失败 serviceName=%v metaDat=%v error=%v", serviceName, metaData, err)
+				continue
+			}
 			_logServiceMsg += serviceName + " " + metaData + ","
 			log.Info("[init] 注册服务发现 serviceName=%v metaDat=%v", serviceName, metaData)
 		}
 	}
 
 	//自定义plugin
-
-	//TODO 后期考虑是否支持点对点的本地连接配置
 	util.Go(func() {
 		if err := this.rpcServer.Serve("tcp", ip); err != nil {
 			log.Error("[init] rpcx务启动异常 serviceName=%v addr=%v err=%v", serviceName, ip, err)
@@ -157,12 +159,12 @@ func (this *Server) Run() {
 }
 
 func NewRPCServer() *Server {
-	server := &Server{}
-	server.AfterOptionals = make([]Optional, 0)
-	server.BeforeOptionals = make([]Optional, 0)
-	server.maxWorkers = defaultMaxWorkers
-	server.maxCapacity = defaultMaxCapacity
-	return server
+	rpcServer := &Server{}
+	rpcServer.AfterOptionals = make([]Optional, 0)
+	rpcServer.BeforeOptionals = make([]Optional, 0)
+	rpcServer.maxWorkers = defaultMaxWorkers
+	rpcServer.maxCapacity = defaultMaxCapacity
+	return rpcServer
 }
 
 var rpcClient *Client
@@ -210,6 +212,11 @@ func (this *Client) getClient(moduleName string) (xclient client.XClient) {
 	} else {
 		discovery := internal.GetDiscovery().GetDiscovery(moduleName)
 		option := client.DefaultOption
+
+		if moduleName == tgf.GatewayServiceModuleName {
+			option.SerializeType = protocol.SerializeNone
+		}
+
 		xclient = client.NewXClient(moduleName, client.Failover, client.ConsistentHash, discovery, option)
 
 		//自定义路由

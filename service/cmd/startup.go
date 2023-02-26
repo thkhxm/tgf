@@ -1,8 +1,4 @@
-// Package util
-// @Description: 工具包
-// @Link: https://github.com/panjf2000/ants 是一个高性能且低损耗的 goroutine 池
-// @Ref:
-package util
+package cmd
 
 //***************************************************
 //@Link  https://github.com/thkhxm/tgf
@@ -10,10 +6,5 @@ package util
 //@QQ 277949041
 //author tim.huang<thkhxm@gmail.com>
 //@Description
-//2023/2/24
+//2023/2/27
 //***************************************************
-
-func init() {
-	InitGoroutinePool()
-	initSnowFlake()
-}
