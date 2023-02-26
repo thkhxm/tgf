@@ -16,3 +16,18 @@ type IService interface {
 	GetName() string
 	GetVersion() string
 }
+
+type Module struct {
+	name    string
+	version string
+}
+
+func (this *Module) GetName() string {
+	var ()
+	return this.name
+}
+
+func (this *Module) GetVersion() string {
+	var ()
+	return this.version
+}
