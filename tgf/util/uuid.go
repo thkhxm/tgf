@@ -1,6 +1,10 @@
 package util
 
-import "github.com/bwmarrin/snowflake"
+import (
+	"github.com/bwmarrin/snowflake"
+	"math/rand"
+	"time"
+)
 
 //***************************************************
 //@Link  https://github.com/thkhxm/tgf
@@ -15,4 +19,11 @@ var Snowflake *snowflake.Node
 
 func GenerateSnowflakeId() string {
 	return Snowflake.Generate().Base64()
+}
+
+func initSnowFlake() {
+	//初始化雪花算法Id
+	source := rand.NewSource(time.Now().UnixNano())
+	ran := rand.New(source)
+	Snowflake, _ = snowflake.NewNode(ran.Int63n(1024))
 }

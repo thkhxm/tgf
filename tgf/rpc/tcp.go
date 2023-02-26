@@ -283,8 +283,8 @@ func (this *TCPServer) doLogin(ct *share.Context, token string) {
 	//token不一致,拒绝登录,用户刷新token,广播网关协议,移除旧token的用户连接
 	if token != curToken {
 		// TODO 重复登录,踢出之前登录的用户
+		db.Set(key, token, loginTokenTimeOut)
 	}
-	db.Set(key, token, loginTokenTimeOut)
 	ct.SetValue(tgf.ContextKeyUserId, uuid)
 	//
 	reqMetaDataKey = fmt.Sprintf(tgf.RedisKeyUserNodeMeta, uuid)

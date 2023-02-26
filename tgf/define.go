@@ -63,3 +63,5 @@ const (
 const (
 	ContextKeyUserId = "UserId"
 )
+
+var GatewayServiceModuleName = "Gate"
