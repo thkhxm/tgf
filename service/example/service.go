@@ -1,4 +1,8 @@
-package cmd
+package example
+
+import (
+	"github.com/thkhxm/tgf/rpc"
+)
 
 //***************************************************
 //@Link  https://github.com/thkhxm/tgf
@@ -6,9 +10,9 @@ package cmd
 //@QQ 277949041
 //author tim.huang<thkhxm@gmail.com>
 //@Description
-//2023/2/26
+//2023/2/27
 //***************************************************
 
-func main() {
-
+type Service struct {
+	rpc.Module
 }

@@ -1,4 +1,4 @@
-package cmd
+package api
 
 //***************************************************
 //@Link  https://github.com/thkhxm/tgf
@@ -8,10 +8,3 @@ package cmd
 //@Description
 //2023/2/27
 //***************************************************
-
-// main
-//
-//	@Description: 启动服务
-func main() {
-
-}

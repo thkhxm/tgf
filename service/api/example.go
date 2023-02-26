@@ -1,4 +1,4 @@
-package chat
+package api
 
 //***************************************************
 //@Link  https://github.com/thkhxm/tgf
@@ -6,5 +6,9 @@ package chat
 //@QQ 277949041
 //author tim.huang<thkhxm@gmail.com>
 //@Description
-//2023/2/26
+//2023/2/27
 //***************************************************
+
+var (
+// ExampleService = &rpc.Module{name: "Example", version: "1.0"}
+)
