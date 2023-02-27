@@ -299,7 +299,7 @@ func (this *TCPServer) doLogic(data *RequestData) {
 		err      error
 	)
 	reply := make([]byte, 0)
-	callback, _ := SendRPCMessage(data.Module, data.RequestMethod, data.Data, &reply)
+	callback, _ := sendMessage(data.User.contextData, data.Module, data.RequestMethod, data.Data, &reply)
 	if err != nil {
 		log.Info("[tcp] 请求异常 数据 [%v] [%v]", data, err)
 		return
@@ -417,7 +417,7 @@ func newDefaultServerConfig(port string) *ServerConfig {
 	return serverConfig
 }
 
-func NewDefaultTCPServer() *TCPServer {
+func newDefaultTCPServer() *TCPServer {
 	server := &TCPServer{}
 	server.optionals = make([]optional, 0)
 	server.lazyInitRPC = defaultLazyInitRPC

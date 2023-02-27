@@ -1,6 +1,9 @@
-package tgf
+package rpc
 
-import "github.com/thkhxm/tgf/rpc"
+import (
+	"github.com/thkhxm/tgf"
+	"golang.org/x/net/context"
+)
 
 //***************************************************
 //@Link  https://github.com/thkhxm/tgf
@@ -17,14 +20,19 @@ type gateService struct {
 }
 
 func (this *gateService) GetName() string {
-	return GatewayServiceModuleName
+	return tgf.GatewayServiceModuleName
 }
 
 func (this *gateService) GetVersion() string {
 	return "1.0"
 }
 
-func GatewayService() rpc.IService {
+func (this *gateService) S(ctx context.Context, args *interface{}, reply *interface{}) error {
+	var ()
+	return nil
+}
+
+func GatewayService() IService {
 	service := &gateService{}
 	return service
 }

@@ -4,6 +4,7 @@ import (
 	"github.com/rpcxio/rpcx-consul/client"
 	client2 "github.com/smallnest/rpcx/client"
 	"github.com/smallnest/rpcx/server"
+	"github.com/thkhxm/tgf/log"
 )
 
 //***************************************************
@@ -36,6 +37,7 @@ func UseConsulDiscovery() {
 	cd := new(ConsulDiscovery)
 	cd.initStruct()
 	discovery = cd
+	log.Info("[init] 装载consul discovery模块")
 }
 
 func GetDiscovery() IRPCDiscovery {

@@ -78,9 +78,8 @@ func (this *ConsulDiscovery) GetDiscovery(moduleName string) *client.ConsulDisco
 		return val
 	}
 	var (
-		address     = tgf.GetStrListConfig(tgf.EnvironmentConsulAddress)
-		basePath    = tgf.GetStrConfig[string](tgf.EnvironmentConsulPath)
-		servicePath = moduleName
+		address  = tgf.GetStrListConfig(tgf.EnvironmentConsulAddress)
+		basePath = tgf.GetStrConfig[string](tgf.EnvironmentConsulPath)
 	)
 
 	//new discovery
@@ -94,14 +93,14 @@ func (this *ConsulDiscovery) GetDiscovery(moduleName string) *client.ConsulDisco
 		Username:          "",
 		Password:          "",
 	}
-	d, _ := client.NewConsulDiscovery(basePath, servicePath, address, conf)
+	d, _ := client.NewConsulDiscovery(basePath, moduleName, address, conf)
 	this.discoveryMap.Set(moduleName, d)
 	util.Go(func() {
 		for {
 			select {
 			case kv := <-d.WatchService():
 				for _, v := range kv {
-					log.Debug("consul watch service %v,%v", v.Key, v.Value)
+					log.Debug("[consul] watch %v service %v,%v", moduleName, v.Key, v.Value)
 				}
 			}
 		}

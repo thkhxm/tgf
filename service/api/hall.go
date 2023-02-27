@@ -1,5 +1,7 @@
 package api
 
+import "github.com/thkhxm/tgf/rpc"
+
 //***************************************************
 //@Link  https://github.com/thkhxm/tgf
 //@Link  https://gitee.com/timgame/tgf
@@ -9,6 +11,4 @@ package api
 //2023/2/27
 //***************************************************
 
-var (
-// ExampleService = &rpc.Module{name: "Example", version: "1.0"}
-)
+var HallService = &rpc.Module{Name: "Hall", Version: "1.0"}
