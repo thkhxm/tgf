@@ -1,7 +1,11 @@
 package example
 
 import (
+	"fmt"
+	"github.com/thkhxm/tgf/log"
 	"github.com/thkhxm/tgf/rpc"
+	"github.com/thkhxm/tgf/service/api"
+	"golang.org/x/net/context"
 )
 
 //***************************************************
@@ -13,6 +17,53 @@ import (
 //2023/2/27
 //***************************************************
 
-type Service struct {
+//用户通过网关服,请求HallService的SayHello函数.
+//HallService服务中的SayHello函数,将消息通过rpc请求抵达ChatService服务
+//ChatService通过RPCSayHello函数,重新拼装消息Message,并返回最终字符串
+//HallService收到rpc的返回,将最终结果返回用户所在的网关服
+//网关服接收到HallService的响应,返回响应结果到用户
+
+type ChatService struct {
 	rpc.Module
+}
+
+func (this *ChatService) RPCSayHello(ctx context.Context, req *string, response *api.ChatServiceSayHelloRPCResponse) error {
+	var (
+		userId = rpc.GetUserId(ctx)
+		msg    = *req
+	)
+	log.Debug("[example] RPCSayHello userId=%v ,msg=%v", userId, msg)
+	response.Msg = fmt.Sprintf("%v say %v", userId, msg)
+	return nil
+}
+
+func (this *ChatService) GetName() string {
+	return api.ChatService.Name
+}
+
+func (this *ChatService) GetVersion() string {
+	return api.ChatService.Version
+}
+
+type HallService struct {
+	rpc.Module
+}
+
+func (this *HallService) GetName() string {
+	return api.HallService.Name
+}
+
+func (this *HallService) GetVersion() string {
+	return api.HallService.Version
+}
+
+func (this *HallService) SayHello(ctx context.Context, args *[]byte, reply *[]byte) error {
+	var (
+		userId = rpc.GetUserId(ctx)
+		res    = &api.ChatServiceSayHelloRPCResponse{}
+	)
+	log.Debug("[example] 收到用户请求 userId=%v msg=%v", userId, string(*args))
+	rpc.SendRPCMessage(ctx, api.SayHello.New("hello world", res))
+	log.Debug("[example] SayHello userId=%v msg=%v", userId, res.Msg)
+	return nil
 }

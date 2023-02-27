@@ -35,29 +35,29 @@ type Server struct {
 	rpcServer *server.Server
 
 	//启动后执行的操作
-	AfterOptionals []Optional
+	afterOptionals []Optional
 	//启动前执行
-	BeforeOptionals []Optional
+	beforeOptionals []Optional
 	//
 	maxWorkers  int
 	maxCapacity int
 	//
-	service []IService
+	service   []IService
+	closeChan chan bool
 }
 
 type Optional func(*Server)
 
 func (this *Server) WithConsulDiscovery() *Server {
 	var ()
-	this.BeforeOptionals = append(this.BeforeOptionals, func(server *Server) {
+	this.beforeOptionals = append(this.beforeOptionals, func(server *Server) {
 		internal.UseConsulDiscovery()
-		log.Info("[init] 装载consul discovery模块")
 	})
 	return this
 }
 
 func (this *Server) WithServerPool(maxWorkers, maxCapacity int) *Server {
-	this.BeforeOptionals = append(this.BeforeOptionals, func(server *Server) {
+	this.beforeOptionals = append(this.beforeOptionals, func(server *Server) {
 		server.maxWorkers = maxWorkers
 		server.maxCapacity = maxCapacity
 		log.Info("[init] 修改rpcx协程池大小 maxWorkers=%v maxCapacity=%v", maxWorkers, maxCapacity)
@@ -66,7 +66,7 @@ func (this *Server) WithServerPool(maxWorkers, maxCapacity int) *Server {
 }
 
 func (this *Server) WithService(service IService) *Server {
-	this.BeforeOptionals = append(this.BeforeOptionals, func(server *Server) {
+	this.beforeOptionals = append(this.beforeOptionals, func(server *Server) {
 		this.service = append(this.service, service)
 		log.Info("[init] 装载逻辑服务[%v@%v]", service.GetName(), service.GetVersion())
 	})
@@ -82,8 +82,8 @@ func (this *Server) WithCache(module tgf.CacheModule) {
 }
 
 func (this *Server) WithTCPServer(port string) *Server {
-	this.AfterOptionals = append(this.AfterOptionals, func(server *Server) {
-		tcp := NewDefaultTCPServer()
+	this.afterOptionals = append(this.afterOptionals, func(server *Server) {
+		tcp := newDefaultTCPServer()
 		util.Go(func() {
 			tcp.WithPort(port).Run()
 		})
@@ -99,21 +99,26 @@ func (this *Server) WithTCPServer(port string) *Server {
 func (this *Server) WithServiceClient() *Server {
 	var ()
 	//
-	this.AfterOptionals = append(this.AfterOptionals, func(server *Server) {
-		NewRPCClient().Startup()
+	this.afterOptionals = append(this.afterOptionals, func(server *Server) {
+		newRPCClient().Startup()
 		log.Info("[init] 装载RPCClient服务")
 	})
 	return this
 }
 
-func (this *Server) Run() {
+func (this *Server) WithGateway(port string) *Server {
+	var ()
+	return this.WithService(GatewayService()).WithTCPServer(port)
+}
+
+func (this *Server) Run() chan bool {
 	var (
 		serviceName    string
 		ip             string
 		_logServiceMsg string
 	)
 	// TODO 如果有需要，可以对Optional进行优先级的控制，控制加载顺序
-	for _, beforeOptional := range this.BeforeOptionals {
+	for _, beforeOptional := range this.beforeOptionals {
 		beforeOptional(this)
 	}
 	/**启动逻辑链*/
@@ -150,20 +155,22 @@ func (this *Server) Run() {
 	})
 
 	//启动后执行的业务
-	for _, afterOptional := range this.AfterOptionals {
+	for _, afterOptional := range this.afterOptionals {
 		afterOptional(this)
 	}
 
 	//启用服务,使用tcp
 	log.Info("[init] rpcx服务启动成功 addr=%v service=[%v] ", _logServiceMsg, ip)
+	return this.closeChan
 }
 
 func NewRPCServer() *Server {
 	rpcServer := &Server{}
-	rpcServer.AfterOptionals = make([]Optional, 0)
-	rpcServer.BeforeOptionals = make([]Optional, 0)
+	rpcServer.afterOptionals = make([]Optional, 0)
+	rpcServer.beforeOptionals = make([]Optional, 0)
 	rpcServer.maxWorkers = defaultMaxWorkers
 	rpcServer.maxCapacity = defaultMaxCapacity
+	rpcServer.closeChan = make(chan bool, 1)
 	return rpcServer
 }
 
@@ -176,7 +183,7 @@ type Client struct {
 type ClientOptional struct {
 }
 
-func NewRPCClient() *ClientOptional {
+func newRPCClient() *ClientOptional {
 	return &ClientOptional{}
 }
 
@@ -197,13 +204,33 @@ func getRPCClient() *Client {
 	return rpcClient
 }
 
-func SendRPCMessage(moduleName, serviceName string, args, reply interface{}) (*client.Call, error) {
+func SendRPCMessage[Req, Res any](ct context.Context, api *ServiceAPI[Req, Res]) error {
 	var (
+		done    = make(chan *client.Call, 10)
+		rc      = getRPCClient()
+		xclient = rc.getClient(api.ModuleName)
+	)
+	call, _ := xclient.Go(ct, api.Name, api.args, api.reply, done)
+	<-call.Done
+	return call.Error
+}
+func SendAsyncRPCMessage[Req, Res any](ct context.Context, api *ServiceAPI[Req, Res]) (*client.Call, error) {
+	var (
+		done    = make(chan *client.Call, 1)
+		rc      = getRPCClient()
+		xclient = rc.getClient(api.ModuleName)
+	)
+	return xclient.Go(ct, api.Name, api.args, api.reply, done)
+}
+
+func sendMessage(ct context.Context, moduleName, serviceName string, args, reply interface{}) (*client.Call, error) {
+	var (
+		//TODO 这里的chan，可以根据用户，每个用户自己维护自己的一个chan，这样可以保证，用户级别的消息队列
 		done    = make(chan *client.Call, 10)
 		rc      = getRPCClient()
 		xclient = rc.getClient(moduleName)
 	)
-	return xclient.Go(context.Background(), serviceName, args, reply, done)
+	return xclient.Go(ct, serviceName, args, reply, done)
 }
 
 func (this *Client) getClient(moduleName string) (xclient client.XClient) {
