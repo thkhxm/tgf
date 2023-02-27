@@ -5,7 +5,7 @@ import (
 	"github.com/thkhxm/tgf/log"
 	"github.com/thkhxm/tgf/rpc"
 	"github.com/thkhxm/tgf/service/api/chat"
-	hallapi "github.com/thkhxm/tgf/service/api/hall"
+	"github.com/thkhxm/tgf/service/api/hall"
 	"golang.org/x/net/context"
 )
 
