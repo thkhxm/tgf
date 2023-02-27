@@ -5,7 +5,7 @@ import (
 	"encoding/binary"
 	"fmt"
 	"github.com/thkhxm/tgf/rpc"
-	"github.com/thkhxm/tgf/service/api"
+	"github.com/thkhxm/tgf/service/api/hall"
 	"net"
 	"sync"
 	"testing"
@@ -44,12 +44,11 @@ func TestExampleService(t *testing.T) {
 		t.Logf("write len %v error : %v", cnt, er)
 	}
 	t.Logf("send logic message : %v", buff.Bytes())
-
-	//for {
-	//	resBytes := make([]byte, 1024)
-	//	client.Read(resBytes)
-	//	t.Logf("response message : %v", resBytes)
-	//}
+	for {
+		resBytes := make([]byte, 1024)
+		client.Read(resBytes)
+		t.Logf("response message : %v", resBytes)
+	}
 
 	//	}
 	//}()
@@ -83,7 +82,7 @@ func LoginByteTest() *bytes.Buffer {
 func LogicByteTest() *bytes.Buffer {
 	var msg = "hello world!"
 	data := []byte(msg)
-	reqName := []byte(fmt.Sprintf("%v.%v", api.HallService.Name, "SayHello"))
+	reqName := []byte(fmt.Sprintf("%v.%v", hallapi.HallService.Name, "SayHello"))
 	tmp := make([]byte, 0, 6+len(data)+len(reqName))
 	buff := bytes.NewBuffer(tmp)
 	buff.WriteByte(250)
