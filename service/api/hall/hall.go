@@ -1,4 +1,4 @@
-package api
+package hallapi
 
 import "github.com/thkhxm/tgf/rpc"
 

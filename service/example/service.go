@@ -4,7 +4,8 @@ import (
 	"fmt"
 	"github.com/thkhxm/tgf/log"
 	"github.com/thkhxm/tgf/rpc"
-	"github.com/thkhxm/tgf/service/api"
+	"github.com/thkhxm/tgf/service/api/chat"
+	hallapi "github.com/thkhxm/tgf/service/api/hall"
 	"golang.org/x/net/context"
 )
 
@@ -27,7 +28,7 @@ type ChatService struct {
 	rpc.Module
 }
 
-func (this *ChatService) RPCSayHello(ctx context.Context, req *string, response *api.ChatServiceSayHelloRPCResponse) error {
+func (this *ChatService) RPCSayHello(ctx context.Context, req *string, response *chatapi.SayHelloRes) error {
 	var (
 		userId = rpc.GetUserId(ctx)
 		msg    = *req
@@ -38,11 +39,11 @@ func (this *ChatService) RPCSayHello(ctx context.Context, req *string, response 
 }
 
 func (this *ChatService) GetName() string {
-	return api.ChatService.Name
+	return chatapi.ChatService.Name
 }
 
 func (this *ChatService) GetVersion() string {
-	return api.ChatService.Version
+	return chatapi.ChatService.Version
 }
 
 type HallService struct {
@@ -50,20 +51,21 @@ type HallService struct {
 }
 
 func (this *HallService) GetName() string {
-	return api.HallService.Name
+	return hallapi.HallService.Name
 }
 
 func (this *HallService) GetVersion() string {
-	return api.HallService.Version
+	return hallapi.HallService.Version
 }
 
 func (this *HallService) SayHello(ctx context.Context, args *[]byte, reply *[]byte) error {
 	var (
 		userId = rpc.GetUserId(ctx)
-		res    = &api.ChatServiceSayHelloRPCResponse{}
+		res    = &chatapi.SayHelloRes{}
 	)
 	log.Debug("[example] 收到用户请求 userId=%v msg=%v", userId, string(*args))
-	rpc.SendRPCMessage(ctx, api.SayHello.New("hello world", res))
+	rpc.SendRPCMessage(ctx, chatapi.SayHello.New("hello world", res))
 	log.Debug("[example] SayHello userId=%v msg=%v", userId, res.Msg)
+	*reply = []byte(res.Msg)
 	return nil
 }

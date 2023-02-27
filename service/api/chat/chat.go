@@ -1,4 +1,4 @@
-package api
+package chatapi
 
 import "github.com/thkhxm/tgf/rpc"
 
@@ -14,13 +14,13 @@ import "github.com/thkhxm/tgf/rpc"
 var ChatService = &rpc.Module{Name: "Chat", Version: "1.0"}
 
 var (
-	SayHello = rpc.ServiceAPI[string, *ChatServiceSayHelloRPCResponse]{
+	SayHello = rpc.ServiceAPI[string, *SayHelloRes]{
 		ModuleName: ChatService.Name,
 		Name:       "RPCSayHello",
 	}
 )
 
-type ChatServiceSayHelloRPCResponse struct {
+type SayHelloRes struct {
 	code int32
 	Msg  string
 }
