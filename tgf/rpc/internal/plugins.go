@@ -28,8 +28,9 @@ var (
 )
 
 type CustomSelector struct {
-	h       *doublejump.Hash
-	servers []string
+	moduleName string
+	h          *doublejump.Hash
+	servers    []string
 }
 
 func (this *CustomSelector) Select(ctx context.Context, servicePath, serviceMethod string, args interface{}) string {
@@ -77,7 +78,9 @@ func (this *CustomSelector) UpdateServer(servers map[string]string) {
 		}
 	}
 	this.servers = ss
-	log.Info("更新服务节点%v", this.servers)
+	if len(this.servers) > 0 {
+		log.Debug("[refresh] moduleName=%v 更新服务节点 services=%v", this.moduleName, this.servers)
+	}
 }
 
 func (this *CustomSelector) checkServerAlive(server string) bool {
@@ -90,9 +93,10 @@ func (this *CustomSelector) checkServerAlive(server string) bool {
 	return false
 }
 
-func (this *CustomSelector) initStruct() {
+func (this *CustomSelector) initStruct(moduleName string) {
 	this.servers = make([]string, 0, 0)
 	this.h = doublejump.NewHash()
+	this.moduleName = moduleName
 }
 
 type RPCXClientHandler struct {
@@ -106,9 +110,9 @@ type ILoginCheck interface {
 	CheckLogin(token string) (bool, string)
 }
 
-func NewCustomSelector() client2.Selector {
+func NewCustomSelector(moduleName string) client2.Selector {
 	res := &CustomSelector{}
-	res.initStruct()
+	res.initStruct(moduleName)
 	return res
 }
 

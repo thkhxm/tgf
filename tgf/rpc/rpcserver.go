@@ -2,8 +2,10 @@ package rpc
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"github.com/cornelk/hashmap"
+	client2 "github.com/rpcxio/rpcx-consul/client"
 	"github.com/smallnest/rpcx/client"
 	"github.com/smallnest/rpcx/protocol"
 	"github.com/smallnest/rpcx/server"
@@ -13,6 +15,7 @@ import (
 	"github.com/thkhxm/tgf/rpc/internal"
 	"github.com/thkhxm/tgf/util"
 	"os"
+	"strings"
 )
 
 //***************************************************
@@ -195,6 +198,60 @@ func (this *ClientOptional) Startup() {
 	//
 	rpcClient = new(Client)
 	rpcClient.clients = hashmap.New[string, client.XClient]()
+	//注册一个basePath的路径
+	discovery := internal.GetDiscovery()
+	baseDiscovery := discovery.RegisterDiscovery("")
+	//获取当前已经注册了的服务
+	for _, v := range baseDiscovery.GetServices() {
+		if strings.Index(v.Key, "/") < 0 {
+			rpcClient.registerClient(discovery, v.Key)
+		}
+	}
+	rpcClient.watchBaseDiscovery(discovery, baseDiscovery)
+}
+
+func (this *Client) watchBaseDiscovery(d internal.IRPCDiscovery, discovery *client2.ConsulDiscovery) {
+	var ()
+	util.Go(func() {
+		for {
+			select {
+			case kv := <-discovery.WatchService():
+				for _, v := range kv {
+					disc := internal.GetDiscovery().GetDiscovery(v.Key)
+					if disc == nil && strings.Index(v.Key, "/") < 0 {
+						log.Debug("[consul] base discovery service %v,%v", v.Key, v.Value)
+						this.registerClient(d, v.Key)
+					}
+				}
+			}
+		}
+	})
+}
+
+func (this *Client) registerClient(d internal.IRPCDiscovery, moduleName string) (xclient client.XClient) {
+	var ()
+	discovery := d.RegisterDiscovery(moduleName)
+	option := client.DefaultOption
+
+	if moduleName == tgf.GatewayServiceModuleName {
+		option.SerializeType = protocol.SerializeNone
+	}
+
+	xclient = client.NewXClient(moduleName, client.Failover, client.SelectByUser, discovery, option)
+	//自定义路由
+	xclient.SetSelector(internal.NewCustomSelector(moduleName))
+	//自定义响应handler
+	xclient.GetPlugins().Add(internal.NewRPCXClientHandler())
+	this.clients.Set(moduleName, xclient)
+	log.Info("[init] 注册rpcx client 服务 module=%v ", moduleName)
+	return
+}
+
+func (this *Client) getClient(moduleName string) (xclient client.XClient) {
+	if val, ok := this.clients.Get(moduleName); ok {
+		xclient = val
+	}
+	return
 }
 
 func getRPCClient() *Client {
@@ -220,6 +277,10 @@ func SendAsyncRPCMessage[Req, Res any](ct context.Context, api *ServiceAPI[Req, 
 		rc      = getRPCClient()
 		xclient = rc.getClient(api.ModuleName)
 	)
+
+	if xclient == nil {
+		return nil, errors.New(fmt.Sprintf("找不到对应模块的服务 moduleName=%v", api.ModuleName))
+	}
 	return xclient.Go(ct, api.Name, api.args, api.reply, done)
 }
 
@@ -230,27 +291,8 @@ func sendMessage(ct context.Context, moduleName, serviceName string, args, reply
 		rc      = getRPCClient()
 		xclient = rc.getClient(moduleName)
 	)
-	return xclient.Go(ct, serviceName, args, reply, done)
-}
-
-func (this *Client) getClient(moduleName string) (xclient client.XClient) {
-	if val, ok := this.clients.Get(moduleName); ok {
-		xclient = val
-	} else {
-		discovery := internal.GetDiscovery().GetDiscovery(moduleName)
-		option := client.DefaultOption
-
-		if moduleName == tgf.GatewayServiceModuleName {
-			option.SerializeType = protocol.SerializeNone
-		}
-
-		xclient = client.NewXClient(moduleName, client.Failover, client.ConsistentHash, discovery, option)
-
-		//自定义路由
-		xclient.GetPlugins().Add(internal.NewCustomSelector())
-		//自定义响应handler
-		xclient.GetPlugins().Add(internal.NewRPCXClientHandler())
-		this.clients.Set(moduleName, xclient)
+	if xclient == nil {
+		return nil, errors.New(fmt.Sprintf("找不到对应模块的服务 moduleName=%v", moduleName))
 	}
-	return
+	return xclient.Go(ct, serviceName, args, reply, done)
 }

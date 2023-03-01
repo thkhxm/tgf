@@ -32,7 +32,7 @@ func TestStartRpcServer(t *testing.T) {
 	rpcServer.WithConsulDiscovery().
 		WithService(service).
 		WithService(service2).
-		WithTCPServer("8839").
+		WithGateway("8038").
 		WithServiceClient().
 		Run()
 
@@ -47,7 +47,7 @@ func TestTcpClientSender(t *testing.T) {
 	// magic number|message type|request method name size|data size|method name|data
 	//for i := 0; i < 10; i++ {
 	//	go func() {
-	add, err := net.ResolveTCPAddr("tcp", "127.0.0.1:8839")
+	add, err := net.ResolveTCPAddr("tcp", "127.0.0.1:8038")
 	client, err := net.DialTCP("tcp", nil, add)
 	if err != nil {
 		t.Logf("client error: %v", err)
@@ -107,6 +107,7 @@ func LogicByteTest() *bytes.Buffer {
 	var msg = "say hello - "
 	data := []byte(msg)
 	reqName := []byte(fmt.Sprintf("%v.%v", service.GetName(), "RPCSayHello"))
+
 	tmp := make([]byte, 0, 6+len(data)+len(reqName))
 	buff := bytes.NewBuffer(tmp)
 	buff.WriteByte(250)

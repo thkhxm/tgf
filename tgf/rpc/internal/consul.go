@@ -7,11 +7,9 @@ import (
 	"github.com/rpcxio/libkv/store"
 	"github.com/rpcxio/rpcx-consul/client"
 	"github.com/rpcxio/rpcx-consul/serverplugin"
-	client2 "github.com/smallnest/rpcx/client"
 	"github.com/smallnest/rpcx/server"
 	"github.com/thkhxm/tgf"
 	"github.com/thkhxm/tgf/log"
-	"github.com/thkhxm/tgf/util"
 	"time"
 )
 
@@ -61,22 +59,8 @@ func (this *ConsulDiscovery) RegisterServer(ip string) server.Plugin {
 	return r
 }
 
-func (this *ConsulDiscovery) RegisterClient(serviceName string) client2.XClient {
-	var (
-		option = client2.DefaultOption
-	)
-	//if this.configService.IsGateway() {
-	//	option.SerializeType = protocol.SerializeNone
-	//}
-	discovery := this.GetDiscovery(serviceName)
-	client := client2.NewXClient(serviceName, client2.Failover, client2.SelectByUser, discovery, option)
-	return client
-}
-
-func (this *ConsulDiscovery) GetDiscovery(moduleName string) *client.ConsulDiscovery {
-	if val, ok := this.discoveryMap.Get(moduleName); ok {
-		return val
-	}
+func (this *ConsulDiscovery) RegisterDiscovery(moduleName string) *client.ConsulDiscovery {
+	var ()
 	var (
 		address  = tgf.GetStrListConfig(tgf.EnvironmentConsulAddress)
 		basePath = tgf.GetStrConfig[string](tgf.EnvironmentConsulPath)
@@ -94,16 +78,17 @@ func (this *ConsulDiscovery) GetDiscovery(moduleName string) *client.ConsulDisco
 		Password:          "",
 	}
 	d, _ := client.NewConsulDiscovery(basePath, moduleName, address, conf)
+	//if moduleName != "" {
 	this.discoveryMap.Set(moduleName, d)
-	util.Go(func() {
-		for {
-			select {
-			case kv := <-d.WatchService():
-				for _, v := range kv {
-					log.Debug("[consul] watch %v service %v,%v", moduleName, v.Key, v.Value)
-				}
-			}
-		}
-	})
+	log.Info("[init] 注册rpcx discovery moduleName=%v", moduleName)
+	//}
+
 	return d
+}
+
+func (this *ConsulDiscovery) GetDiscovery(moduleName string) *client.ConsulDiscovery {
+	if val, ok := this.discoveryMap.Get(moduleName); ok {
+		return val
+	}
+	return nil
 }

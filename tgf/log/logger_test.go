@@ -86,22 +86,3 @@ func TestWarn(t *testing.T) {
 		})
 	}
 }
-
-func TestTrace(t *testing.T) {
-	type args struct {
-		msg    string
-		params []interface{}
-	}
-	tests := []struct {
-		name string
-		args args
-	}{
-		// TODO: Add test cases.
-		{"1", args{"log test 1 %v %v", []interface{}{"a", "b"}}},
-	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			Trace(tt.args.msg, tt.args.params...)
-		})
-	}
-}
