@@ -164,11 +164,11 @@ func (this *TCPServer) handlerConn(conn *net.TCPConn) {
 		conn.Close()
 	}()
 	go func() {
-		defer func() {
-			if err := recover(); err != nil {
-				log.Debug("[tcp] 业务逻辑chan关闭 %v", err)
-			}
-		}()
+		//defer func() {
+		//	if err := recover(); err != nil {
+		//		log.Error("[tcp] 业务逻辑chan关闭 %v", err)
+		//	}
+		//}()
 		for {
 			select {
 			case req := <-reqChan:
@@ -299,7 +299,7 @@ func (this *TCPServer) doLogic(data *RequestData) {
 		err      error
 	)
 	reply := make([]byte, 0)
-	callback, _ := sendMessage(data.User.contextData, data.Module, data.RequestMethod, data.Data, &reply)
+	callback, err := sendMessage(data.User.contextData, data.Module, data.RequestMethod, data.Data, &reply)
 	if err != nil {
 		log.Info("[tcp] 请求异常 数据 [%v] [%v]", data, err)
 		return
