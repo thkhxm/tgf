@@ -4,8 +4,10 @@ import (
 	"bytes"
 	"encoding/binary"
 	"fmt"
+	"github.com/golang/protobuf/proto"
 	"github.com/thkhxm/tgf/rpc"
 	"github.com/thkhxm/tgf/service/api/hall"
+	hallpb "github.com/thkhxm/tgf/service/api/hall/pb"
 	"net"
 	"sync"
 	"testing"
@@ -80,8 +82,8 @@ func LoginByteTest() *bytes.Buffer {
 }
 
 func LogicByteTest() *bytes.Buffer {
-	var msg = "hello world!"
-	data := []byte(msg)
+	var msg = "hello world!   pb"
+	data, _ := proto.Marshal(&hallpb.HallSayRequest{Msg: msg})
 	reqName := []byte(fmt.Sprintf("%v.%v", hallapi.HallService.Name, "SayHello"))
 	tmp := make([]byte, 0, 6+len(data)+len(reqName))
 	buff := bytes.NewBuffer(tmp)
