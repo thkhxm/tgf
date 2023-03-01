@@ -2,10 +2,12 @@ package example
 
 import (
 	"fmt"
+	"github.com/golang/protobuf/proto"
 	"github.com/thkhxm/tgf/log"
 	"github.com/thkhxm/tgf/rpc"
 	"github.com/thkhxm/tgf/service/api/chat"
 	"github.com/thkhxm/tgf/service/api/hall"
+	hallpb "github.com/thkhxm/tgf/service/api/hall/pb"
 	"golang.org/x/net/context"
 )
 
@@ -19,10 +21,10 @@ import (
 //***************************************************
 
 //用户通过网关服,请求HallService的SayHello函数.
-//HallService服务中的SayHello函数,将消息通过rpc请求抵达ChatService服务
-//ChatService通过RPCSayHello函数,重新拼装消息Message,并返回最终字符串
-//HallService收到rpc的返回,将最终结果返回用户所在的网关服
-//网关服接收到HallService的响应,返回响应结果到用户
+////HallService服务中的SayHello函数,将消息通过rpc请求抵达ChatService服务
+////ChatService通过RPCSayHello函数,重新拼装消息Message,并返回最终字符串
+////HallService收到rpc的返回,将最终结果返回用户所在的网关服
+////网关服接收到HallService的响应,返回响应结果到用户
 
 type ChatService struct {
 	rpc.Module
@@ -62,8 +64,14 @@ func (this *HallService) SayHello(ctx context.Context, args *[]byte, reply *[]by
 	var (
 		userId = rpc.GetUserId(ctx)
 		res    = &chatapi.SayHelloRes{}
+		pbReq  = &hallpb.HallSayRequest{}
 	)
-	log.Debug("[example] 收到用户请求 userId=%v msg=%v", userId, string(*args))
+
+	if err := proto.Unmarshal(*args, pbReq); err != nil {
+		return err
+	}
+
+	log.Debug("[example] 收到用户请求 userId=%v msg=%v", userId, pbReq.Msg)
 	rpc.SendRPCMessage(ctx, chatapi.SayHello.New("hello world", res))
 	log.Debug("[example] SayHello userId=%v msg=%v", userId, res.Msg)
 	*reply = []byte(res.Msg)
