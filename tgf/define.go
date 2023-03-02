@@ -32,17 +32,27 @@ const (
 	EnvironmentLoggerLevel Environment = "LOG_LEVEL"
 
 	// EnvironmentRuntimeModule 运行环境,有以下可选运行环境
-	//
+	// dev test release
 	// RuntimeModuleDev RuntimeModuleTest RuntimeModuleRelease
 	EnvironmentRuntimeModule Environment = "RuntimeModule"
 
+	// EnvironmentConsulAddress consul地址
 	EnvironmentConsulAddress Environment = "ConsulAddress"
-	EnvironmentConsulPath    Environment = "ConsulPath"
 
-	EnvironmentRedisAddr     Environment = "RedisAddr"
+	// EnvironmentConsulPath consul路径
+	//
+	// 默认使用/tgf,如需区分不同环境可以使用自定义的不同的路径 例如 /test 或者 /dev /tim
+	EnvironmentConsulPath Environment = "ConsulPath"
+
+	// EnvironmentRedisAddr redis地址 127.0.0.1::6379
+	EnvironmentRedisAddr Environment = "RedisAddr"
+
+	// EnvironmentRedisPassword redis密码
 	EnvironmentRedisPassword Environment = "RedisPassword"
-	EnvironmentRedisDB       Environment = "RedisDB"
 
+	// EnvironmentRedisDB redis的db
+	EnvironmentRedisDB Environment = "RedisDB"
+	// EnvironmentServicePort 当前进程提供的服务端口
 	EnvironmentServicePort = "ServicePort"
 )
 
