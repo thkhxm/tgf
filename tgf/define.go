@@ -71,7 +71,12 @@ const (
 )
 
 const (
-	ContextKeyUserId = "UserId"
+	ContextKeyUserId  = "UserId"
+	ContextKeyRPCType = "RPCType"
+)
+
+const (
+	RPCTip = "rpc_tip"
 )
 
 var GatewayServiceModuleName = "Gate"

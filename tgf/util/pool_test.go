@@ -1,7 +1,6 @@
 package util
 
 import (
-	"github.com/thkhxm/tgf/log"
 	"sync"
 	"testing"
 )
@@ -25,13 +24,13 @@ func TestGo(t *testing.T) {
 	}{
 		// TODO: Add test cases.
 		{"1", args{func() {
-			log.Info("ants test %v", 1)
+			t.Logf("ants test %v", 1)
 		}}},
 		{"2", args{func() {
-			log.Info("ants test %v", 2)
+			t.Logf("ants test %v", 2)
 		}}},
 		{"3", args{func() {
-			log.Info("ants test %v", 3)
+			t.Logf("ants test %v", 3)
 		}}},
 	}
 	for _, tt := range tests {

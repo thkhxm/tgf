@@ -27,6 +27,13 @@ type ICacheService interface {
 	PutMap(key, filed, val string, timeout time.Duration)
 }
 
+type IAutoCacheService[Key comparable, Val any] interface {
+	Get(key Key) (val Val, err error)
+	Set(key Key, val Val) (success bool)
+	Remove(key Key) (success bool)
+	RemoveAll() (success bool)
+}
+
 // Get [Res any]
 // @Description: 通过二级缓存获取数据
 // @param key
@@ -65,6 +72,13 @@ func PutMap[Key comparable, Val any](key string, field Key, val Val, timeout tim
 	f, _ := util.AnyToStr(field)
 	v, _ := util.AnyToStr(val)
 	cache.PutMap(key, f, v, timeout)
+}
+
+// NewAutoCacheManager
+// @Description: 返回一个自动管理的缓存管理
+func NewAutoCacheManager[Key comparable, Val any]() IAutoCacheService[Key, Val] {
+
+	return nil
 }
 
 func WithCacheModule(module tgf.CacheModule) {
