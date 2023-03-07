@@ -26,7 +26,7 @@ func TestExampleService(t *testing.T) {
 	// [1][1][2][2][n][n]
 	// magic number|message type|request method name size|data size|method name|data
 
-	add, err := net.ResolveTCPAddr("tcp", "127.0.0.1:8890")
+	add, err := net.ResolveTCPAddr("tcp", "127.0.0.1:8891")
 	client, err := net.DialTCP("tcp", nil, add)
 	if err != nil {
 		t.Logf("client error: %v", err)
@@ -34,7 +34,7 @@ func TestExampleService(t *testing.T) {
 	}
 
 	//Login
-	loginBuff := LoginByteTest()
+	loginBuff := LoginByteTest("token-testAccount-7")
 	cnt, er := client.Write(loginBuff.Bytes())
 	t.Logf("send login message : %v", loginBuff.Bytes())
 
@@ -56,8 +56,7 @@ func TestExampleService(t *testing.T) {
 	wg.Wait()
 }
 
-func LoginByteTest() *bytes.Buffer {
-	var token = "token-test2022"
+func LoginByteTest(token string) *bytes.Buffer {
 	data := []byte(token)
 	tmp := make([]byte, 0, 4+len(data))
 	buff := bytes.NewBuffer(tmp)

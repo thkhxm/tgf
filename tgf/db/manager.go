@@ -13,18 +13,19 @@ type autoCacheManager[Key comparable, Val any] struct {
 }
 
 func (this *autoCacheManager[Key, Val]) Get(key Key) (val Val, err error) {
-	//TODO implement me
-	panic("implement me")
+	return
 }
 
 func (this *autoCacheManager[Key, Val]) Set(key Key, val Val) (success bool) {
-	//TODO implement me
-	panic("implement me")
+	return
 }
 
 func (this *autoCacheManager[Key, Val]) Remove(key Key) (success bool) {
-	//TODO implement me
-	panic("implement me")
+	return
+}
+
+func (this *autoCacheManager[Key, Val]) RemoveAll() (success bool) {
+	return
 }
 
 //TODO 还需要优化

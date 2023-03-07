@@ -21,6 +21,7 @@ import (
 type IService interface {
 	GetName() string
 	GetVersion() string
+	Startup() (bool, error)
 }
 
 type Module struct {

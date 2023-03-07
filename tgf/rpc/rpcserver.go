@@ -84,16 +84,16 @@ func (this *Server) WithCache(module tgf.CacheModule) {
 	}
 }
 
-func (this *Server) WithTCPServer(port string) *Server {
-	this.afterOptionals = append(this.afterOptionals, func(server *Server) {
-		tcp := newDefaultTCPServer()
-		util.Go(func() {
-			tcp.WithPort(port).Run()
-		})
-		log.Info("[init] 装载TCP服务")
-	})
-	return this
-}
+//func (this *Server) WithTCPServer(port string) *Server {
+//	this.afterOptionals = append(this.afterOptionals, func(server *Server) {
+//		tcp := newDefaultTCPServer()
+//		util.Go(func() {
+//			tcp.WithPort(port).Run()
+//		})
+//		log.Info("[init] 装载TCP服务")
+//	})
+//	return this
+//}
 
 // WithServiceClient
 //
@@ -111,7 +111,14 @@ func (this *Server) WithServiceClient() *Server {
 
 func (this *Server) WithGateway(port string) *Server {
 	var ()
-	return this.WithService(GatewayService()).WithTCPServer(port)
+	this.beforeOptionals = append(this.beforeOptionals, func(server *Server) {
+		builder := newTCPBuilder()
+		builder.WithPort(port)
+		gateway := GatewayService(builder)
+		this.service = append(this.service, gateway)
+		log.Info("[init] 装载逻辑服务[%v@%v]", gateway.GetName(), gateway.GetVersion())
+	})
+	return this
 }
 
 func (this *Server) Run() chan bool {
@@ -141,6 +148,11 @@ func (this *Server) Run() chan bool {
 			err := this.rpcServer.RegisterName(serviceName, service, metaData)
 			if err != nil {
 				log.Error("[init] 注册服务发现失败 serviceName=%v metaDat=%v error=%v", serviceName, metaData, err)
+				continue
+			}
+
+			if startupOK, startupErr := service.Startup(); !startupOK {
+				log.Error("[init] 服务启动异常 serviceName=%v error=%v", serviceName, startupErr)
 				continue
 			}
 			_logServiceMsg += serviceName + " " + metaData + ","
@@ -239,9 +251,9 @@ func (this *Client) registerClient(d internal.IRPCDiscovery, moduleName string) 
 
 	xclient = client.NewXClient(moduleName, client.Failover, client.SelectByUser, discovery, option)
 	//自定义路由
-	xclient.SetSelector(internal.NewCustomSelector(moduleName))
+	xclient.SetSelector(NewCustomSelector(moduleName))
 	//自定义响应handler
-	xclient.GetPlugins().Add(internal.NewRPCXClientHandler())
+	xclient.GetPlugins().Add(NewRPCXClientHandler())
 	this.clients.Set(moduleName, xclient)
 	log.Info("[init] 注册rpcx client 服务 module=%v ", moduleName)
 	return
@@ -268,6 +280,7 @@ func SendRPCMessage[Req, Res any](ct context.Context, api *ServiceAPI[Req, Res])
 		xclient = rc.getClient(api.ModuleName)
 	)
 	call, _ := xclient.Go(ct, api.Name, api.args, api.reply, done)
+	//TODO 添加一个超时跳出的逻辑
 	<-call.Done
 	return call.Error
 }
