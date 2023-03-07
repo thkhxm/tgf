@@ -92,7 +92,6 @@ func (this *CustomSelector) Select(ctx context.Context, servicePath, serviceMeth
 						}, &UploadUserNodeInfoRes{ErrorCode: 0})); err != nil {
 							log.Warn("[rpc] 节点更新异常")
 						}
-
 					}
 				}
 				return
@@ -119,7 +118,7 @@ func (this *CustomSelector) UpdateServer(servers map[string]string) {
 	}
 	this.servers = ss
 	if len(this.servers) > 0 {
-		log.Debug("[refresh] moduleName=%v 更新服务节点 services=%v", this.moduleName, this.servers)
+		log.Debug("[discovery] moduleName=%v 更新服务节点 services=%v", this.moduleName, this.servers)
 	}
 	//TODO 判断是否有变动，如果有变动，清空当前用户的缓存节点
 

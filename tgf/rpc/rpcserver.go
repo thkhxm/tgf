@@ -214,8 +214,8 @@ func (this *ClientOptional) Startup() {
 	baseDiscovery := discovery.RegisterDiscovery("")
 	//获取当前已经注册了的服务
 	for _, v := range baseDiscovery.GetServices() {
-		if strings.Index(v.Key, "/") < 0 {
-			rpcClient.registerClient(discovery, v.Key)
+		if strings.Index(v.Key, "/") > 0 {
+			rpcClient.registerClient(discovery, strings.Split(v.Key, "/")[0])
 		}
 	}
 	rpcClient.watchBaseDiscovery(discovery, baseDiscovery)
@@ -228,10 +228,13 @@ func (this *Client) watchBaseDiscovery(d internal.IRPCDiscovery, discovery *clie
 			select {
 			case kv := <-discovery.WatchService():
 				for _, v := range kv {
-					disc := internal.GetDiscovery().GetDiscovery(v.Key)
-					if disc == nil && strings.Index(v.Key, "/") < 0 {
+					if strings.Index(v.Key, "/") > 0 {
+						moduleName := strings.Split(v.Key, "/")[0]
+						if dis := internal.GetDiscovery().GetDiscovery(moduleName); dis != nil {
+							continue
+						}
 						log.Debug("[consul] base discovery service %v,%v", v.Key, v.Value)
-						this.registerClient(d, v.Key)
+						this.registerClient(d, moduleName)
 					}
 				}
 			}
@@ -296,6 +299,7 @@ func SendRPCMessage[Req, Res any](ct context.Context, api *ServiceAPI[Req, Res])
 
 	return api.reply, call.Error
 }
+
 func SendAsyncRPCMessage[Req, Res any](ct context.Context, api *ServiceAPI[Req, Res]) (*client.Call, error) {
 	var (
 		done    = make(chan *client.Call, 1)
