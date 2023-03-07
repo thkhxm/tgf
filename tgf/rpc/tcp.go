@@ -6,7 +6,6 @@ import (
 	"errors"
 	"fmt"
 	"github.com/cornelk/hashmap"
-	client2 "github.com/smallnest/rpcx/client"
 	"github.com/smallnest/rpcx/share"
 	util2 "github.com/smallnest/rpcx/util"
 	"github.com/thkhxm/tgf"
@@ -82,19 +81,36 @@ const (
 )
 
 type IUserConnectData interface {
+	UpdateUserNodeId(servicePath, nodeId string)
+}
+
+type ITCPService interface {
+	Run()
+	UpdateUserNodeInfo(userId, servicePath, nodeId string) bool
+}
+
+type ITCPBuilder interface {
+	WithPort(port string) ITCPBuilder
+	WithBuffer(readBuffer, writeBuffer int) ITCPBuilder
+	WithLoginCheck(f ILoginCheck) ITCPBuilder
+	Address() string
+	Port() string
+	MaxConnections() int32
+	DeadLineTime() time.Duration
+	ReadBufferSize() int
+	WriteBufferSize() int
+	LoginCheck() ILoginCheck
 }
 
 type TCPServer struct {
-	config    *ServerConfig     //tcp连接配置
+	config    ITCPBuilder       //tcp连接配置
 	conChan   chan *net.TCPConn //客户端连接chan
 	closeChan chan bool         //关闭chan
-	clients   *hashmap.Map[string, client2.XClient]
 	users     *hashmap.Map[string, IUserConnectData]
 	optionals []optional
 	//
 	//是否采用懒加载,rpc的连接.默认为true
 	lazyInitRPC bool
-	loginCheck  internal.ILoginCheck
 	startup     *sync.Once //是否已经启动
 }
 
@@ -107,6 +123,54 @@ type ServerConfig struct {
 	deadLineTime    time.Duration
 	readBufferSize  int
 	writeBufferSize int
+	loginCheck      ILoginCheck
+}
+
+func (this *ServerConfig) Address() string {
+	return this.address
+}
+
+func (this *ServerConfig) Port() string {
+	return this.port
+}
+
+func (this *ServerConfig) MaxConnections() int32 {
+	return this.maxConnections
+}
+
+func (this *ServerConfig) DeadLineTime() time.Duration {
+	return this.deadLineTime
+}
+
+func (this *ServerConfig) ReadBufferSize() int {
+	return this.readBufferSize
+}
+
+func (this *ServerConfig) WriteBufferSize() int {
+	return this.writeBufferSize
+}
+
+func (this *ServerConfig) LoginCheck() ILoginCheck {
+	return this.loginCheck
+}
+
+func (this *ServerConfig) WithPort(port string) ITCPBuilder {
+	var ()
+	this.port = port
+	return this
+}
+
+func (this *ServerConfig) WithBuffer(readBuffer, writeBuffer int) ITCPBuilder {
+	var ()
+	this.readBufferSize = readBuffer
+	this.writeBufferSize = writeBuffer
+	return this
+}
+
+func (this *ServerConfig) WithLoginCheck(f ILoginCheck) ITCPBuilder {
+	var ()
+	this.loginCheck = f
+	return this
 }
 
 type UserConnectData struct {
@@ -199,7 +263,7 @@ func (this *TCPServer) handlerConn(conn *net.TCPConn) {
 
 		case byte(Heartbeat): //处理心跳逻辑
 			connectData.reader.Discard(2)
-			connectData.conn.SetDeadline(time.Now().Add(time.Second * this.config.deadLineTime))
+			connectData.conn.SetDeadline(time.Now().Add(time.Second * this.config.DeadLineTime()))
 			connectData.conn.Write([]byte{byte(Heartbeat)})
 			continue
 		case byte(Login):
@@ -272,7 +336,7 @@ func (this *TCPServer) doLogin(ct *share.Context, token string) {
 
 	// TODO 通过jwt验证token有效性
 	//通过token,获取到uuid
-	if ok, uuid = this.loginCheck.CheckLogin(token); !ok {
+	if ok, uuid = this.config.LoginCheck().CheckLogin(token); !ok {
 		log.Warn("[tcp] login failed token %v , uuid %v", token, uuid)
 		return
 	}
@@ -338,26 +402,8 @@ func (this *TCPServer) doLogic(data *RequestData) {
 	data.User.conn.Write(bp.Bytes())
 }
 
-func (this *TCPServer) WithPort(port string) *TCPServer {
+func (this *TCPServer) Update() {
 	var ()
-	this.optionals = append(this.optionals, func(server *TCPServer) {
-		server.config.port = port
-	})
-	return this
-}
-func (this *TCPServer) WithBuffer(readBuffer, writeBuffer int) {
-	var ()
-	this.optionals = append(this.optionals, func(server *TCPServer) {
-		server.config.readBufferSize = readBuffer
-		server.config.writeBufferSize = writeBuffer
-	})
-
-}
-func (this *TCPServer) WithLoginCheck(f internal.ILoginCheck) {
-	var ()
-	this.optionals = append(this.optionals, func(server *TCPServer) {
-		server.loginCheck = f
-	})
 }
 
 // PostCall
@@ -380,7 +426,7 @@ func (this *TCPServer) Run() {
 			optional(this)
 		}
 		//
-		add, _ := net.ResolveTCPAddr("tcp", fmt.Sprintf("%v:%v", this.config.address, this.config.port))
+		add, _ := net.ResolveTCPAddr("tcp", fmt.Sprintf("%v:%v", this.config.Address(), this.config.Port()))
 		listen, err := net.ListenTCP("tcp", add)
 		if err != nil {
 			log.Info("[init] tcp服务 启动异常 %v", err)
@@ -393,39 +439,60 @@ func (this *TCPServer) Run() {
 			log.Info("[init] tcp selector 启动成功")
 			this.selectorChan()
 		})
-		for {
-			tcp, _ := listen.AcceptTCP()
-			tcp.SetNoDelay(true)                            //无延迟
-			tcp.SetKeepAlive(true)                          //保持激活
-			tcp.SetReadBuffer(this.config.readBufferSize)   //设置读缓冲区大小
-			tcp.SetWriteBuffer(this.config.writeBufferSize) //设置写缓冲区大小
-			tcp.SetDeadline(time.Now().Add(this.config.deadLineTime))
-			this.conChan <- tcp //将链接放入管道中
-		}
+
+		util.Go(func() {
+			log.Info("[init] tcp 开始监听连接")
+			for {
+				tcp, _ := listen.AcceptTCP()
+				tcp.SetNoDelay(true)                              //无延迟
+				tcp.SetKeepAlive(true)                            //保持激活
+				tcp.SetReadBuffer(this.config.ReadBufferSize())   //设置读缓冲区大小
+				tcp.SetWriteBuffer(this.config.WriteBufferSize()) //设置写缓冲区大小
+				tcp.SetDeadline(time.Now().Add(this.config.DeadLineTime()))
+				this.conChan <- tcp //将链接放入管道中
+			}
+		})
 	})
 }
+func (this *TCPServer) UpdateUserNodeInfo(userId, servicePath, nodeId string) bool {
+	var (
+		res = false
+	)
+	if connectData, ok := this.users.Get(userId); ok {
+		connectData.UpdateUserNodeId(servicePath, nodeId)
+		res = true
+	}
+	return res
+}
 
-func newDefaultServerConfig(port string) *ServerConfig {
+func (this *UserConnectData) UpdateUserNodeId(servicePath, nodeId string) {
+	var ()
+	metaData := this.contextData.Value(share.ReqMetaDataKey)
+	if metaData != nil {
+		metaData.(map[string]string)[servicePath] = nodeId
+	}
+}
+
+func newTCPBuilder() ITCPBuilder {
 	serverConfig := &ServerConfig{
 		address:         defaultIp,
-		port:            port,
+		port:            defaultTcpServerPort,
 		readBufferSize:  defaultReadBuffer,
 		writeBufferSize: defaultWriteBuffer,
 		deadLineTime:    defaultDeadLineTime,
 		maxConnections:  defaultMaxConnections,
 	}
+	serverConfig.loginCheck = &internal.LoginCheck{}
 	return serverConfig
 }
 
-func newDefaultTCPServer() *TCPServer {
+func newDefaultTCPServer(builder ITCPBuilder) *TCPServer {
 	server := &TCPServer{}
 	server.optionals = make([]optional, 0)
 	server.lazyInitRPC = defaultLazyInitRPC
-	server.config = newDefaultServerConfig(defaultTcpServerPort)
-	server.clients = hashmap.New[string, client2.XClient]()
+	server.config = builder
 	server.conChan = make(chan *net.TCPConn, maxSynChanConn)
 	server.closeChan = make(chan bool, 1)
 	server.startup = new(sync.Once)
-	server.loginCheck = &internal.LoginCheck{}
 	return server
 }

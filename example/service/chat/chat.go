@@ -38,3 +38,8 @@ func (this *ChatService) GetName() string {
 func (this *ChatService) GetVersion() string {
 	return chatapi.ChatService.Version
 }
+
+func (this *ChatService) Startup() (bool, error) {
+	var ()
+	return true, nil
+}

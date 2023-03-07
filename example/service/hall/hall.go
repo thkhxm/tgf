@@ -31,6 +31,11 @@ func (this *HallService) GetVersion() string {
 	return hallapi.HallService.Version
 }
 
+func (this *HallService) Startup() (bool, error) {
+	var ()
+	return true, nil
+}
+
 func (this *HallService) SayHello(ctx context.Context, args *[]byte, reply *[]byte) error {
 	var (
 		userId = rpc.GetUserId(ctx)

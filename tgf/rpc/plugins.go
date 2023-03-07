@@ -1,4 +1,4 @@
-package internal
+package rpc
 
 import (
 	context2 "context"
@@ -38,6 +38,7 @@ func (this *CustomSelector) clearAllUserCache() {
 	var ()
 	this.cacheManager.RemoveAll()
 }
+
 func (this *CustomSelector) Select(ctx context.Context, servicePath, serviceMethod string, args interface{}) (selected string) {
 	if sc, ok := ctx.(*share.Context); ok {
 		size := len(this.servers)
@@ -82,7 +83,13 @@ func (this *CustomSelector) Select(ctx context.Context, servicePath, serviceMeth
 					//将节点信息放入数据缓存中
 					reqMetaDataKey := fmt.Sprintf(tgf.RedisKeyUserNodeMeta, uid)
 					db.PutMap(reqMetaDataKey, servicePath, selected, reqMetaDataTimeout)
+					var uploadOk = false
 					//推送协议通知用户网关
+					SendRPCMessage(ctx, UploadUserNodeInfo.New(&UploadUserNodeInfoRes{
+						UserId:      uid,
+						NodeId:      selected,
+						ServicePath: servicePath,
+					}, uploadOk))
 				}
 				return
 			}
@@ -132,6 +139,7 @@ func (this *CustomSelector) initStruct(moduleName string) {
 	this.servers = make([]string, 0, 0)
 	this.h = doublejump.NewHash()
 	this.moduleName = moduleName
+	this.cacheManager = db.NewAutoCacheManager[string, string]()
 }
 
 type RPCXClientHandler struct {

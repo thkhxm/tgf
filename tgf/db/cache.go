@@ -77,8 +77,8 @@ func PutMap[Key comparable, Val any](key string, field Key, val Val, timeout tim
 // NewAutoCacheManager
 // @Description: 返回一个自动管理的缓存管理
 func NewAutoCacheManager[Key comparable, Val any]() IAutoCacheService[Key, Val] {
-
-	return nil
+	manager := &autoCacheManager[Key, Val]{}
+	return manager
 }
 
 func WithCacheModule(module tgf.CacheModule) {

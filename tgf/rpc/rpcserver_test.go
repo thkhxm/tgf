@@ -146,6 +146,11 @@ func (this *Demo2Service) GetVersion() string {
 	return "v1.0"
 }
 
+func (this *Demo2Service) Startup() (bool, error) {
+	var ()
+	return true, nil
+}
+
 func (this *Demo2Service) RPCSayHello(ctx context.Context, args *interface{}, reply *interface{}) error {
 	var ()
 	log.Info("[test] rpcx2请求抵达 ")
@@ -163,6 +168,10 @@ func (this *DemoService) GetVersion() string {
 	return "v1.0"
 }
 
+func (this *DemoService) Startup() (bool, error) {
+	var ()
+	return true, nil
+}
 func (this *DemoService) RPCSayHello(ctx context.Context, args *interface{}, reply *interface{}) error {
 	var ()
 	log.Info("[test] rpcx请求抵达 ")
