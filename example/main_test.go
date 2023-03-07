@@ -34,17 +34,19 @@ func TestExampleService(t *testing.T) {
 	}
 
 	//Login
-	loginBuff := LoginByteTest("token-testAccount-7")
+	loginBuff := LoginByteTest("token-testAccount-9")
 	cnt, er := client.Write(loginBuff.Bytes())
 	t.Logf("send login message : %v", loginBuff.Bytes())
-
-	//Logic
-	buff := LogicByteTest()
-	cnt, er = client.Write(buff.Bytes())
-	if er != nil {
-		t.Logf("write len %v error : %v", cnt, er)
+	for i := 0; i < 100; i++ {
+		buff := LogicByteTest()
+		cnt, er = client.Write(buff.Bytes())
+		if er != nil {
+			t.Logf("write len %v error : %v", cnt, er)
+		}
+		t.Logf("send logic message : %v", buff.Bytes())
 	}
-	t.Logf("send logic message : %v", buff.Bytes())
+	//Logic
+
 	//for {
 	//	resBytes := make([]byte, 1024)
 	//	client.Read(resBytes)
