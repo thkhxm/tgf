@@ -68,7 +68,6 @@ const (
 )
 
 const (
-	defaultLazyInitRPC   = true
 	defaultTcpServerPort = "8230"
 	//读缓冲区大小
 	defaultReadBuffer = 1024
@@ -82,6 +81,7 @@ const (
 
 type IUserConnectData interface {
 	UpdateUserNodeId(servicePath, nodeId string)
+	GetContextData() *share.Context
 }
 
 type ITCPService interface {
@@ -109,9 +109,7 @@ type TCPServer struct {
 	users     *hashmap.Map[string, IUserConnectData]
 	optionals []optional
 	//
-	//是否采用懒加载,rpc的连接.默认为true
-	lazyInitRPC bool
-	startup     *sync.Once //是否已经启动
+	startup *sync.Once //是否已经启动
 }
 
 type optional func(server *TCPServer)
@@ -178,7 +176,7 @@ type UserConnectData struct {
 	reqCount    int32
 	reader      *bufio.Reader
 	userId      string
-	contextData context.Context
+	contextData *share.Context
 }
 
 type RequestData struct {
@@ -216,6 +214,7 @@ func (this *TCPServer) handlerConn(conn *net.TCPConn) {
 		reader:      bufio.NewReader(conn),
 		contextData: share.NewContext(context.Background()),
 	}
+
 	log.Debug("[tcp] 接收到一条新的连接 addr=%v ", conn.RemoteAddr().String())
 	//
 	stop := make(chan struct{})
@@ -228,11 +227,6 @@ func (this *TCPServer) handlerConn(conn *net.TCPConn) {
 		conn.Close()
 	}()
 	go func() {
-		//defer func() {
-		//	if err := recover(); err != nil {
-		//		log.Error("[tcp] 业务逻辑chan关闭 %v", err)
-		//	}
-		//}()
 		for {
 			select {
 			case req := <-reqChan:
@@ -284,7 +278,7 @@ func (this *TCPServer) handlerConn(conn *net.TCPConn) {
 			rdLen, err = connectData.reader.Read(allData)
 			data := allData[requestLoginHeadSize:]
 			//
-			this.doLogin(connectData.contextData.(*share.Context), string(data))
+			this.doLogin(connectData, string(data))
 		case byte(Logic): //处理请求业务逻辑
 			head, err = connectData.reader.Peek(int(requestHeadSize))
 			if err != nil {
@@ -328,10 +322,11 @@ func (this *TCPServer) handlerConn(conn *net.TCPConn) {
 	}
 }
 
-func (this *TCPServer) doLogin(ct *share.Context, token string) {
+func (this *TCPServer) doLogin(userData IUserConnectData, token string) {
 	var (
 		key, uuid, reqMetaDataKey string
 		ok                        bool
+		ct                        = userData.GetContextData()
 	)
 
 	// TODO 通过jwt验证token有效性
@@ -355,14 +350,17 @@ func (this *TCPServer) doLogin(ct *share.Context, token string) {
 	reqMetaData := db.GetMap[string, string](reqMetaDataKey)
 	reqMetaData[tgf.ContextKeyUserId] = uuid
 	ct.SetValue(share.ReqMetaDataKey, reqMetaData)
+	this.users.Set(uuid, userData)
 	log.Info("[tcp] login token %v , uuid %v", token, uuid)
 }
 func (this *TCPServer) doLogic(data *RequestData) {
 	var (
-		compress byte = 0
-		err      error
+		compress  byte = 0
+		err       error
+		startTime = time.Now().UnixMilli()
 	)
 	reply := make([]byte, 0)
+
 	callback, err := sendMessage(data.User.contextData, data.Module, data.RequestMethod, data.Data, &reply)
 	if err != nil {
 		log.Info("[tcp] 请求异常 数据 [%v] [%v]", data, err)
@@ -373,7 +371,8 @@ func (this *TCPServer) doLogic(data *RequestData) {
 		log.Info("[tcp] 请求异常 数据 [%v] [%v]", data, callback.Error)
 		return
 	}
-	log.Info("[tcp] 请求数据 [%v]", reply)
+	consumeTime := time.Now().UnixMilli() - startTime
+	log.Debug("[tcp] 响应 module=%v serviceName=%v consumeTime=%v", data.Module, data.RequestMethod, consumeTime)
 	bp := bytebufferpool.Get()
 	// [1][1][2][4][n][n]
 	// message type|compress|request method name size|data size|method name|data
@@ -472,7 +471,10 @@ func (this *UserConnectData) UpdateUserNodeId(servicePath, nodeId string) {
 		metaData.(map[string]string)[servicePath] = nodeId
 	}
 }
-
+func (this *UserConnectData) GetContextData() *share.Context {
+	var ()
+	return this.contextData
+}
 func newTCPBuilder() ITCPBuilder {
 	serverConfig := &ServerConfig{
 		address:         defaultIp,
@@ -489,10 +491,10 @@ func newTCPBuilder() ITCPBuilder {
 func newDefaultTCPServer(builder ITCPBuilder) *TCPServer {
 	server := &TCPServer{}
 	server.optionals = make([]optional, 0)
-	server.lazyInitRPC = defaultLazyInitRPC
 	server.config = builder
 	server.conChan = make(chan *net.TCPConn, maxSynChanConn)
 	server.closeChan = make(chan bool, 1)
 	server.startup = new(sync.Once)
+	server.users = hashmap.New[string, IUserConnectData]()
 	return server
 }

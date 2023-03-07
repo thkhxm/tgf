@@ -45,11 +45,11 @@ func TestExampleService(t *testing.T) {
 		t.Logf("write len %v error : %v", cnt, er)
 	}
 	t.Logf("send logic message : %v", buff.Bytes())
-	for {
-		resBytes := make([]byte, 1024)
-		client.Read(resBytes)
-		t.Logf("response message : %v", resBytes)
-	}
+	//for {
+	//	resBytes := make([]byte, 1024)
+	//	client.Read(resBytes)
+	//	t.Logf("response message : %v", resBytes)
+	//}
 
 	wg := sync.WaitGroup{}
 	wg.Add(1)

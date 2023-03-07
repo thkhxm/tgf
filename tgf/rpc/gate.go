@@ -37,10 +37,12 @@ func (this *GateService) Startup() (bool, error) {
 	return true, nil
 }
 
-func (this *GateService) UploadUserNodeInfo(ctx context.Context, args *UploadUserNodeInfoRes, reply *bool) error {
+func (this *GateService) UploadUserNodeInfo(ctx context.Context, args *UploadUserNodeInfoReq, reply *UploadUserNodeInfoRes) error {
 	var ()
-	*reply = this.tcpService.UpdateUserNodeInfo(args.UserId, args.ServicePath, args.NodeId)
-	log.Debug("[gate] 通过rpc请求 修改用户节点信息 userId=%v servicePath=%v nodeId=%v res=%v", args.UserId, args.ServicePath, args.NodeId, reply)
+	if ok := this.tcpService.UpdateUserNodeInfo(args.UserId, args.ServicePath, args.NodeId); !ok {
+		reply.ErrorCode = -1
+	}
+	log.Debug("[gate] 修改用户节点信息 userId=%v servicePath=%v nodeId=%v res=%v", args.UserId, args.ServicePath, args.NodeId, reply)
 	return nil
 }
 
@@ -55,14 +57,17 @@ func GatewayService(tcpBuilder ITCPBuilder) IService {
 var Gate = &Module{Name: "Gate", Version: "1.0"}
 
 var (
-	UploadUserNodeInfo = &ServiceAPI[*UploadUserNodeInfoRes, bool]{
+	UploadUserNodeInfo = &ServiceAPI[*UploadUserNodeInfoReq, *UploadUserNodeInfoRes]{
 		ModuleName: Gate.Name,
 		Name:       "UploadUserNodeInfo",
 	}
 )
 
-type UploadUserNodeInfoRes struct {
+type UploadUserNodeInfoReq struct {
 	UserId      string
 	NodeId      string
 	ServicePath string
+}
+type UploadUserNodeInfoRes struct {
+	ErrorCode int32
 }

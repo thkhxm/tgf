@@ -7,7 +7,6 @@ import (
 	"github.com/cornelk/hashmap"
 	client2 "github.com/rpcxio/rpcx-consul/client"
 	"github.com/smallnest/rpcx/client"
-	"github.com/smallnest/rpcx/protocol"
 	"github.com/smallnest/rpcx/server"
 	"github.com/thkhxm/tgf"
 	"github.com/thkhxm/tgf/db"
@@ -245,9 +244,9 @@ func (this *Client) registerClient(d internal.IRPCDiscovery, moduleName string) 
 	discovery := d.RegisterDiscovery(moduleName)
 	option := client.DefaultOption
 
-	if moduleName == tgf.GatewayServiceModuleName {
-		option.SerializeType = protocol.SerializeNone
-	}
+	//if moduleName == tgf.GatewayServiceModuleName {
+	//	option.SerializeType = protocol.SerializeNone
+	//}
 
 	xclient = client.NewXClient(moduleName, client.Failover, client.SelectByUser, discovery, option)
 	//自定义路由
@@ -273,16 +272,29 @@ func getRPCClient() *Client {
 	return rpcClient
 }
 
-func SendRPCMessage[Req, Res any](ct context.Context, api *ServiceAPI[Req, Res]) error {
+func SendRPCMessage[Req, Res any](ct context.Context, api *ServiceAPI[Req, Res]) (res Res, err error) {
 	var (
-		done    = make(chan *client.Call, 10)
+		done    = make(chan *client.Call, 1)
 		rc      = getRPCClient()
 		xclient = rc.getClient(api.ModuleName)
 	)
-	call, _ := xclient.Go(ct, api.Name, api.args, api.reply, done)
-	//TODO 添加一个超时跳出的逻辑
+
+	if xclient == nil {
+		return res, errors.New(fmt.Sprintf("找不到对应模块的服务 moduleName=%v serviceName=%v", api.ModuleName, api.Name))
+	}
+	call, err := xclient.Go(ct, api.Name, api.args, api.reply, done)
+	if err != nil {
+		return res, errors.New(fmt.Sprintf("rpc请求异常 moduleName=%v serviceName=%v error=%v", api.ModuleName, api.Name, err))
+	}
+	//这里需要处理超时，避免channel的内存泄漏
 	<-call.Done
-	return call.Error
+	defer func() {
+		if call.Error != nil {
+			log.Warn("[rpc] RPC module=%v serviceName=%v error=%v", api.ModuleName, api.Name, call.Error)
+		}
+	}()
+
+	return api.reply, call.Error
 }
 func SendAsyncRPCMessage[Req, Res any](ct context.Context, api *ServiceAPI[Req, Res]) (*client.Call, error) {
 	var (
@@ -290,7 +302,6 @@ func SendAsyncRPCMessage[Req, Res any](ct context.Context, api *ServiceAPI[Req, 
 		rc      = getRPCClient()
 		xclient = rc.getClient(api.ModuleName)
 	)
-
 	if xclient == nil {
 		return nil, errors.New(fmt.Sprintf("找不到对应模块的服务 moduleName=%v", api.ModuleName))
 	}

@@ -83,13 +83,17 @@ func (this *CustomSelector) Select(ctx context.Context, servicePath, serviceMeth
 					//将节点信息放入数据缓存中
 					reqMetaDataKey := fmt.Sprintf(tgf.RedisKeyUserNodeMeta, uid)
 					db.PutMap(reqMetaDataKey, servicePath, selected, reqMetaDataTimeout)
-					var uploadOk = false
-					//推送协议通知用户网关
-					SendRPCMessage(ctx, UploadUserNodeInfo.New(&UploadUserNodeInfoRes{
-						UserId:      uid,
-						NodeId:      selected,
-						ServicePath: servicePath,
-					}, uploadOk))
+					if UploadUserNodeInfo.ModuleName != servicePath {
+						//推送协议通知用户网关
+						if _, err := SendRPCMessage(ctx, UploadUserNodeInfo.New(&UploadUserNodeInfoReq{
+							UserId:      uid,
+							NodeId:      selected,
+							ServicePath: servicePath,
+						}, &UploadUserNodeInfoRes{ErrorCode: 0})); err != nil {
+							log.Warn("[rpc] 节点更新异常")
+						}
+
+					}
 				}
 				return
 			}
