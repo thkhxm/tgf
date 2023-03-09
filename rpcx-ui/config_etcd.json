@@ -1,9 +1,0 @@
-{
-	"registry_type": "etcd",
-	"registry_url": "localhost:2379",
-	"service_base_url": "/rpcx",
-	"host": "0.0.0.0",
-	"port": 9981,
-	"user": "admin",
-	"password": "admin"
-}
