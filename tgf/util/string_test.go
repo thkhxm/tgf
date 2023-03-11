@@ -1,7 +1,8 @@
-package util
+package util_test
 
 import (
 	"encoding/json"
+	"github.com/thkhxm/tgf/util"
 	"reflect"
 	"testing"
 )
@@ -32,7 +33,7 @@ func TestStrToAny(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			got, err := StrToAny[StringDemoType](tt.args.a)
+			got, err := util.StrToAny[StringDemoType](tt.args.a)
 			if (err != nil) != tt.wantErr {
 				t.Errorf("StrToAny() error = %v, wantErr %v", err, tt.wantErr)
 				return
@@ -42,6 +43,15 @@ func TestStrToAny(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestRecover(t *testing.T) {
+	defer func() {
+		r := recover()
+		a := r.(string)
+		t.Logf("err %v", a)
+	}()
+	panic("test panic")
 }
 
 type StringDemoType struct {

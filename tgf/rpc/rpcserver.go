@@ -83,17 +83,6 @@ func (this *Server) WithCache(module tgf.CacheModule) {
 	}
 }
 
-//func (this *Server) WithTCPServer(port string) *Server {
-//	this.afterOptionals = append(this.afterOptionals, func(server *Server) {
-//		tcp := newDefaultTCPServer()
-//		util.Go(func() {
-//			tcp.WithPort(port).Run()
-//		})
-//		log.Info("[init] 装载TCP服务")
-//	})
-//	return this
-//}
-
 // WithServiceClient
 //
 //	@Description: 注册rpcx的客户端程序

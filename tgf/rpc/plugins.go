@@ -3,6 +3,7 @@ package rpc
 import (
 	context2 "context"
 	"fmt"
+	"github.com/cornelk/hashmap"
 	"github.com/edwingeng/doublejump"
 	client2 "github.com/smallnest/rpcx/client"
 	"github.com/smallnest/rpcx/share"
@@ -10,7 +11,6 @@ import (
 	"github.com/thkhxm/tgf/db"
 	"github.com/thkhxm/tgf/log"
 	"golang.org/x/net/context"
-	"sort"
 	"time"
 )
 
@@ -30,7 +30,7 @@ var (
 type CustomSelector struct {
 	moduleName   string
 	h            *doublejump.Hash
-	servers      []string
+	servers      *hashmap.Map[string, string]
 	cacheManager db.IAutoCacheService[string, string]
 }
 
@@ -41,7 +41,7 @@ func (this *CustomSelector) clearAllUserCache() {
 
 func (this *CustomSelector) Select(ctx context.Context, servicePath, serviceMethod string, args interface{}) (selected string) {
 	if sc, ok := ctx.(*share.Context); ok {
-		size := len(this.servers)
+		size := this.servers.Len()
 		switch size {
 		case 0:
 			return ""
@@ -103,43 +103,39 @@ func (this *CustomSelector) Select(ctx context.Context, servicePath, serviceMeth
 }
 func (this *CustomSelector) UpdateServer(servers map[string]string) {
 	// TODO: 新增虚拟节点，优化hash的命中分布
-	ss := make([]string, 0, len(servers))
+	clearUserCache := false
 	for k := range servers {
 		this.h.Add(k)
-		ss = append(ss, k)
+		clearUserCache = this.servers.Insert(k, k) || clearUserCache
 	}
 
-	sort.Slice(ss, func(i, j int) bool { return ss[i] < ss[j] })
-
-	for _, k := range this.servers {
+	this.servers.Range(func(k string, v string) bool {
 		if servers[k] == "" { // remove
 			this.h.Remove(k)
+			clearUserCache = true
 		}
-	}
-	this.servers = ss
-	if len(this.servers) > 0 {
+		return true
+	})
+
+	if clearUserCache {
+		this.clearAllUserCache()
 		log.Debug("[discovery] moduleName=%v 更新服务节点 services=%v", this.moduleName, this.servers)
 	}
-	//TODO 判断是否有变动，如果有变动，清空当前用户的缓存节点
 
-	this.clearAllUserCache()
 }
 
-func (this *CustomSelector) checkServerAlive(server string) bool {
+func (this *CustomSelector) checkServerAlive(server string) (h bool) {
 	var ()
 	if server == "" {
 		return false
 	}
-	for _, s := range this.servers {
-		if s == server {
-			return true
-		}
-	}
-	return false
+
+	_, h = this.servers.Get(server)
+	return
 }
 
 func (this *CustomSelector) initStruct(moduleName string) {
-	this.servers = make([]string, 0, 0)
+	this.servers = hashmap.New[string, string]()
 	this.h = doublejump.NewHash()
 	this.moduleName = moduleName
 	this.cacheManager = db.NewAutoCacheManager[string, string]()
