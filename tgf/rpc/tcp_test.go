@@ -1,4 +1,4 @@
-package rpc
+package rpc_test
 
 //***************************************************
 //@Link  https://github.com/thkhxm/tgf

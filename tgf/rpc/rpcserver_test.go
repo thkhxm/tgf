@@ -1,4 +1,4 @@
-package rpc
+package rpc_test
 
 import (
 	"bytes"
@@ -7,6 +7,7 @@ import (
 	client2 "github.com/rpcxio/rpcx-consul/client"
 	"github.com/smallnest/rpcx/client"
 	"github.com/thkhxm/tgf"
+	"github.com/thkhxm/tgf/rpc"
 
 	"github.com/thkhxm/tgf/log"
 	"golang.org/x/net/context"
@@ -25,7 +26,7 @@ import (
 //***************************************************
 
 func TestStartRpcServer(t *testing.T) {
-	rpcServer := NewRPCServer()
+	rpcServer := rpc.NewRPCServer()
 	service := new(DemoService)
 
 	service2 := new(Demo2Service)
@@ -94,7 +95,7 @@ func LoginByteTest() *bytes.Buffer {
 	tmp := make([]byte, 0, 4+len(data))
 	buff := bytes.NewBuffer(tmp)
 	buff.WriteByte(250)
-	buff.WriteByte(byte(Login))
+	buff.WriteByte(byte(rpc.Login))
 	reqSizeLenByte := make([]byte, 2)
 	binary.BigEndian.PutUint16(reqSizeLenByte, uint16(len(data)))
 	buff.Write(reqSizeLenByte)
@@ -111,7 +112,7 @@ func LogicByteTest() *bytes.Buffer {
 	tmp := make([]byte, 0, 6+len(data)+len(reqName))
 	buff := bytes.NewBuffer(tmp)
 	buff.WriteByte(250)
-	buff.WriteByte(byte(Logic))
+	buff.WriteByte(byte(rpc.Logic))
 	reqLenByte := make([]byte, 2)
 	binary.BigEndian.PutUint16(reqLenByte, uint16(len(reqName)))
 	buff.Write(reqLenByte)
