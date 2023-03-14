@@ -26,9 +26,11 @@ type iCacheService interface {
 	Set(key string, val any, timeout time.Duration)
 	GetMap(key string) map[string]string
 	PutMap(key, filed, val string, timeout time.Duration)
+	Del(key string)
+	DelNow(key string)
 }
 
-type IAutoCacheService[Key comparable, Val any] interface {
+type IAutoCacheService[Key cacheKey, Val any] interface {
 	Get(key Key) (val Val, err error)
 	Set(key Key, val Val) (success bool)
 	Remove(key Key) (success bool)
@@ -39,10 +41,11 @@ type IAutoCacheService[Key comparable, Val any] interface {
 // @Description: 通过二级缓存获取数据
 // @param key
 // @return res
-func Get[Res any](key string) (res Res) {
+func Get[Res any](key string) (res Res, success bool) {
 	val := cache.Get(key)
 	if val != "" {
 		res, _ = util.StrToAny[Res](val)
+		success = true
 	}
 	return
 }
@@ -57,63 +60,122 @@ func Set(key string, val any, timeout time.Duration) {
 	}
 }
 
-func GetMap[Key comparable, Val any](key string) map[Key]Val {
+func GetMap[Key cacheKey, Val any](key string) (res map[Key]Val, success bool) {
 	data := cache.GetMap(key)
-
-	res := make(map[Key]Val, len(data))
-	for k, v := range data {
-		kk, _ := util.StrToAny[Key](k)
-		vv, _ := util.StrToAny[Val](v)
-		res[kk] = vv
+	if data != nil && len(data) > 0 {
+		res = make(map[Key]Val, len(data))
+		for k, v := range data {
+			kk, _ := util.StrToAny[Key](k)
+			vv, _ := util.StrToAny[Val](v)
+			res[kk] = vv
+		}
+		success = true
 	}
-	return res
+	return
 }
 
-func PutMap[Key comparable, Val any](key string, field Key, val Val, timeout time.Duration) {
+func PutMap[Key cacheKey, Val any](key string, field Key, val Val, timeout time.Duration) {
 	f, _ := util.AnyToStr(field)
 	v, _ := util.AnyToStr(val)
 	cache.PutMap(key, f, v, timeout)
 }
 
-type AutoCacheBuilder[Key comparable, Val any] struct {
+func Del(key string) {
+	cache.Del(key)
+}
+func DelNow(key string) {
+	cache.DelNow(key)
+}
+
+// AutoCacheBuilder [Key comparable,Val any]
+// @Description: 自动化缓存Builder
+type AutoCacheBuilder[Key cacheKey, Val any] struct {
+
+	//数据是否在本地存储
+	mem bool
+
+	//
+
+	//数据是否缓存
+	cache bool
 	//获取唯一key的拼接函数
 	keyFun func(key Key) string
-	//数据是否在本地存储
-	mem       bool
+
+	//
+
+	//数据是否持久化
+	longevity bool
+	//持久化表名
 	tableName string
+
+	//
+	//是否自动缓存数据
+	autoCache    bool
+	cacheTimeOut time.Duration
 }
 
 func (this *AutoCacheBuilder[Key, Val]) New() IAutoCacheService[Key, Val] {
 	var ()
 	manager := &autoCacheManager[Key, Val]{}
 	manager.builder = this
+	manager.InitStruct()
 	return manager
 }
 
-func NewDefaultAutoCacheManager[Key comparable, Val any](cacheKey string) IAutoCacheService[Key, Val] {
+// NewDefaultAutoCacheManager [Key comparable, Val any]
+//
+//	@Description: 创建一个默认的自动化数据管理，默认不包含持久化数据落地(mysql)，包含本地缓存，cache缓存(redis)
+//	@param cacheKey cache缓存使用的组合key，例如user:1001 那么这里应该传入user即可，拼装方式为cacheKey:key
+//	@return IAutoCacheService [Key comparable, Val any] 返回一个全新的自动化数据缓存管理对象
+func NewDefaultAutoCacheManager[Key cacheKey, Val any](cacheKey string) IAutoCacheService[Key, Val] {
 	builder := &AutoCacheBuilder[Key, Val]{}
 	builder.keyFun = func(key Key) string {
 		return fmt.Sprintf("%v:%v", cacheKey, key)
 	}
-	manager := &autoCacheManager[Key, Val]{}
-	return manager
+	builder.mem = true
+	builder.cache = true
+	builder.cacheTimeOut = time.Hour * 24 * 3
+	builder.longevity = false
+	builder.tableName = ""
+	return builder.New()
 }
 
-func NewLongevityAutoCacheManager[Key comparable, Val any](cacheKey, tableName string) IAutoCacheService[Key, Val] {
+// NewLongevityAutoCacheManager [Key comparable, Val any]
+//
+//	@Description: 创建一个持久化的自动化数据管理，包含持久化数据落地(mysql)，包含本地缓存，cache缓存(redis)
+//	@param cacheKey
+//	@param tableName
+//	@return IAutoCacheService [Key comparable, Val any]
+func NewLongevityAutoCacheManager[Key cacheKey, Val any](cacheKey, tableName string) IAutoCacheService[Key, Val] {
 	builder := &AutoCacheBuilder[Key, Val]{}
 	builder.keyFun = func(key Key) string {
 		return fmt.Sprintf("%v:%v", cacheKey, key)
 	}
+	builder.mem = true
+	builder.cache = true
+	builder.cacheTimeOut = time.Hour * 24 * 3
+	builder.longevity = true
 	builder.tableName = tableName
-	manager := &autoCacheManager[Key, Val]{}
-	return manager
+
+	return builder.New()
 }
 
-// NewAutoCacheManager
-// @Description: 返回一个自动管理的缓存管理
-func NewAutoCacheManager[Key comparable, Val any]() IAutoCacheService[Key, Val] {
-	manager := &autoCacheManager[Key, Val]{}
-	return manager
+// NewAutoCacheManager [Key comparable, Val any]
+// @Description: 创建一个持久化的自动化数据管理，包含本地缓存，不包含持久化数据落地(mysql)，cache缓存(redis)
+func NewAutoCacheManager[Key cacheKey, Val any]() IAutoCacheService[Key, Val] {
+	builder := &AutoCacheBuilder[Key, Val]{}
+	builder.keyFun = func(key Key) string {
+		return ""
+	}
+	builder.mem = true
+	builder.cache = false
+	builder.longevity = false
+	builder.tableName = ""
+	return builder.New()
+}
+
+func NewAutoCacheBuilder[Key cacheKey, Val any]() *AutoCacheBuilder[Key, Val] {
+	return &AutoCacheBuilder[Key, Val]{}
 }
 
 func WithCacheModule(module tgf.CacheModule) {

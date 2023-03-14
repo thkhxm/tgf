@@ -52,6 +52,16 @@ func (this *redisService) PutMap(key, filed, val string, timeout time.Duration) 
 	}
 }
 
+func (this *redisService) Del(key string) {
+	var ()
+	this.client.Expire(context.Background(), key, time.Minute*3)
+}
+
+func (this *redisService) DelNow(key string) {
+	var ()
+	this.client.Del(context.Background(), key)
+}
+
 func (this *redisService) TryLock(key string) (*redislock.Lock, error) {
 	var ()
 	lock := redislock.New(service.client)
