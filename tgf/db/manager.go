@@ -10,6 +10,8 @@ package db
 //***************************************************
 
 type autoCacheManager[Key comparable, Val any] struct {
+	builder *AutoCacheBuilder[Key, Val]
+	//
 }
 
 func (this *autoCacheManager[Key, Val]) Get(key Key) (val Val, err error) {
@@ -24,7 +26,7 @@ func (this *autoCacheManager[Key, Val]) Remove(key Key) (success bool) {
 	return
 }
 
-func (this *autoCacheManager[Key, Val]) RemoveAll() (success bool) {
+func (this *autoCacheManager[Key, Val]) Reset() (success bool) {
 	return
 }
 

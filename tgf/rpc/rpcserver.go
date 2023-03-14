@@ -15,6 +15,7 @@ import (
 	"github.com/thkhxm/tgf/util"
 	"os"
 	"strings"
+	"sync"
 )
 
 //***************************************************
@@ -257,9 +258,18 @@ func (this *Client) getClient(moduleName string) (xclient client.XClient) {
 	return
 }
 
+var singletonLock = &sync.Mutex{}
+
 func getRPCClient() *Client {
+
 	if rpcClient == nil {
-		log.Warn("[rpc] RPCClient没有初始化,清调用rpc.NewRPCClient函数进行实例化")
+		singletonLock.Lock()
+		defer singletonLock.Unlock()
+		if rpcClient == nil {
+			newRPCClient().Startup()
+			log.Info("[init] 装载RPCClient服务")
+		}
+		//log.Warn("[rpc] RPCClient没有初始化,清调用rpc.NewRPCClient函数进行实例化")
 	}
 	return rpcClient
 }
@@ -285,10 +295,15 @@ func SendRPCMessage[Req, Res any](ct context.Context, api *ServiceAPI[Req, Res])
 			log.Warn("[rpc] RPC module=%v serviceName=%v error=%v", api.ModuleName, api.Name, call.Error)
 		}
 	}()
-
 	return api.reply, call.Error
 }
 
+// SendAsyncRPCMessage [Req, Res any]
+// @Description:  异步rpc请求,使用该接口时,需要确保call中的chan被消费, 避免chan的泄露
+// @param ct
+// @param api
+// @return *client.Call
+// @return error
 func SendAsyncRPCMessage[Req, Res any](ct context.Context, api *ServiceAPI[Req, Res]) (*client.Call, error) {
 	var (
 		done    = make(chan *client.Call, 1)
@@ -301,15 +316,14 @@ func SendAsyncRPCMessage[Req, Res any](ct context.Context, api *ServiceAPI[Req, 
 	return xclient.Go(ct, api.Name, api.args, api.reply, done)
 }
 
-func sendMessage(ct context.Context, moduleName, serviceName string, args, reply interface{}) (*client.Call, error) {
+func sendMessage(ct IUserConnectData, moduleName, serviceName string, args, reply interface{}) (*client.Call, error) {
 	var (
 		//TODO 这里的chan，可以根据用户，每个用户自己维护自己的一个chan，这样可以保证，用户级别的消息队列
-		done    = make(chan *client.Call, 10)
 		rc      = getRPCClient()
 		xclient = rc.getClient(moduleName)
 	)
 	if xclient == nil {
 		return nil, errors.New(fmt.Sprintf("找不到对应模块的服务 moduleName=%v", moduleName))
 	}
-	return xclient.Go(ct, serviceName, args, reply, done)
+	return xclient.Go(ct.GetContextData(), serviceName, args, reply, ct.GetChannel())
 }

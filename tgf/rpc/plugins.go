@@ -36,7 +36,7 @@ type CustomSelector struct {
 
 func (this *CustomSelector) clearAllUserCache() {
 	var ()
-	this.cacheManager.RemoveAll()
+	this.cacheManager.Reset()
 }
 
 func (this *CustomSelector) Select(ctx context.Context, servicePath, serviceMethod string, args interface{}) (selected string) {
