@@ -28,7 +28,7 @@ func main() {
 		//启动gate服务在当前进程,gate加载的同时，会加载tcp服务监听用户的请求
 		WithGateway("8891").
 		//注册rpc服务请求,用于远程调用其他服务(不注册的话,在使用rpc请求的时候也会自动注册)
-		WithServiceClient().
+		//WithServiceClient().
 		Run()
 	<-closeChan
 	log.Info("<-------------------------服务器关闭------------------------->")

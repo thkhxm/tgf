@@ -34,11 +34,11 @@ func TestExampleService(t *testing.T) {
 	}
 
 	//Login
-	loginBuff := LoginByteTest("token-testAccount-9")
+	loginBuff := LoginByteTest("token-testAccount-10")
 	cnt, er := client.Write(loginBuff.Bytes())
 	t.Logf("send login message : %v", loginBuff.Bytes())
-	for i := 0; i < 100; i++ {
-		buff := LogicByteTest()
+	for i := 0; i < 10; i++ {
+		buff := LogicByteTest(fmt.Sprintf("send message %v", i))
 		cnt, er = client.Write(buff.Bytes())
 		if er != nil {
 			t.Logf("write len %v error : %v", cnt, er)
@@ -71,8 +71,7 @@ func LoginByteTest(token string) *bytes.Buffer {
 	return buff
 }
 
-func LogicByteTest() *bytes.Buffer {
-	var msg = "hello world!   pb"
+func LogicByteTest(msg string) *bytes.Buffer {
 	data, _ := proto.Marshal(&hallpb.HallSayRequest{Msg: msg})
 	reqName := []byte(fmt.Sprintf("%v.%v", hallapi.HallService.Name, "SayHello"))
 	tmp := make([]byte, 0, 6+len(data)+len(reqName))

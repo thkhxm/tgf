@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"github.com/cornelk/hashmap"
+	"github.com/smallnest/rpcx/client"
 	"github.com/smallnest/rpcx/share"
 	util2 "github.com/smallnest/rpcx/util"
 	"github.com/thkhxm/tgf"
@@ -82,6 +83,7 @@ const (
 type IUserConnectData interface {
 	UpdateUserNodeId(servicePath, nodeId string)
 	GetContextData() *share.Context
+	GetChannel() chan *client.Call
 }
 
 type ITCPService interface {
@@ -177,6 +179,7 @@ type UserConnectData struct {
 	reader      *bufio.Reader
 	userId      string
 	contextData *share.Context
+	reqChan     chan *client.Call
 }
 
 type RequestData struct {
@@ -213,6 +216,7 @@ func (this *TCPServer) handlerConn(conn *net.TCPConn) {
 		reqCount:    0,
 		reader:      bufio.NewReader(conn),
 		contextData: share.NewContext(context.Background()),
+		reqChan:     make(chan *client.Call, 1),
 	}
 
 	log.Debug("[tcp] 接收到一条新的连接 addr=%v ", conn.RemoteAddr().String())
@@ -361,7 +365,7 @@ func (this *TCPServer) doLogic(data *RequestData) {
 	)
 	reply := make([]byte, 0)
 
-	callback, err := sendMessage(data.User.contextData, data.Module, data.RequestMethod, data.Data, &reply)
+	callback, err := sendMessage(data.User, data.Module, data.RequestMethod, data.Data, &reply)
 	if err != nil {
 		log.Info("[tcp] 请求异常 数据 [%v] [%v]", data, err)
 		return
@@ -474,6 +478,10 @@ func (this *UserConnectData) UpdateUserNodeId(servicePath, nodeId string) {
 func (this *UserConnectData) GetContextData() *share.Context {
 	var ()
 	return this.contextData
+}
+func (this *UserConnectData) GetChannel() chan *client.Call {
+	var ()
+	return this.reqChan
 }
 func newTCPBuilder() ITCPBuilder {
 	serverConfig := &ServerConfig{
