@@ -1,5 +1,9 @@
 package db
 
+import (
+	"github.com/cornelk/hashmap"
+)
+
 //***************************************************
 //@Link  https://github.com/thkhxm/tgf
 //@Link  https://gitee.com/timgame/tgf
@@ -9,25 +13,91 @@ package db
 //2023/2/27
 //***************************************************
 
-type autoCacheManager[Key comparable, Val any] struct {
+type cacheKey interface {
+	~int | ~int8 | ~int16 | ~int32 | ~int64 | ~uint | ~uint8 | ~uint16 | ~uint32 | ~uint64 | ~uintptr | ~float32 | ~float64 | ~string
+}
+
+type autoCacheManager[Key cacheKey, Val any] struct {
 	builder *AutoCacheBuilder[Key, Val]
 	//
+	cacheMap *hashmap.Map[Key, Val]
 }
 
 func (this *autoCacheManager[Key, Val]) Get(key Key) (val Val, err error) {
+	var suc bool
+	//先从本地缓存获取
+	if this.mem() {
+		if val, suc = this.cacheMap.Get(key); suc {
+			return
+		}
+	}
+	//从cache缓存中获取
+	if this.cache() {
+		if val, suc = Get[Val](this.getCacheKey(key)); suc {
+			this.cacheMap.Set(key, val)
+		}
+	}
+	//TODO 从db获取
 	return
 }
 
 func (this *autoCacheManager[Key, Val]) Set(key Key, val Val) (success bool) {
+	this.cacheMap.Set(key, val)
+	if this.cache() {
+		Set(this.getCacheKey(key), val, this.builder.cacheTimeOut)
+	}
+	success = true
 	return
 }
 
 func (this *autoCacheManager[Key, Val]) Remove(key Key) (success bool) {
+	this.cacheMap.Del(key)
+	//设置过期时间，不直接删除
+	if this.cache() {
+		Del(this.getCacheKey(key))
+	}
+	success = true
 	return
 }
 
 func (this *autoCacheManager[Key, Val]) Reset() (success bool) {
+	//TODO 缓存之前的列表
+	this.toLongevity()
+
+	//重新创建一个本地缓存，丢弃之前的引用
+	this.cacheMap = hashmap.New[Key, Val]()
 	return
+}
+
+//TODO 使用定时器，分阶段对数据进行远程数据落库
+
+func (this *autoCacheManager[Key, Val]) getCacheKey(key Key) string {
+	var ()
+	return this.builder.keyFun(key)
+}
+
+func (this *autoCacheManager[Key, Val]) toLongevity() {
+	var ()
+}
+
+func (this *autoCacheManager[Key, Val]) mem() bool {
+	var ()
+	return this.builder.mem
+}
+
+func (this *autoCacheManager[Key, Val]) cache() bool {
+	var ()
+	return this.builder.cache
+}
+
+func (this *autoCacheManager[Key, Val]) longevity() bool {
+	var ()
+	return this.builder.longevity
+}
+
+func (this *autoCacheManager[Key, Val]) InitStruct() {
+	var ()
+	this.cacheMap = hashmap.New[Key, Val]()
 }
 
 //TODO 还需要优化
