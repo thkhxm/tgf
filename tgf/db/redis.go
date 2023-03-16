@@ -62,6 +62,25 @@ func (this *redisService) DelNow(key string) {
 	this.client.Del(context.Background(), key)
 }
 
+func (this *redisService) GetList(key string) (res []string, err error) {
+	var ()
+	l := this.client.LRange(context.Background(), key, 0, -1)
+	return l.Result()
+}
+
+func (this *redisService) SetList(key string, l []interface{}, timeout time.Duration) {
+	var ()
+	this.client.LPush(context.Background(), key, l...)
+	if timeout > 0 {
+		this.client.Expire(context.Background(), key, timeout)
+	}
+}
+
+func (this *redisService) AddListItem(key string, val string) {
+	var ()
+	this.client.LPush(context.Background(), key, val)
+}
+
 func (this *redisService) TryLock(key string) (*redislock.Lock, error) {
 	var ()
 	lock := redislock.New(service.client)

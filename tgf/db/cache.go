@@ -28,6 +28,9 @@ type iCacheService interface {
 	PutMap(key, filed, val string, timeout time.Duration)
 	Del(key string)
 	DelNow(key string)
+	GetList(key string) (res []string, err error)
+	SetList(key string, l []interface{}, timeout time.Duration)
+	AddListItem(key string, val string)
 }
 
 type IAutoCacheService[Key cacheKey, Val any] interface {
@@ -78,6 +81,35 @@ func PutMap[Key cacheKey, Val any](key string, field Key, val Val, timeout time.
 	f, _ := util.AnyToStr(field)
 	v, _ := util.AnyToStr(val)
 	cache.PutMap(key, f, v, timeout)
+}
+
+func GetList[Res any](key string) []Res {
+	if res, err := cache.GetList(key); err == nil {
+		data := make([]Res, len(res))
+		for i, r := range res {
+			data[i], _ = util.StrToAny[Res](r)
+		}
+		return data
+	}
+	return nil
+}
+
+func AddListItem(key string, val any) error {
+	data, err := util.AnyToStr(val)
+	if err != nil {
+		return err
+	}
+	cache.AddListItem(key, data)
+	return nil
+}
+
+func SetList[Val any](key string, l []Val, timeout time.Duration) {
+	data := make([]interface{}, len(l))
+	for i, val := range l {
+		a, _ := util.AnyToStr(val)
+		data[i] = a
+	}
+	cache.SetList(key, data, timeout)
 }
 
 func Del(key string) {
