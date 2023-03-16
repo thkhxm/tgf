@@ -13,9 +13,11 @@ import (
 	"github.com/thkhxm/tgf/log"
 	"github.com/thkhxm/tgf/rpc/internal"
 	"github.com/thkhxm/tgf/util"
+	"math/rand"
 	"os"
 	"strings"
 	"sync"
+	"time"
 )
 
 //***************************************************
@@ -32,6 +34,8 @@ const (
 	defaultMaxCapacity = 1e4
 )
 
+var singletonLock = &sync.Mutex{}
+
 // Server
 // @Description:
 type Server struct {
@@ -47,6 +51,9 @@ type Server struct {
 	//
 	service   []IService
 	closeChan chan bool
+	//
+	minPort int32
+	maxPort int32
 }
 
 type Optional func(*Server)
@@ -76,6 +83,13 @@ func (this *Server) WithService(service IService) *Server {
 	return this
 }
 
+func (this *Server) WithRandomServicePort(minPort, maxPort int32) *Server {
+	var ()
+	this.minPort = minPort
+	this.maxPort = maxPort
+	return this
+}
+
 func (this *Server) WithCache(module tgf.CacheModule) {
 	var ()
 	switch module {
@@ -92,7 +106,7 @@ func (this *Server) WithServiceClient() *Server {
 	var ()
 	//
 	this.afterOptionals = append(this.afterOptionals, func(server *Server) {
-		newRPCClient().Startup()
+		newRPCClient().startup()
 		log.Info("[init] 装载RPCClient服务")
 	})
 	return this
@@ -124,8 +138,12 @@ func (this *Server) Run() chan bool {
 	//注册rpcx服务
 	this.rpcServer = server.NewServer(server.WithPool(this.maxWorkers, this.maxCapacity))
 
+	port := tgf.GetStrConfig[string](tgf.EnvironmentServicePort)
+	if this.minPort > 0 && this.maxPort > this.minPort {
+		port = fmt.Sprintf("%v", rand.Int31n(this.maxPort-this.minPort)+this.minPort)
+	}
 	//rpcx加入服务发现组件
-	ip = fmt.Sprintf("%v:%v", util.GetLocalHost(), tgf.GetStrConfig[string](tgf.EnvironmentServicePort))
+	ip = fmt.Sprintf("%v:%v", util.GetLocalHost(), port)
 	discovery := internal.GetDiscovery()
 	//如果加入了服务注册，那么走服务注册的流程
 	if discovery != nil {
@@ -191,10 +209,10 @@ func newRPCClient() *ClientOptional {
 	return &ClientOptional{}
 }
 
-// Startup
+// startup
 // @Description: 启动rpc客户端
 // @receiver this
-func (this *ClientOptional) Startup() {
+func (this *ClientOptional) startup() {
 	var ()
 	//
 	rpcClient = new(Client)
@@ -258,15 +276,13 @@ func (this *Client) getClient(moduleName string) (xclient client.XClient) {
 	return
 }
 
-var singletonLock = &sync.Mutex{}
-
 func getRPCClient() *Client {
 
 	if rpcClient == nil {
 		singletonLock.Lock()
 		defer singletonLock.Unlock()
 		if rpcClient == nil {
-			newRPCClient().Startup()
+			newRPCClient().startup()
 			log.Info("[init] 装载RPCClient服务")
 		}
 		//log.Warn("[rpc] RPCClient没有初始化,清调用rpc.NewRPCClient函数进行实例化")
@@ -274,6 +290,26 @@ func getRPCClient() *Client {
 	return rpcClient
 }
 
+func sendMessage(ct IUserConnectData, moduleName, serviceName string, args, reply interface{}) (*client.Call, error) {
+	var (
+		//TODO 这里的chan，可以根据用户，每个用户自己维护自己的一个chan，这样可以保证，用户级别的消息队列
+		rc      = getRPCClient()
+		xclient = rc.getClient(moduleName)
+	)
+	if xclient == nil {
+		return nil, errors.New(fmt.Sprintf("找不到对应模块的服务 moduleName=%v", moduleName))
+	}
+	return xclient.Go(ct.GetContextData(), serviceName, args, reply, ct.GetChannel())
+}
+
+// SendRPCMessage [Req, Res any]
+//
+//	@Description: 远程rpc调用
+//	@param ct
+//	@param api
+//	@param Res]
+//	@return res
+//	@return err
 func SendRPCMessage[Req, Res any](ct context.Context, api *ServiceAPI[Req, Res]) (res Res, err error) {
 	var (
 		done    = make(chan *client.Call, 1)
@@ -289,7 +325,14 @@ func SendRPCMessage[Req, Res any](ct context.Context, api *ServiceAPI[Req, Res])
 		return res, errors.New(fmt.Sprintf("rpc请求异常 moduleName=%v serviceName=%v error=%v", api.ModuleName, api.Name, err))
 	}
 	//这里需要处理超时，避免channel的内存泄漏
-	<-call.Done
+	select {
+	case <-time.After(time.Second * 5):
+		call.Error = tgf.ErrorRPCTimeOut
+		break
+	case <-call.Done:
+		break
+	}
+
 	defer func() {
 		if call.Error != nil {
 			log.Warn("[rpc] RPC module=%v serviceName=%v error=%v", api.ModuleName, api.Name, call.Error)
@@ -314,16 +357,4 @@ func SendAsyncRPCMessage[Req, Res any](ct context.Context, api *ServiceAPI[Req, 
 		return nil, errors.New(fmt.Sprintf("找不到对应模块的服务 moduleName=%v", api.ModuleName))
 	}
 	return xclient.Go(ct, api.Name, api.args, api.reply, done)
-}
-
-func sendMessage(ct IUserConnectData, moduleName, serviceName string, args, reply interface{}) (*client.Call, error) {
-	var (
-		//TODO 这里的chan，可以根据用户，每个用户自己维护自己的一个chan，这样可以保证，用户级别的消息队列
-		rc      = getRPCClient()
-		xclient = rc.getClient(moduleName)
-	)
-	if xclient == nil {
-		return nil, errors.New(fmt.Sprintf("找不到对应模块的服务 moduleName=%v", moduleName))
-	}
-	return xclient.Go(ct.GetContextData(), serviceName, args, reply, ct.GetChannel())
 }

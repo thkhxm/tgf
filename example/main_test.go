@@ -8,6 +8,7 @@ import (
 	"github.com/thkhxm/tgf/rpc"
 	"github.com/thkhxm/tgf/service/api/hall"
 	hallpb "github.com/thkhxm/tgf/service/api/hall/pb"
+	"github.com/thkhxm/tgf/util"
 	"net"
 	"sync"
 	"testing"
@@ -25,34 +26,41 @@ import (
 func TestExampleService(t *testing.T) {
 	// [1][1][2][2][n][n]
 	// magic number|message type|request method name size|data size|method name|data
-
-	add, err := net.ResolveTCPAddr("tcp", "127.0.0.1:8891")
-	client, err := net.DialTCP("tcp", nil, add)
-	if err != nil {
-		t.Logf("client error: %v", err)
-		return
-	}
-
-	//Login
-	loginBuff := LoginByteTest("token-testAccount-17")
-	cnt, er := client.Write(loginBuff.Bytes())
-	t.Logf("send login message : %v", loginBuff.Bytes())
 	for i := 0; i < 10; i++ {
-		buff := LogicByteTest(fmt.Sprintf("send message %v", i))
-		cnt, er = client.Write(buff.Bytes())
-		if er != nil {
-			t.Logf("write len %v error : %v", cnt, er)
-		}
-		t.Logf("send logic message : %v", buff.Bytes())
+		x := i
+		util.Go(func() {
+			add, err := net.ResolveTCPAddr("tcp", "127.0.0.1:8891")
+			client, err := net.DialTCP("tcp", nil, add)
+			if err != nil {
+				t.Logf("client error: %v", err)
+				return
+			}
+			token := fmt.Sprintf("token-testAccount-t%v", x)
+			//Login
+			loginBuff := LoginByteTest(token)
+			cnt, er := client.Write(loginBuff.Bytes())
+			t.Logf("send login message : %v", loginBuff.Bytes())
+			for a := 0; a < 10; a++ {
+				buff := LogicByteTest(fmt.Sprintf("send message %v", a))
+				cnt, er = client.Write(buff.Bytes())
+				if er != nil {
+					t.Logf("write len %v error : %v", cnt, er)
+				}
+				t.Logf("send logic message : %v", buff.Bytes())
+			}
+			//Logic
+
+			//for {
+			//	resBytes := make([]byte, 1024)
+			//	client.Read(resBytes)
+			//	t.Logf("response message : %v", resBytes)
+			//}
+
+			wg := sync.WaitGroup{}
+			wg.Add(1)
+			wg.Wait()
+		})
 	}
-	//Logic
-
-	//for {
-	//	resBytes := make([]byte, 1024)
-	//	client.Read(resBytes)
-	//	t.Logf("response message : %v", resBytes)
-	//}
-
 	wg := sync.WaitGroup{}
 	wg.Add(1)
 	wg.Wait()
