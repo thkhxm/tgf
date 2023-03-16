@@ -4,6 +4,11 @@
 // @Ref:
 package rpc
 
+import (
+	"math/rand"
+	"time"
+)
+
 //***************************************************
 //@Link  https://github.com/thkhxm/tgf
 //@Link  https://gitee.com/timgame/tgf
@@ -14,5 +19,5 @@ package rpc
 //***************************************************
 
 func init() {
-
+	rand.Seed(time.Now().UnixMilli())
 }

@@ -95,7 +95,7 @@ func (this *CustomSelector) Select(ctx context.Context, servicePath, serviceMeth
 							NodeId:      selected,
 							ServicePath: servicePath,
 						}, &UploadUserNodeInfoRes{ErrorCode: 0})); err != nil {
-							log.Warn("[rpc] 节点更新异常")
+							log.Warn("[rpc] 节点更新异常 %v", err)
 						}
 					}
 				}
