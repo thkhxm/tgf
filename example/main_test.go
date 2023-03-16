@@ -1,4 +1,4 @@
-package main
+package main_test
 
 import (
 	"bytes"
@@ -34,7 +34,7 @@ func TestExampleService(t *testing.T) {
 	}
 
 	//Login
-	loginBuff := LoginByteTest("token-testAccount-10")
+	loginBuff := LoginByteTest("token-testAccount-17")
 	cnt, er := client.Write(loginBuff.Bytes())
 	t.Logf("send login message : %v", loginBuff.Bytes())
 	for i := 0; i < 10; i++ {
