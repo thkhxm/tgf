@@ -36,7 +36,7 @@ type CustomSelector struct {
 
 func (this *CustomSelector) clearAllUserCache() {
 	var ()
-	this.cacheManager.Reset()
+	this.cacheManager = this.cacheManager.Reset()
 }
 
 func (this *CustomSelector) Select(ctx context.Context, servicePath, serviceMethod string, args interface{}) (selected string) {
@@ -67,7 +67,10 @@ func (this *CustomSelector) Select(ctx context.Context, servicePath, serviceMeth
 				case tgf.RPCTip:
 					//从数据缓存中获取用户的节点数据
 					reqMetaDataKey := fmt.Sprintf(tgf.RedisKeyUserNodeMeta, uid)
-					reqMetaCacheData := db.GetMap[string, string](reqMetaDataKey)
+					reqMetaCacheData, suc := db.GetMap[string, string](reqMetaDataKey)
+					if !suc {
+						reqMetaCacheData = make(map[string]string)
+					}
 					selected = reqMetaCacheData[servicePath]
 					if this.checkServerAlive(selected) {
 						//将节点数据，放入本地缓存
@@ -83,6 +86,8 @@ func (this *CustomSelector) Select(ctx context.Context, servicePath, serviceMeth
 					//将节点信息放入数据缓存中
 					reqMetaDataKey := fmt.Sprintf(tgf.RedisKeyUserNodeMeta, uid)
 					db.PutMap(reqMetaDataKey, servicePath, selected, reqMetaDataTimeout)
+					//将节点数据，放入本地缓存
+					this.cacheManager.Set(uid, selected)
 					if UploadUserNodeInfo.ModuleName != servicePath {
 						//推送协议通知用户网关
 						if _, err := SendRPCMessage(ctx, UploadUserNodeInfo.New(&UploadUserNodeInfoReq{

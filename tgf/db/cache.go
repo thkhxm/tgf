@@ -34,7 +34,7 @@ type IAutoCacheService[Key cacheKey, Val any] interface {
 	Get(key Key) (val Val, err error)
 	Set(key Key, val Val) (success bool)
 	Remove(key Key) (success bool)
-	Reset() (success bool)
+	Reset() IAutoCacheService[Key, Val]
 }
 
 // Get [Res any]
@@ -110,8 +110,9 @@ type AutoCacheBuilder[Key cacheKey, Val any] struct {
 
 	//
 	//是否自动缓存数据
-	autoCache    bool
-	cacheTimeOut time.Duration
+	autoCache        bool
+	cacheTimeOut     time.Duration
+	memTimeOutSecond int64
 }
 
 func (this *AutoCacheBuilder[Key, Val]) New() IAutoCacheService[Key, Val] {

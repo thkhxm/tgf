@@ -342,7 +342,7 @@ func (this *TCPServer) doLogin(userData IUserConnectData, token string) {
 
 	//判断当前uuid的token是否一致
 	key = fmt.Sprintf(tgf.RedisKeyUserLoginToken, uuid)
-	curToken := db.Get[string](key)
+	curToken, _ := db.Get[string](key)
 	//token不一致,拒绝登录,用户刷新token,广播网关协议,移除旧token的用户连接
 	if token != curToken {
 		// TODO 重复登录,踢出之前登录的用户
@@ -351,7 +351,10 @@ func (this *TCPServer) doLogin(userData IUserConnectData, token string) {
 	ct.SetValue(tgf.ContextKeyUserId, uuid)
 	//
 	reqMetaDataKey = fmt.Sprintf(tgf.RedisKeyUserNodeMeta, uuid)
-	reqMetaData := db.GetMap[string, string](reqMetaDataKey)
+	reqMetaData, suc := db.GetMap[string, string](reqMetaDataKey)
+	if !suc {
+		reqMetaData = make(map[string]string)
+	}
 	reqMetaData[tgf.ContextKeyUserId] = uuid
 	ct.SetValue(share.ReqMetaDataKey, reqMetaData)
 	this.users.Set(uuid, userData)
