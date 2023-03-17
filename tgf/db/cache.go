@@ -115,6 +115,7 @@ func SetList[Val any](key string, l []Val, timeout time.Duration) {
 func Del(key string) {
 	cache.Del(key)
 }
+
 func DelNow(key string) {
 	cache.DelNow(key)
 }
@@ -141,8 +142,8 @@ type AutoCacheBuilder[Key cacheKey, Val any] struct {
 	tableName string
 
 	//
-	//是否自动缓存数据
-	autoCache        bool
+	//是否自动清除过期数据
+	autoClear        bool
 	cacheTimeOut     time.Duration
 	memTimeOutSecond int64
 }
@@ -153,6 +154,12 @@ func (this *AutoCacheBuilder[Key, Val]) New() IAutoCacheService[Key, Val] {
 	manager.builder = this
 	manager.InitStruct()
 	return manager
+}
+
+func (this *AutoCacheBuilder[Key, Val]) WithAutoCache(open bool) *AutoCacheBuilder[Key, Val] {
+	var ()
+	this.autoClear = open
+	return this
 }
 
 // NewDefaultAutoCacheManager [Key comparable, Val any]

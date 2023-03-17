@@ -194,21 +194,25 @@ func TestSet(t *testing.T) {
 }
 
 func TestSetList(t *testing.T) {
-	//type args[Val any] struct {
-	//	key     string
-	//	l       []Val
-	//	timeout time.Duration
-	//}
-	//type testCase[Val any] struct {
-	//	name string
-	//	args args[Val]
-	//}
-	//tests := []testCase[ /* TODO: Insert concrete types here */ ]{
-	//	// TODO: Add test cases.
-	//}
-	//for _, tt := range tests {
-	//	t.Run(tt.name, func(t *testing.T) {
-	//		db.SetList(tt.args.key, tt.args.l, tt.args.timeout)
-	//	})
-	//}
+	type args[Val any] struct {
+		key     string
+		l       []Val
+		timeout time.Duration
+	}
+	type testCase[Val any] struct {
+		name string
+		args args[Val]
+	}
+	tests := []testCase[string]{
+		{"1", args[string]{
+			key:     "k1",
+			l:       []string{"1", "1", "1", "1"},
+			timeout: 0,
+		}},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			db.SetList(tt.args.key, tt.args.l, tt.args.timeout)
+		})
+	}
 }

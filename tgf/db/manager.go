@@ -2,6 +2,7 @@ package db
 
 import (
 	"github.com/cornelk/hashmap"
+	"github.com/thkhxm/tgf/log"
 	"github.com/thkhxm/tgf/util"
 	"time"
 )
@@ -121,9 +122,23 @@ func (this *autoCacheManager[Key, Val]) Destroy() {
 	//TODO 缓存之前的列表
 	this.toLongevity()
 }
+
 func (this *autoCacheManager[Key, Val]) autoClear() {
 	var ()
-
+	now := time.Now().Unix()
+	//初始化1/5的容量
+	removeKeys := make([]Key, 0, this.cacheMap.Len()/5)
+	this.cacheMap.Range(func(k Key, c *cacheData[Val]) bool {
+		if c.checkTimeOut(now) {
+			removeKeys = append(removeKeys, k)
+		}
+		return true
+	})
+	//
+	for _, key := range removeKeys {
+		this.cacheMap.Del(key)
+	}
+	log.Debug("[cache] remove timeout keys len: %v", len(removeKeys))
 }
 
 //TODO 使用定时器，分阶段对数据进行远程数据落库
@@ -163,7 +178,18 @@ func (this *autoCacheManager[Key, Val]) cacheTimeOut() time.Duration {
 func (this *autoCacheManager[Key, Val]) InitStruct() {
 	var ()
 	this.cacheMap = hashmap.New[Key, *cacheData[Val]]()
-	this.clearTimer = time.NewTicker(time.Minute)
+	//开启自动清除过期数据
+	if this.builder.autoClear {
+		this.clearTimer = time.NewTicker(time.Minute)
+		util.Go(func() {
+			for {
+				select {
+				case <-this.clearTimer.C:
+					this.autoClear()
+				}
+			}
+		})
+	}
 }
 
 //TODO 还需要优化
