@@ -1,6 +1,7 @@
-package db
+package db_test
 
 import (
+	"github.com/thkhxm/tgf/db"
 	"reflect"
 	"testing"
 )
@@ -15,7 +16,7 @@ import (
 //***************************************************
 
 func Test_autoCacheManager_Get(t *testing.T) {
-	cacheManager := NewAutoCacheManager[string, string]()
+	cacheManager := db.NewAutoCacheManager[string, string]()
 	key := "123"
 	val := "321"
 	cacheManager.Set(key, val)
