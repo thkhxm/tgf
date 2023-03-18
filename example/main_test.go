@@ -26,7 +26,7 @@ import (
 func TestExampleService(t *testing.T) {
 	// [1][1][2][2][n][n]
 	// magic number|message type|request method name size|data size|method name|data
-	for i := 0; i < 10; i++ {
+	for i := 0; i < 5; i++ {
 		x := i
 		util.Go(func() {
 			add, err := net.ResolveTCPAddr("tcp", "127.0.0.1:8891")

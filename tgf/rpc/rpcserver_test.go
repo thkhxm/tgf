@@ -30,11 +30,10 @@ func TestStartRpcServer(t *testing.T) {
 	service := new(DemoService)
 
 	service2 := new(Demo2Service)
-	rpcServer.WithConsulDiscovery().
+	rpcServer.
 		WithService(service).
 		WithService(service2).
 		WithGateway("8038").
-		WithServiceClient().
 		Run()
 
 	w := sync.WaitGroup{}

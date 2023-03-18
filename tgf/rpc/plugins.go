@@ -109,9 +109,13 @@ func (this *CustomSelector) Select(ctx context.Context, servicePath, serviceMeth
 func (this *CustomSelector) UpdateServer(servers map[string]string) {
 	// TODO: 新增虚拟节点，优化hash的命中分布
 	clearUserCache := false
-	for k := range servers {
+	for k, v := range servers {
 		this.h.Add(k)
-		clearUserCache = this.servers.Insert(k, k) || clearUserCache
+		if this.servers.Insert(k, v) {
+			clearUserCache = true
+		} else {
+			this.servers.Set(k, v)
+		}
 	}
 
 	this.servers.Range(func(k string, v string) bool {
