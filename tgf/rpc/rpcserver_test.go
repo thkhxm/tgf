@@ -136,6 +136,7 @@ func TestClientSender(t *testing.T) {
 }
 
 type Demo2Service struct {
+	rpc.Module
 }
 
 func (this *Demo2Service) GetName() string {
@@ -158,6 +159,7 @@ func (this *Demo2Service) RPCSayHello(ctx context.Context, args *interface{}, re
 }
 
 type DemoService struct {
+	rpc.Module
 }
 
 func (this *DemoService) GetName() string {

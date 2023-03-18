@@ -55,7 +55,8 @@ func (this *ConsulDiscovery) RegisterServer(ip string) server.Plugin {
 	for _, s := range address {
 		_logAddressMsg += s + ","
 	}
-	log.Info("[init] 服务发现加载成功 注册根目录 consulAddress=%v serviceAddress=%v path=%v", r.ServiceAddress, _logAddressMsg, _basePath)
+	log.InfoTag("init", "服务发现加载成功 注册根目录 consulAddress=%v serviceAddress=%v path=%v", r.ServiceAddress, _logAddressMsg, _basePath)
+
 	return r
 }
 
@@ -80,7 +81,7 @@ func (this *ConsulDiscovery) RegisterDiscovery(moduleName string) *client.Consul
 	d, _ := client.NewConsulDiscovery(basePath, moduleName, address, conf)
 	//if moduleName != "" {
 	this.discoveryMap.Set(moduleName, d)
-	log.Info("[init] 注册rpcx discovery moduleName=%v", moduleName)
+	log.InfoTag("init", "注册rpcx discovery moduleName=%v", moduleName)
 	//}
 
 	return d

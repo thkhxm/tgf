@@ -37,7 +37,7 @@ func UseConsulDiscovery() {
 	cd := new(ConsulDiscovery)
 	cd.initStruct()
 	discovery = cd
-	log.Info("[init] 装载consul discovery模块")
+	log.InfoTag("init", "装载consul discovery模块")
 }
 
 func GetDiscovery() IRPCDiscovery {

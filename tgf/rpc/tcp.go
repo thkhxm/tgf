@@ -219,13 +219,13 @@ func (this *TCPServer) handlerConn(conn *net.TCPConn) {
 		reqChan:     make(chan *client.Call, 1),
 	}
 
-	log.Debug("[tcp] 接收到一条新的连接 addr=%v ", conn.RemoteAddr().String())
+	log.DebugTag("tcp", "接收到一条新的连接 addr=%v ", conn.RemoteAddr().String())
 	//
 	stop := make(chan struct{})
 	reqChan := make(chan *RequestData)
 	defer func() {
 		if err := recover(); err != nil {
-			log.Debug("[tcp] tcp连接异常关闭 %v", err)
+			log.DebugTag("tcp", "tcp连接异常关闭 %v", err)
 		}
 		stop <- struct{}{}
 		conn.Close()
@@ -245,14 +245,14 @@ func (this *TCPServer) handlerConn(conn *net.TCPConn) {
 	for {
 		head, err = connectData.reader.Peek(2)
 		if err != nil && err != io.EOF {
-			log.Debug("[tcp] 请求头读取数据异常,强制断开连接 %v", err)
+			log.WarnTag("tcp", "请求头读取数据异常,强制断开连接 %v", err)
 			break
 		}
 
 		//请求魔法值
 		magicNumber := head[0]
 		if magicNumber != requestMagicNumber {
-			log.Debug("[tcp] 请求头magic number错误,强制断开连接 %v", err)
+			log.InfoTag("tcp", "请求头magic number错误,强制断开连接 %v", err)
 			break
 		}
 		//请求消息类型
@@ -269,13 +269,13 @@ func (this *TCPServer) handlerConn(conn *net.TCPConn) {
 			//magic number|message type|data size|data
 			head, err = connectData.reader.Peek(int(requestLoginHeadSize))
 			if err != nil {
-				log.Debug("[tcp] Login 请求头数据异常,强制断开连接 %v", err)
+				log.DebugTag("tcp", "Login 请求头数据异常,强制断开连接 %v", err)
 				break
 			}
 			dataSize = binary.BigEndian.Uint16(head[2:4])
 			totalLen := requestLoginHeadSize + dataSize
 			if connectData.reader.Buffered() < int(totalLen) {
-				log.Debug("[tcp] Login 包长度不足，重新读取等待长度足够 %v--%v", connectData.reader.Buffered(), totalLen)
+				log.DebugTag("tcp", "Login 包长度不足，重新读取等待长度足够 %v--%v", connectData.reader.Buffered(), totalLen)
 				continue
 			}
 			allData := make(RequestHeader, totalLen)
@@ -286,7 +286,7 @@ func (this *TCPServer) handlerConn(conn *net.TCPConn) {
 		case byte(Logic): //处理请求业务逻辑
 			head, err = connectData.reader.Peek(int(requestHeadSize))
 			if err != nil {
-				log.Debug("[tcp] Logic 请求头数据异常,强制断开连接 %v", err)
+				log.DebugTag("tcp", "Logic 请求头数据异常,强制断开连接 %v", err)
 				break
 			}
 			//	[1][1][2][2][n][n]
@@ -296,13 +296,13 @@ func (this *TCPServer) handlerConn(conn *net.TCPConn) {
 			//算出完整包长度
 			totalLen := requestHeadSize + methodSize + dataSize
 			if connectData.reader.Buffered() < int(totalLen) {
-				log.Debug("[tcp] Logic 包长度不足，重新读取等待长度足够 %v--%v", connectData.reader.Buffered(), totalLen)
+				log.DebugTag("tcp", "Logic 包长度不足，重新读取等待长度足够 %v--%v", connectData.reader.Buffered(), totalLen)
 				continue
 			}
 			allData := make(RequestHeader, totalLen)
 			rdLen, err = connectData.reader.Read(allData)
 			if rdLen != int(totalLen) || err != nil {
-				log.Debug("[tcp] Logic 包长度不足 有异常 %v--%v", connectData.reader.Buffered(), totalLen)
+				log.DebugTag("tcp", "Logic 包长度不足 有异常 %v--%v", connectData.reader.Buffered(), totalLen)
 				continue
 			}
 			reqNameIndex := methodSize + 6
@@ -316,7 +316,7 @@ func (this *TCPServer) handlerConn(conn *net.TCPConn) {
 				Data:          allData[reqNameIndex:],
 				User:          connectData,
 			}
-			log.Debug("[tcp] Logic 完整包数据 [%v]", pack)
+			log.DebugTag("tcp", "Logic 完整包数据 [%v]", pack)
 			reqChan <- pack
 		default:
 			er := errors.New(fmt.Sprintf("message type error %v", messageType))
@@ -336,7 +336,7 @@ func (this *TCPServer) doLogin(userData IUserConnectData, token string) {
 	// TODO 通过jwt验证token有效性
 	//通过token,获取到uuid
 	if ok, uuid = this.config.LoginCheck().CheckLogin(token); !ok {
-		log.Warn("[tcp] login failed token %v , uuid %v", token, uuid)
+		log.DebugTag("tcp", "login failed token %v , uuid %v", token, uuid)
 		return
 	}
 
@@ -358,7 +358,7 @@ func (this *TCPServer) doLogin(userData IUserConnectData, token string) {
 	reqMetaData[tgf.ContextKeyUserId] = uuid
 	ct.SetValue(share.ReqMetaDataKey, reqMetaData)
 	this.users.Set(uuid, userData)
-	log.Info("[tcp] login token %v , uuid %v", token, uuid)
+	log.InfoTag("tcp", "login token %v , uuid %v", token, uuid)
 }
 func (this *TCPServer) doLogic(data *RequestData) {
 	var (
@@ -370,16 +370,16 @@ func (this *TCPServer) doLogic(data *RequestData) {
 
 	callback, err := sendMessage(data.User, data.Module, data.RequestMethod, data.Data, &reply)
 	if err != nil {
-		log.Info("[tcp] 请求异常 数据 [%v] [%v]", data, err)
+		log.InfoTag("tcp", "请求异常 数据 [%v] [%v]", data, err)
 		return
 	}
 	<-callback.Done
 	if callback.Error != nil {
-		log.Info("[tcp] 请求异常 数据 [%v] [%v]", data, callback.Error)
+		log.InfoTag("tcp", "请求异常 数据 [%v] [%v]", data, callback.Error)
 		return
 	}
 	consumeTime := time.Now().UnixMilli() - startTime
-	log.Debug("[tcp] 响应 module=%v serviceName=%v consumeTime=%v", data.Module, data.RequestMethod, consumeTime)
+	log.DebugTag("tcp", "响应 module=%v serviceName=%v consumeTime=%v", data.Module, data.RequestMethod, consumeTime)
 	bp := bytebufferpool.Get()
 	// [1][1][2][4][n][n]
 	// message type|compress|request method name size|data size|method name|data
@@ -400,7 +400,7 @@ func (this *TCPServer) doLogic(data *RequestData) {
 	if compress == 1 {
 		reply, err = util2.Zip(reply)
 		if err != nil {
-			log.Info("[tcp] 数据压缩异常 [%v] 压缩数据 [%v] [%v]", data, reply, err)
+			log.WarnTag("tcp", "数据压缩异常 [%v] 压缩数据 [%v] [%v]", data, reply, err)
 			return
 		}
 	}
@@ -435,19 +435,19 @@ func (this *TCPServer) Run() {
 		add, _ := net.ResolveTCPAddr("tcp", fmt.Sprintf("%v:%v", this.config.Address(), this.config.Port()))
 		listen, err := net.ListenTCP("tcp", add)
 		if err != nil {
-			log.Info("[init] tcp服务 启动异常 %v", err)
+			log.DebugTag("init", "tcp服务 启动异常 %v", err)
 			return
 		}
-		log.Info("[init] tcp服务 启动成功 %v", add)
+		log.InfoTag("init", "tcp服务 启动成功 %v", add)
 
 		//启动selector线程，等待连接接入
 		util.Go(func() {
-			log.Info("[init] tcp selector 启动成功")
+			log.InfoTag("init", "tcp selector 启动成功")
 			this.selectorChan()
 		})
 
 		util.Go(func() {
-			log.Info("[init] tcp 开始监听连接")
+			log.InfoTag("init", "tcp 开始监听连接")
 			for {
 				tcp, _ := listen.AcceptTCP()
 				tcp.SetNoDelay(true)                              //无延迟

@@ -18,6 +18,7 @@ import (
 // GateService
 // @Description: 默认网关
 type GateService struct {
+	Module
 	tcpBuilder ITCPBuilder
 	tcpService ITCPService
 }
@@ -42,7 +43,7 @@ func (this *GateService) UploadUserNodeInfo(ctx context.Context, args *UploadUse
 	if ok := this.tcpService.UpdateUserNodeInfo(args.UserId, args.ServicePath, args.NodeId); !ok {
 		reply.ErrorCode = -1
 	}
-	log.Debug("[gate] 修改用户节点信息 userId=%v servicePath=%v nodeId=%v res=%v", args.UserId, args.ServicePath, args.NodeId, reply)
+	log.DebugTag("gate", "修改用户节点信息 userId=%v servicePath=%v nodeId=%v res=%v", args.UserId, args.ServicePath, args.NodeId, reply)
 	return nil
 }
 

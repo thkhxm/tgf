@@ -3,6 +3,7 @@ package rpc
 import (
 	"github.com/smallnest/rpcx/share"
 	"github.com/thkhxm/tgf"
+	"github.com/thkhxm/tgf/log"
 	"golang.org/x/net/context"
 )
 
@@ -22,11 +23,17 @@ type IService interface {
 	GetName() string
 	GetVersion() string
 	Startup() (bool, error)
+	Destroy(sub IService)
 }
 
 type Module struct {
 	Name    string
 	Version string
+}
+
+func (this *Module) Destroy(sub IService) {
+	var ()
+	log.InfoTag("system", "destroy module=%v version=%v", sub.GetName(), sub.GetVersion())
 }
 
 type ServiceAPI[Req, Res any] struct {

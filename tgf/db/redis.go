@@ -105,6 +105,6 @@ func newRedisService() *redisService {
 		Password: password,
 		DB:       db,
 	})
-	log.Info("[init] 启动redis服务 addr=%v db=%v", addr, db)
+	log.InfoTag("init", "启动redis服务 addr=%v db=%v", addr, db)
 	return service
 }

@@ -15,6 +15,7 @@ import (
 	"github.com/thkhxm/tgf/util"
 	"math/rand"
 	"os"
+	"os/signal"
 	"strings"
 	"sync"
 	"time"
@@ -54,6 +55,7 @@ type Server struct {
 	//
 	minPort int32
 	maxPort int32
+	//
 }
 
 type Optional func(*Server)
@@ -70,7 +72,7 @@ func (this *Server) WithServerPool(maxWorkers, maxCapacity int) *Server {
 	this.beforeOptionals = append(this.beforeOptionals, func(server *Server) {
 		server.maxWorkers = maxWorkers
 		server.maxCapacity = maxCapacity
-		log.Info("[init] 修改rpcx协程池大小 maxWorkers=%v maxCapacity=%v", maxWorkers, maxCapacity)
+		log.InfoTag("init", "修改rpcx协程池大小 maxWorkers=%v maxCapacity=%v", maxWorkers, maxCapacity)
 	})
 	return this
 }
@@ -78,7 +80,7 @@ func (this *Server) WithServerPool(maxWorkers, maxCapacity int) *Server {
 func (this *Server) WithService(service IService) *Server {
 	this.beforeOptionals = append(this.beforeOptionals, func(server *Server) {
 		this.service = append(this.service, service)
-		log.Info("[init] 装载逻辑服务[%v@%v]", service.GetName(), service.GetVersion())
+		log.InfoTag("init", "装载逻辑服务[%v@%v]", service.GetName(), service.GetVersion())
 	})
 	return this
 }
@@ -107,7 +109,7 @@ func (this *Server) withServiceClient() *Server {
 	//
 	this.afterOptionals = append(this.afterOptionals, func(server *Server) {
 		newRPCClient().startup()
-		log.Info("[init] 装载RPCClient服务")
+		log.InfoTag("init", "装载RPCClient服务")
 	})
 	return this
 }
@@ -119,7 +121,7 @@ func (this *Server) WithGateway(port string) *Server {
 		builder.WithPort(port)
 		gateway := GatewayService(builder)
 		this.service = append(this.service, gateway)
-		log.Info("[init] 装载逻辑服务[%v@%v]", gateway.GetName(), gateway.GetVersion())
+		log.InfoTag("init", "装载逻辑服务[%v@%v]", gateway.GetName(), gateway.GetVersion())
 	})
 	return this
 }
@@ -163,7 +165,7 @@ func (this *Server) Run() chan bool {
 				continue
 			}
 			_logServiceMsg += serviceName + " " + metaData + ","
-			log.Info("[init] 注册服务发现 serviceName=%v metaDat=%v", serviceName, metaData)
+			log.InfoTag("init", "注册服务发现 serviceName=%v metaDat=%v", serviceName, metaData)
 		}
 	}
 
@@ -181,8 +183,17 @@ func (this *Server) Run() chan bool {
 		afterOptional(this)
 	}
 
+	util.Go(func() {
+		c := make(chan os.Signal, 1)
+		signal.Notify(c, os.Interrupt)
+		<-c
+		for _, service := range this.service {
+			service.Destroy(service)
+		}
+	})
+
 	//启用服务,使用tcp
-	log.Info("[init] rpcx服务启动成功 addr=%v service=[%v] ", _logServiceMsg, ip)
+	log.InfoTag("init", "rpcx服务启动成功 addr=%v service=[%v] ", _logServiceMsg, ip)
 	return this.closeChan
 }
 
@@ -227,7 +238,7 @@ func (this *ClientOptional) startup() {
 			select {
 			case call, ok := <-rpcClient.noReplyChan:
 				if ok {
-					log.Debug("no reply service path %v uid %v", call.ServicePath, call.Metadata[tgf.ContextKeyUserId])
+					log.DebugTag("rpc", "no reply service path %v uid %v", call.ServicePath, call.Metadata[tgf.ContextKeyUserId])
 				}
 			}
 		}
@@ -257,7 +268,7 @@ func (this *Client) watchBaseDiscovery(d internal.IRPCDiscovery, discovery *clie
 						if dis := internal.GetDiscovery().GetDiscovery(moduleName); dis != nil {
 							continue
 						}
-						log.Debug("[consul] base discovery service %v,%v", v.Key, v.Value)
+						log.DebugTag("discovery", "base discovery service %v,%v", v.Key, v.Value)
 						this.registerClient(d, moduleName)
 					}
 				}
@@ -281,7 +292,7 @@ func (this *Client) registerClient(d internal.IRPCDiscovery, moduleName string) 
 	//自定义响应handler
 	xclient.GetPlugins().Add(NewRPCXClientHandler())
 	this.clients.Set(moduleName, xclient)
-	log.Info("[init] 注册rpcx client 服务 module=%v ", moduleName)
+	log.InfoTag("init", "注册rpcx client 服务 module=%v ", moduleName)
 	return
 }
 
@@ -299,7 +310,7 @@ func getRPCClient() *Client {
 		defer singletonLock.Unlock()
 		if rpcClient == nil {
 			newRPCClient().startup()
-			log.Info("[init] 装载RPCClient服务")
+			log.InfoTag("init", "装载RPCClient服务")
 		}
 		//log.Warn("[rpc] RPCClient没有初始化,清调用rpc.NewRPCClient函数进行实例化")
 	}
@@ -351,7 +362,7 @@ func SendRPCMessage[Req any, Res any](ct context.Context, api *ServiceAPI[Req, R
 
 	defer func() {
 		if call.Error != nil {
-			log.Warn("[rpc] RPC module=%v serviceName=%v error=%v", api.ModuleName, api.Name, call.Error)
+			log.WarnTag("tcp", "RPC module=%v serviceName=%v error=%v", api.ModuleName, api.Name, call.Error)
 		}
 	}()
 	return api.reply, call.Error

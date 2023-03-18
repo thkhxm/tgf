@@ -26,10 +26,11 @@ type Environment string
 // 环境变量
 const (
 	// EnvironmentLoggerPath 日志输出路径
-	EnvironmentLoggerPath Environment = "LOG_PATH"
+	EnvironmentLoggerPath Environment = "LogPath"
 
 	// EnvironmentLoggerLevel 日志最低输出级别
-	EnvironmentLoggerLevel Environment = "LOG_LEVEL"
+	EnvironmentLoggerLevel       Environment = "LogLevel"
+	EnvironmentLoggerIgnoredTags Environment = "LogIgnoredTags"
 
 	// EnvironmentRuntimeModule 运行环境,有以下可选运行环境
 	// dev test release

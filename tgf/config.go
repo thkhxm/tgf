@@ -29,6 +29,7 @@ var mapping = make(map[Environment]*config)
 func initMapping() {
 	mapping[EnvironmentLoggerPath] = &config{env: EnvironmentLoggerPath, val: defaultLogPath}
 	mapping[EnvironmentLoggerLevel] = &config{env: EnvironmentLoggerLevel, val: defaultLogLevel}
+	mapping[EnvironmentLoggerIgnoredTags] = &config{env: EnvironmentLoggerIgnoredTags, val: defaultIgnoredTags}
 	mapping[EnvironmentRuntimeModule] = &config{env: EnvironmentRuntimeModule, val: defaultRuntimeModule}
 	mapping[EnvironmentConsulAddress] = &config{env: EnvironmentConsulAddress, val: defaultConsulAddress}
 	mapping[EnvironmentConsulPath] = &config{env: EnvironmentConsulPath, val: defaultConsulPath}
@@ -47,8 +48,9 @@ func initMapping() {
 
 // 配置默认值
 const (
-	defaultLogPath  = "./log/tgf.log"
-	defaultLogLevel = "debug"
+	defaultLogPath     = "./log/tgf.log"
+	defaultLogLevel    = "debug"
+	defaultIgnoredTags = ""
 
 	defaultRuntimeModule = "dev"
 

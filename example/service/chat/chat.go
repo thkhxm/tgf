@@ -26,7 +26,7 @@ func (this *ChatService) RPCSayHello(ctx context.Context, req *string, response 
 		userId = rpc.GetUserId(ctx)
 		msg    = *req
 	)
-	log.Debug("[example] RPCSayHello userId=%v ,msg=%v", userId, msg)
+	log.DebugTag("example", "RPCSayHello userId=%v ,msg=%v", userId, msg)
 	response.Msg = fmt.Sprintf("%v say %v", userId, msg)
 	//time.Sleep(time.Second * 10)
 	return nil
@@ -43,4 +43,9 @@ func (this *ChatService) GetVersion() string {
 func (this *ChatService) Startup() (bool, error) {
 	var ()
 	return true, nil
+}
+
+func (this *ChatService) Destroy(sub rpc.IService) {
+	var ()
+	log.Info("sub service destroy logic module=%v version %v", this.GetName(), this.GetVersion())
 }
