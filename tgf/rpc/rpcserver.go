@@ -58,7 +58,7 @@ type Server struct {
 
 type Optional func(*Server)
 
-func (this *Server) WithConsulDiscovery() *Server {
+func (this *Server) withConsulDiscovery() *Server {
 	var ()
 	this.beforeOptionals = append(this.beforeOptionals, func(server *Server) {
 		internal.UseConsulDiscovery()
@@ -98,11 +98,11 @@ func (this *Server) WithCache(module tgf.CacheModule) {
 	}
 }
 
-// WithServiceClient
+// withServiceClient
 //
 //	@Description: 注册rpcx的客户端程序
 //	@receiver this
-func (this *Server) WithServiceClient() *Server {
+func (this *Server) withServiceClient() *Server {
 	var ()
 	//
 	this.afterOptionals = append(this.afterOptionals, func(server *Server) {
@@ -193,13 +193,17 @@ func NewRPCServer() *Server {
 	rpcServer.maxWorkers = defaultMaxWorkers
 	rpcServer.maxCapacity = defaultMaxCapacity
 	rpcServer.closeChan = make(chan bool, 1)
+	//
+	rpcServer.withConsulDiscovery()
+	rpcServer.withServiceClient()
 	return rpcServer
 }
 
 var rpcClient *Client
 
 type Client struct {
-	clients *hashmap.Map[string, client.XClient]
+	clients     *hashmap.Map[string, client.XClient]
+	noReplyChan chan *client.Call
 }
 
 type ClientOptional struct {
@@ -217,6 +221,17 @@ func (this *ClientOptional) startup() {
 	//
 	rpcClient = new(Client)
 	rpcClient.clients = hashmap.New[string, client.XClient]()
+	rpcClient.noReplyChan = make(chan *client.Call, 1e5)
+	util.Go(func() {
+		for true {
+			select {
+			case call, ok := <-rpcClient.noReplyChan:
+				if ok {
+					log.Debug("no reply service path %v uid %v", call.ServicePath, call.Metadata[tgf.ContextKeyUserId])
+				}
+			}
+		}
+	})
 	//注册一个basePath的路径
 	discovery := internal.GetDiscovery()
 	baseDiscovery := discovery.RegisterDiscovery("")
@@ -227,6 +242,7 @@ func (this *ClientOptional) startup() {
 		}
 	}
 	rpcClient.watchBaseDiscovery(discovery, baseDiscovery)
+
 }
 
 func (this *Client) watchBaseDiscovery(d internal.IRPCDiscovery, discovery *client2.ConsulDiscovery) {
@@ -310,7 +326,7 @@ func sendMessage(ct IUserConnectData, moduleName, serviceName string, args, repl
 //	@param Res]
 //	@return res
 //	@return err
-func SendRPCMessage[Req, Res any](ct context.Context, api *ServiceAPI[Req, Res]) (res Res, err error) {
+func SendRPCMessage[Req any, Res any](ct context.Context, api *ServiceAPI[Req, Res]) (res Res, err error) {
 	var (
 		done    = make(chan *client.Call, 1)
 		rc      = getRPCClient()
@@ -347,7 +363,7 @@ func SendRPCMessage[Req, Res any](ct context.Context, api *ServiceAPI[Req, Res])
 // @param api
 // @return *client.Call
 // @return error
-func SendAsyncRPCMessage[Req, Res any](ct context.Context, api *ServiceAPI[Req, Res]) (*client.Call, error) {
+func SendAsyncRPCMessage[Req any, Res any](ct context.Context, api *ServiceAPI[Req, Res]) (chan *client.Call, error) {
 	var (
 		done    = make(chan *client.Call, 1)
 		rc      = getRPCClient()
@@ -356,5 +372,18 @@ func SendAsyncRPCMessage[Req, Res any](ct context.Context, api *ServiceAPI[Req, 
 	if xclient == nil {
 		return nil, errors.New(fmt.Sprintf("找不到对应模块的服务 moduleName=%v", api.ModuleName))
 	}
-	return xclient.Go(ct, api.Name, api.args, api.reply, done)
+	_, err := xclient.Go(ct, api.Name, api.args, api.reply, done)
+	return done, err
+}
+
+func SendNoReplyRPCMessage[Req any, Res any](ct context.Context, api *ServiceAPI[Req, Res]) error {
+	var (
+		rc      = getRPCClient()
+		xclient = rc.getClient(api.ModuleName)
+	)
+	if xclient == nil {
+		return errors.New(fmt.Sprintf("找不到对应模块的服务 moduleName=%v", api.ModuleName))
+	}
+	_, err := xclient.Go(ct, api.Name, api.args, api.reply, rc.noReplyChan)
+	return err
 }
