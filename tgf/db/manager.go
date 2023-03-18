@@ -138,7 +138,7 @@ func (this *autoCacheManager[Key, Val]) autoClear() {
 	for _, key := range removeKeys {
 		this.cacheMap.Del(key)
 	}
-	log.Debug("[cache] remove timeout keys len: %v", len(removeKeys))
+	log.DebugTag("cache", "remove timeout keys len: %v", len(removeKeys))
 }
 
 //TODO 使用定时器，分阶段对数据进行远程数据落库

@@ -128,7 +128,7 @@ func (this *CustomSelector) UpdateServer(servers map[string]string) {
 
 	if clearUserCache {
 		this.clearAllUserCache()
-		log.Debug("[discovery] moduleName=%v 更新服务节点 services=%v", this.moduleName, this.servers)
+		log.DebugTag("discovery", "moduleName=%v 更新服务节点 services=%v", this.moduleName, this.servers)
 	}
 
 }

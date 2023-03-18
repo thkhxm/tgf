@@ -7,6 +7,7 @@ import (
 	"go.uber.org/zap/zapcore"
 	"gopkg.in/natefinch/lumberjack.v2"
 	"os"
+	"strings"
 	"time"
 )
 
@@ -24,24 +25,45 @@ var logger *zap.Logger
 var (
 	defaultMaxSize = 100
 	defaultMaxAge  = 5
+	ignoredTags    map[string]bool
 )
 
 func Info(msg string, params ...interface{}) {
 	logger.Info(fmt.Sprintf(msg, params...))
 }
 
+func InfoTag(tag string, msg string, params ...interface{}) {
+	if !ignoredTags[tag] {
+		logger.Info(fmt.Sprintf("["+tag+"] "+msg, params...))
+	}
+}
+
 func Debug(msg string, params ...interface{}) {
 	logger.Debug(fmt.Sprintf(msg, params...))
+}
+
+func DebugTag(tag string, msg string, params ...interface{}) {
+	if !ignoredTags[tag] {
+		logger.Debug(fmt.Sprintf("["+tag+"] "+msg, params...))
+	}
 }
 
 func Error(msg string, params ...interface{}) {
 	logger.Error(fmt.Sprintf(msg, params...))
 }
-
+func ErrorTag(tag string, msg string, params ...interface{}) {
+	if !ignoredTags[tag] {
+		logger.Error(fmt.Sprintf("["+tag+"] "+msg, params...))
+	}
+}
 func Warn(msg string, params ...interface{}) {
 	logger.Warn(fmt.Sprintf(msg, params...))
 }
-
+func WarnTag(tag string, msg string, params ...interface{}) {
+	if !ignoredTags[tag] {
+		logger.Warn(fmt.Sprintf("["+tag+"] "+msg, params...))
+	}
+}
 func initLogger() {
 	var (
 		/*自定义时间格式*/
@@ -79,6 +101,14 @@ func initLogger() {
 	if tgf.GetStrConfig[string](tgf.EnvironmentRuntimeModule) == tgf.RuntimeModuleDev {
 		zapLoggerEncoderConfig.EncodeLevel = zapcore.CapitalColorLevelEncoder
 	}
+	ignoredTags = make(map[string]bool)
+	it := tgf.GetStrConfig[string](tgf.EnvironmentLoggerIgnoredTags)
+	if it != "" {
+		tags := strings.Split(it, ",")
+		for _, tag := range tags {
+			ignoredTags[tag] = true
+		}
+	}
 
 	//syncWriter = zapcore.NewMultiWriteSyncer(zapcore.AddSync(os.Stdout))
 
@@ -105,5 +135,5 @@ func initLogger() {
 	zapCore := zapcore.NewCore(zapcore.NewConsoleEncoder(zapLoggerEncoderConfig), syncWriter, level)
 	logger = zap.New(zapCore, zap.AddCaller(), zap.AddCallerSkip(1))
 	defer logger.Sync()
-	Info("[init] 日志初始化完成 日志文件:%v 日志级别:%v", logPath, logLevel)
+	InfoTag("init", "日志初始化完成 日志文件:%v 日志级别:%v", logPath, logLevel)
 }

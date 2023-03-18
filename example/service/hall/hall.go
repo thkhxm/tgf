@@ -47,11 +47,11 @@ func (this *HallService) SayHello(ctx context.Context, args *[]byte, reply *[]by
 		return err
 	}
 
-	log.Debug("[example] 收到用户请求 userId=%v msg=%v", userId, pbReq.Msg)
+	log.DebugTag("example", "收到用户请求 userId=%v msg=%v", userId, pbReq.Msg)
 	//发送rpc到另外一个服务
 	rpc.SendNoReplyRPCMessage(ctx, chatapi.SayHello.New("hello world", res))
 	//rpc.SendRPCMessage(ctx, chatapi.SayHello.New("hello world", res))
-	log.Debug("[example] SayHello userId=%v msg=%v", userId, res.Msg)
+	log.DebugTag("example", "SayHello userId=%v msg=%v", userId, res.Msg)
 	*reply = []byte(res.Msg)
 	return nil
 }
