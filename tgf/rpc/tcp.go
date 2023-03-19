@@ -84,11 +84,13 @@ type IUserConnectData interface {
 	UpdateUserNodeId(servicePath, nodeId string)
 	GetContextData() *share.Context
 	GetChannel() chan *client.Call
+	Send(data []byte)
 }
 
 type ITCPService interface {
 	Run()
 	UpdateUserNodeInfo(userId, servicePath, nodeId string) bool
+	ToUser(userId string, data []byte)
 }
 
 type ITCPBuilder interface {
@@ -471,6 +473,13 @@ func (this *TCPServer) UpdateUserNodeInfo(userId, servicePath, nodeId string) bo
 	return res
 }
 
+func (this *TCPServer) ToUser(userId string, data []byte) {
+	var ()
+	if connectData, ok := this.users.Get(userId); ok {
+		connectData.Send(data)
+	}
+}
+
 func (this *UserConnectData) UpdateUserNodeId(servicePath, nodeId string) {
 	var ()
 	metaData := this.contextData.Value(share.ReqMetaDataKey)
@@ -485,6 +494,10 @@ func (this *UserConnectData) GetContextData() *share.Context {
 func (this *UserConnectData) GetChannel() chan *client.Call {
 	var ()
 	return this.reqChan
+}
+func (this *UserConnectData) Send(data []byte) {
+	var ()
+	this.conn.Write(data)
 }
 func newTCPBuilder() ITCPBuilder {
 	serverConfig := &ServerConfig{

@@ -47,13 +47,18 @@ func (this *GateService) UploadUserNodeInfo(ctx context.Context, args *UploadUse
 	return nil
 }
 
+func (this *GateService) ToUser(ctx context.Context, args *ToUserReq, reply *ToUserRes) error {
+	var ()
+	this.tcpService.ToUser(args.UserId, args.Data)
+	log.DebugTag("gate", "主动推送 userId=%v msgLen=%v", args.UserId, args.UserId, len(args.Data))
+	return nil
+}
+
 func GatewayService(tcpBuilder ITCPBuilder) IService {
 	service := &GateService{}
 	service.tcpBuilder = tcpBuilder
 	return service
 }
-
-//
 
 var Gate = &Module{Name: "Gate", Version: "1.0"}
 
@@ -62,6 +67,10 @@ var (
 		ModuleName: Gate.Name,
 		Name:       "UploadUserNodeInfo",
 	}
+	ToUser = &ServiceAPI[*ToUserReq, *ToUserRes]{
+		ModuleName: Gate.Name,
+		Name:       "ToUser",
+	}
 )
 
 type UploadUserNodeInfoReq struct {
@@ -69,6 +78,15 @@ type UploadUserNodeInfoReq struct {
 	NodeId      string
 	ServicePath string
 }
+
 type UploadUserNodeInfoRes struct {
+	ErrorCode int32
+}
+
+type ToUserReq struct {
+	Data   []byte
+	UserId string
+}
+type ToUserRes struct {
 	ErrorCode int32
 }
