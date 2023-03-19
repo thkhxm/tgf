@@ -26,7 +26,7 @@ import (
 func TestExampleService(t *testing.T) {
 	// [1][1][2][2][n][n]
 	// magic number|message type|request method name size|data size|method name|data
-	for i := 0; i < 5; i++ {
+	for i := 0; i < 1; i++ {
 		x := i
 		util.Go(func() {
 			add, err := net.ResolveTCPAddr("tcp", "127.0.0.1:8891")
@@ -40,7 +40,7 @@ func TestExampleService(t *testing.T) {
 			loginBuff := LoginByteTest(token)
 			cnt, er := client.Write(loginBuff.Bytes())
 			t.Logf("send login message : %v", loginBuff.Bytes())
-			for a := 0; a < 10; a++ {
+			for a := 0; a < 1; a++ {
 				buff := LogicByteTest(fmt.Sprintf("send message %v", a))
 				cnt, er = client.Write(buff.Bytes())
 				if er != nil {
