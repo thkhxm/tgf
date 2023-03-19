@@ -5,9 +5,11 @@ import (
 	"errors"
 	"fmt"
 	"github.com/cornelk/hashmap"
+	"github.com/golang/protobuf/proto"
 	client2 "github.com/rpcxio/rpcx-consul/client"
 	"github.com/smallnest/rpcx/client"
 	"github.com/smallnest/rpcx/server"
+	"github.com/smallnest/rpcx/share"
 	"github.com/thkhxm/tgf"
 	"github.com/thkhxm/tgf/db"
 	"github.com/thkhxm/tgf/log"
@@ -286,7 +288,6 @@ func (this *Client) registerClient(d internal.IRPCDiscovery, moduleName string) 
 	//if moduleName == tgf.GatewayServiceModuleName {
 	//	option.SerializeType = protocol.SerializeNone
 	//}
-
 	xclient = client.NewXClient(moduleName, client.Failover, client.SelectByUser, discovery, option)
 	//自定义路由
 	xclient.SetSelector(NewCustomSelector(moduleName))
@@ -420,4 +421,25 @@ func SendNoReplyRPCMessage[Req any, Res any](ct context.Context, api *ServiceAPI
 	}
 	_, err := xclient.Go(ct, api.Name, api.args, api.reply, rc.noReplyChan)
 	return err
+}
+
+func SendToGate(ct context.Context, pbMessage proto.Message) error {
+	data, err := proto.Marshal(pbMessage)
+	req := &ToUserReq{
+		Data:   data,
+		UserId: GetUserId(ct),
+	}
+	if err != nil {
+		return err
+	}
+	err = SendNoReplyRPCMessage[*ToUserReq, *ToUserRes](ct, ToUser.New(req, &ToUserRes{}))
+	return err
+}
+
+func NewUserContext(userId string) context.Context {
+	ct := share.NewContext(context.Background())
+	initData := make(map[string]string)
+	initData[tgf.ContextKeyUserId] = userId
+	ct.SetValue(share.ReqMetaDataKey, initData)
+	return ct
 }

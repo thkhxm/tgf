@@ -46,7 +46,7 @@ func (this *ConsulDiscovery) RegisterServer(ip string) server.Plugin {
 		ConsulServers:  address,
 		BasePath:       _basePath,
 		Metrics:        metrics.NewRegistry(),
-		UpdateInterval: time.Second * 11,
+		UpdateInterval: time.Minute * 5,
 	}
 	err := r.Start()
 	if err != nil {
