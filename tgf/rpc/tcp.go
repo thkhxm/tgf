@@ -216,7 +216,7 @@ func (this *TCPServer) handlerConn(conn *net.TCPConn) {
 		reqCount:    0,
 		reader:      bufio.NewReader(conn),
 		contextData: share.NewContext(context.Background()),
-		reqChan:     make(chan *client.Call, 1),
+		reqChan:     make(chan *client.Call, 1), // 限制用户的请求处于并行状态
 	}
 
 	log.DebugTag("tcp", "接收到一条新的连接 addr=%v ", conn.RemoteAddr().String())
@@ -373,13 +373,13 @@ func (this *TCPServer) doLogic(data *RequestData) {
 		log.InfoTag("tcp", "请求异常 数据 [%v] [%v]", data, err)
 		return
 	}
-	<-callback.Done
-	if callback.Error != nil {
-		log.InfoTag("tcp", "请求异常 数据 [%v] [%v]", data, callback.Error)
+	callbackErr := callback.Done()
+	if callbackErr != nil {
+		log.InfoTag("tcp", "请求异常 数据 [%v] [%v]", data, callbackErr)
 		return
 	}
 	consumeTime := time.Now().UnixMilli() - startTime
-	log.DebugTag("tcp", "响应 module=%v serviceName=%v consumeTime=%v", data.Module, data.RequestMethod, consumeTime)
+	log.DebugTag("tcp", "请求耗时统计 module=%v serviceName=%v consumeTime=%v", data.Module, data.RequestMethod, consumeTime)
 	bp := bytebufferpool.Get()
 	// [1][1][2][4][n][n]
 	// message type|compress|request method name size|data size|method name|data

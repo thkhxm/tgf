@@ -236,10 +236,11 @@ func (this *ClientOptional) startup() {
 	util.Go(func() {
 		for true {
 			select {
-			case call, ok := <-rpcClient.noReplyChan:
-				if ok {
-					log.DebugTag("rpc", "no reply service path %v uid %v", call.ServicePath, call.Metadata[tgf.ContextKeyUserId])
-				}
+			case <-rpcClient.noReplyChan:
+				//if ok {
+				//log.DebugTag("monitor", "servicePath=%v serviceMethod=%v uid %v", call.ServicePath, call.ServiceMethod, call.Metadata[tgf.ContextKeyUserId])
+				//log.DebugTag("rpc", "no reply service path %v ", call.ServicePath)
+				//}
 			}
 		}
 	})
@@ -317,7 +318,28 @@ func getRPCClient() *Client {
 	return rpcClient
 }
 
-func sendMessage(ct IUserConnectData, moduleName, serviceName string, args, reply interface{}) (*client.Call, error) {
+type Call struct {
+	rpcxCall *client.Call
+}
+
+func newCall(rpcxCall *client.Call) (call *Call) {
+	call = &Call{}
+	call.rpcxCall = rpcxCall
+	return
+}
+
+// Done
+//
+//	@Description: 会阻塞
+//	@receiver this
+//	@return error
+func (this *Call) Done() error {
+	var ()
+	cal := <-this.rpcxCall.Done
+	return cal.Error
+}
+
+func sendMessage(ct IUserConnectData, moduleName, serviceName string, args, reply interface{}) (*Call, error) {
 	var (
 		//TODO 这里的chan，可以根据用户，每个用户自己维护自己的一个chan，这样可以保证，用户级别的消息队列
 		rc      = getRPCClient()
@@ -326,7 +348,8 @@ func sendMessage(ct IUserConnectData, moduleName, serviceName string, args, repl
 	if xclient == nil {
 		return nil, errors.New(fmt.Sprintf("找不到对应模块的服务 moduleName=%v", moduleName))
 	}
-	return xclient.Go(ct.GetContextData(), serviceName, args, reply, ct.GetChannel())
+	call, err := xclient.Go(ct.GetContextData(), serviceName, args, reply, ct.GetChannel())
+	return newCall(call), err
 }
 
 // SendRPCMessage [Req, Res any]
@@ -374,7 +397,7 @@ func SendRPCMessage[Req any, Res any](ct context.Context, api *ServiceAPI[Req, R
 // @param api
 // @return *client.Call
 // @return error
-func SendAsyncRPCMessage[Req any, Res any](ct context.Context, api *ServiceAPI[Req, Res]) (chan *client.Call, error) {
+func SendAsyncRPCMessage[Req any, Res any](ct context.Context, api *ServiceAPI[Req, Res]) (*Call, error) {
 	var (
 		done    = make(chan *client.Call, 1)
 		rc      = getRPCClient()
@@ -383,8 +406,8 @@ func SendAsyncRPCMessage[Req any, Res any](ct context.Context, api *ServiceAPI[R
 	if xclient == nil {
 		return nil, errors.New(fmt.Sprintf("找不到对应模块的服务 moduleName=%v", api.ModuleName))
 	}
-	_, err := xclient.Go(ct, api.Name, api.args, api.reply, done)
-	return done, err
+	call, err := xclient.Go(ct, api.Name, api.args, api.reply, done)
+	return newCall(call), err
 }
 
 func SendNoReplyRPCMessage[Req any, Res any](ct context.Context, api *ServiceAPI[Req, Res]) error {
