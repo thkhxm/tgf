@@ -46,7 +46,7 @@ func (this *ConsulDiscovery) RegisterServer(ip string) server.Plugin {
 		ConsulServers:  address,
 		BasePath:       _basePath,
 		Metrics:        metrics.NewRegistry(),
-		UpdateInterval: time.Minute * 5,
+		UpdateInterval: time.Second * 10,
 	}
 	err := r.Start()
 	if err != nil {
@@ -79,6 +79,7 @@ func (this *ConsulDiscovery) RegisterDiscovery(moduleName string) *client.Consul
 		Password:          "",
 	}
 	d, _ := client.NewConsulDiscovery(basePath, moduleName, address, conf)
+
 	//if moduleName != "" {
 	this.discoveryMap.Set(moduleName, d)
 	log.InfoTag("init", "注册rpcx discovery moduleName=%v", moduleName)
