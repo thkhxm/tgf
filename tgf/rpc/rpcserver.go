@@ -171,7 +171,6 @@ func (this *Server) Run() chan bool {
 		}
 	}
 
-	//自定义plugin
 	util.Go(func() {
 		if err := this.rpcServer.Serve("tcp", ip); err != nil {
 			log.Error("[init] rpcx务启动异常 serviceName=%v addr=%v err=%v", serviceName, ip, err)
