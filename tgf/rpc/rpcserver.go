@@ -410,6 +410,13 @@ func SendAsyncRPCMessage[Req any, Res any](ct context.Context, api *ServiceAPI[R
 	return newCall(call), err
 }
 
+// SendNoReplyRPCMessage [Req any, Res any]
+//
+//	@Description: 发送无需等待返回的rpc消息
+//	@param ct
+//	@param api
+//	@param Res]
+//	@return error
 func SendNoReplyRPCMessage[Req any, Res any](ct context.Context, api *ServiceAPI[Req, Res]) error {
 	var (
 		rc      = getRPCClient()
@@ -420,6 +427,20 @@ func SendNoReplyRPCMessage[Req any, Res any](ct context.Context, api *ServiceAPI
 	}
 	_, err := xclient.Go(ct, api.Name, api.args, api.reply, rc.noReplyChan)
 	return err
+}
+
+// BorderRPCMessage [Req any, Res any]
+//
+//	@Description: 推送消息到所有服务节点
+//	@param ct
+//	@param api
+//	@param Res]
+func BorderRPCMessage[Req any, Res any](ct context.Context, api *ServiceAPI[Req, Res]) {
+	var (
+		rc      = getRPCClient()
+		xclient = rc.getClient(api.ModuleName)
+	)
+	xclient.Broadcast(context.Background(), api.Name, api.args, api.reply)
 }
 
 func SendToGate(ct context.Context, pbMessage proto.Message) error {
