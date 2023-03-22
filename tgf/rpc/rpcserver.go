@@ -17,7 +17,6 @@ import (
 	"github.com/thkhxm/tgf/util"
 	"math/rand"
 	"os"
-	"os/signal"
 	"strings"
 	"sync"
 	"time"
@@ -57,6 +56,7 @@ type Server struct {
 	//
 	minPort int32
 	maxPort int32
+
 	//
 }
 
@@ -184,18 +184,15 @@ func (this *Server) Run() chan bool {
 		afterOptional(this)
 	}
 
-	util.Go(func() {
-		c := make(chan os.Signal, 1)
-		signal.Notify(c, os.Interrupt)
-		<-c
-		for _, service := range this.service {
-			service.Destroy(service)
-		}
-	})
-
 	//启用服务,使用tcp
 	log.InfoTag("init", "rpcx服务启动成功 addr=%v service=[%v] ", _logServiceMsg, ip)
 	return this.closeChan
+}
+
+func (this *Server) Destroy() {
+	for _, service := range this.service {
+		service.Destroy(service)
+	}
 }
 
 func NewRPCServer() *Server {
@@ -205,9 +202,12 @@ func NewRPCServer() *Server {
 	rpcServer.maxWorkers = defaultMaxWorkers
 	rpcServer.maxCapacity = defaultMaxCapacity
 	rpcServer.closeChan = make(chan bool, 1)
+
 	//
 	rpcServer.withConsulDiscovery()
 	rpcServer.withServiceClient()
+	//
+	tgf.AddDestroyHandler(rpcServer)
 	return rpcServer
 }
 
