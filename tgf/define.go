@@ -53,6 +53,22 @@ const (
 
 	// EnvironmentRedisDB redis的db
 	EnvironmentRedisDB Environment = "RedisDB"
+
+	// EnvironmentMySqlUser mysql用户名
+	EnvironmentMySqlUser Environment = "MySqlUser"
+
+	// EnvironmentMySqlPwd mysql密码
+	EnvironmentMySqlPwd Environment = "MySqlPwd"
+
+	// EnvironmentMySqlAddr mysql地址
+	EnvironmentMySqlAddr Environment = "MySqlAddr"
+
+	// EnvironmentMySqlPort mysql端口
+	EnvironmentMySqlPort Environment = "MySqlPort"
+
+	// EnvironmentMySqlDB mysql库
+	EnvironmentMySqlDB Environment = "MySqlDB"
+
 	// EnvironmentServicePort 当前进程提供的服务端口
 	EnvironmentServicePort = "ServicePort"
 )
@@ -61,8 +77,6 @@ type CacheModule int
 
 const (
 	CacheModuleRedis CacheModule = iota
-	CacheModuleMysql
-	CacheModuleMongodb
 )
 
 // redisKey
