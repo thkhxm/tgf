@@ -7,6 +7,8 @@ require (
 	github.com/bwmarrin/snowflake v0.3.0
 	github.com/cornelk/hashmap v1.0.8
 	github.com/edwingeng/doublejump v1.0.1
+	github.com/go-sql-driver/mysql v1.7.0
+	github.com/golang/protobuf v1.5.2
 	github.com/joho/godotenv v1.5.1
 	github.com/panjf2000/ants/v2 v2.7.1
 	github.com/rcrowley/go-metrics v0.0.0-20201227073835-cf1acfcdf475

@@ -3,6 +3,9 @@ package db
 import (
 	"context"
 	"database/sql"
+	"fmt"
+	_ "github.com/go-sql-driver/mysql"
+	"github.com/thkhxm/tgf"
 	"github.com/thkhxm/tgf/log"
 )
 
@@ -41,13 +44,18 @@ func (this *mysqlService) getConnection() *sql.Conn {
 
 func initMySql() {
 	var (
-		err error
-		db  *sql.DB
+		err      error
+		db       *sql.DB
+		userName = tgf.GetStrConfig[string](tgf.EnvironmentMySqlUser)
+		password = tgf.GetStrConfig[string](tgf.EnvironmentMySqlPwd)
+		hostName = tgf.GetStrConfig[string](tgf.EnvironmentMySqlAddr)
+		port     = tgf.GetStrConfig[string](tgf.EnvironmentMySqlPort)
+		database = tgf.GetStrConfig[string](tgf.EnvironmentMySqlDB)
 	)
 	dbService = new(mysqlService)
 
 	// 定义 MySQL 数据库连接信息
-	dataSourceName := "username:password@tcp(hostname:port)/database_name?charset=utf8"
+	dataSourceName := fmt.Sprintf("%v:%v@tcp(%v:%v)/%v?charset=utf8", userName, password, hostName, port, database)
 	// 创建数据库连接池
 	db, err = sql.Open("mysql", dataSourceName)
 	if err != nil {
@@ -57,7 +65,8 @@ func initMySql() {
 	defer db.Close()
 	if err = db.Ping(); err != nil {
 		log.WarnTag("init", "mysql unable to connect to database")
-		panic(err.Error())
+		return
 	}
 	dbService.running = true
+	log.InfoTag("init", "mysql is running hostName=%v port=%v database=%v", hostName, port, database)
 }
