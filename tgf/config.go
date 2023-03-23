@@ -38,6 +38,12 @@ func initMapping() {
 	mapping[EnvironmentRedisDB] = &config{env: EnvironmentRedisDB, val: defaultRedisDB}
 	mapping[EnvironmentServicePort] = &config{env: EnvironmentServicePort, val: defaultServicePort}
 
+	mapping[EnvironmentMySqlUser] = &config{env: EnvironmentMySqlUser, val: defaultMySqlUser}
+	mapping[EnvironmentMySqlPwd] = &config{env: EnvironmentMySqlPwd, val: defaultMySqlPwd}
+	mapping[EnvironmentMySqlAddr] = &config{env: EnvironmentMySqlAddr, val: defaultMySqlAddr}
+	mapping[EnvironmentMySqlPort] = &config{env: EnvironmentMySqlPort, val: defaultMySqlPort}
+	mapping[EnvironmentMySqlDB] = &config{env: EnvironmentMySqlDB, val: defaultMySqlDB}
+
 	//初始化配置数据
 	for _, m := range mapping {
 		m.initVal()
@@ -48,6 +54,12 @@ func initMapping() {
 
 // 配置默认值
 const (
+	defaultMySqlUser = "root"
+	defaultMySqlPwd  = "123456"
+	defaultMySqlAddr = "127.0.0.1"
+	defaultMySqlPort = "3306"
+	defaultMySqlDB   = "tgf"
+
 	defaultLogPath     = "./log/tgf.log"
 	defaultLogLevel    = "debug"
 	defaultIgnoredTags = ""
