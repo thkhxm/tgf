@@ -51,7 +51,7 @@ func (this *HallService) SayHello(ctx context.Context, args *[]byte, reply *[]by
 	//发送rpc到另外一个服务
 	//rpc.SendNoReplyRPCMessage(ctx, chatapi.SayHello.New("hello world", res))
 	//rpc.SendRPCMessage(ctx, chatapi.SayHello.New("hello world", res))
-	rpc.SendToGate(rpc.NewUserContext("token-testAccount-110"), pbReq)
+	//rpc.SendToGate(rpc.NewUserContext("token-testAccount-110"), pbReq)
 	log.DebugTag("example", "SayHello userId=%v msg=%v", userId, res.Msg)
 	*reply = []byte(res.Msg)
 	return nil

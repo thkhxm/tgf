@@ -39,6 +39,7 @@ func (this *Module) Destroy(sub IService) {
 type ServiceAPI[Req, Res any] struct {
 	ModuleName string
 	Name       string
+	Des        string
 	args       Req
 	reply      Res
 }

@@ -20,6 +20,12 @@ import (
 
 var dbService *mysqlService
 
+type IModel interface {
+	GetTableName() string
+	SelectOne()
+	SelectAll()
+}
+
 type mysqlService struct {
 	running bool
 	db      *sql.DB
