@@ -6,6 +6,7 @@ import (
 	"github.com/redis/go-redis/v9"
 	"github.com/thkhxm/tgf"
 	"github.com/thkhxm/tgf/log"
+	"strings"
 	"time"
 )
 
@@ -21,7 +22,7 @@ import (
 var service *redisService
 
 type redisService struct {
-	client *redis.Client
+	client redis.UniversalClient
 }
 
 func (this *redisService) Get(key string) (res string) {
@@ -99,12 +100,19 @@ func newRedisService() *redisService {
 	)
 
 	service = new(redisService)
-	service.client = redis.NewClient(&redis.Options{
-		Network:  "tcp",
-		Addr:     addr,
-		Password: password,
-		DB:       db,
-	})
+	redisOptions := &redis.UniversalOptions{}
+
+	redisOptions.Addrs = strings.Split(addr, ",")
+	redisOptions.DB = db
+	if password != "" {
+		redisOptions.Password = password
+	}
+	service.client = redis.NewUniversalClient(redisOptions)
+	if stat := service.client.Ping(context.Background()); stat.Err() != nil {
+		log.WarnTag("init", "启动redis服务异常 addr=%v db=%v err=%v", addr, db, stat.Err())
+		return nil
+	}
+
 	log.InfoTag("init", "启动redis服务 addr=%v db=%v", addr, db)
 	return service
 }

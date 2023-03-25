@@ -47,5 +47,5 @@ func (this *ChatService) Startup() (bool, error) {
 
 func (this *ChatService) Destroy(sub rpc.IService) {
 	var ()
-	log.Info("sub service destroy logic module=%v version %v", this.GetName(), this.GetVersion())
+	log.InfoTag("example", "sub service destroy logic module=%v version %v", this.GetName(), this.GetVersion())
 }

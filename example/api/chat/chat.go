@@ -17,6 +17,7 @@ var (
 	SayHello = rpc.ServiceAPI[string, *SayHelloRes]{
 		ModuleName: ChatService.Name,
 		Name:       "RPCSayHello",
+		Des:        "example案例rpc接口",
 	}
 )
 
