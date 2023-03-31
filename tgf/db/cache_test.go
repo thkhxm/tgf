@@ -48,30 +48,6 @@ func TestDefaultAutoCacheManager(t *testing.T) {
 	//cache_test.go:35: [test] cache second get key 1001 , val 10086
 }
 
-func TestAddListItem(t *testing.T) {
-	type args struct {
-		key string
-		val any
-	}
-	tests := []struct {
-		name    string
-		args    args
-		wantErr bool
-	}{
-		{"1", args{key: "k1", val: 1}, false},
-		{"2", args{key: "k1", val: 2}, false},
-		{"3", args{key: "k1", val: 3}, false},
-		{"4", args{key: "k1", val: 4}, false},
-	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			if err := db.AddListItem(tt.args.key, tt.args.val); (err != nil) != tt.wantErr {
-				t.Errorf("AddListItem() error = %v, wantErr %v", err, tt.wantErr)
-			}
-		})
-	}
-}
-
 func TestGetList(t *testing.T) {
 	type args struct {
 		key string
@@ -193,7 +169,7 @@ func TestSet(t *testing.T) {
 	}
 }
 
-func TestSetList(t *testing.T) {
+func TestAddListItem(t *testing.T) {
 	type args[Val any] struct {
 		key     string
 		l       []Val
@@ -212,7 +188,17 @@ func TestSetList(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			db.SetList(tt.args.key, tt.args.l, tt.args.timeout)
+			db.AddListItem[string](tt.args.key, tt.args.timeout, tt.args.l...)
 		})
 	}
+}
+
+func TestNewAutoCacheBuilder(t *testing.T) {
+	//builder := db.NewAutoCacheBuilder[string, User]()
+
+}
+
+type User struct {
+	Uid  int64 "'orm:`pk`'"
+	Name string
 }

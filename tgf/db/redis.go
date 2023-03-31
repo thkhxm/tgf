@@ -63,9 +63,9 @@ func (this *redisService) DelNow(key string) {
 	this.client.Del(context.Background(), key)
 }
 
-func (this *redisService) GetList(key string) (res []string, err error) {
+func (this *redisService) GetList(key string, start, end int64) (res []string, err error) {
 	var ()
-	l := this.client.LRange(context.Background(), key, 0, -1)
+	l := this.client.LRange(context.Background(), key, start, end)
 	return l.Result()
 }
 
