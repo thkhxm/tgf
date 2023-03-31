@@ -46,12 +46,29 @@ func TestStrToAny(t *testing.T) {
 }
 
 func TestRecover(t *testing.T) {
-	defer func() {
-		r := recover()
-		a := r.(string)
-		t.Logf("err %v", a)
-	}()
-	panic("test panic")
+	//source := make([]string, 0)
+	//n := make([]string, 0)
+	//for i := 1; i <= 32; i++ {
+	//	source = append(source, strconv.Itoa(i))
+	//}
+	////{
+	////	"1", "2", "3", "4", "5", "6", "7", "8", "9", "10", "11", "12"
+	////}
+	////1234,5678,9101112,
+	////24689101112
+	////1357,2
+	//sliceSize := len(source)
+	//sp := 4
+	////group := sliceSize / sp
+	//old := strings.Join(source, ",")
+	//t.Logf(old)
+	//index := 0
+	//for i := 0; i < sliceSize; {
+	//	if index>sliceSize
+	//	n[i] =
+	//}
+	//msg := strings.Join(source, ",")
+	//t.Logf(msg)
 }
 
 type StringDemoType struct {

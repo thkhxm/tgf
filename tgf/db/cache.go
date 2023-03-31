@@ -28,7 +28,7 @@ type iCacheService interface {
 	PutMap(key, filed, val string, timeout time.Duration)
 	Del(key string)
 	DelNow(key string)
-	GetList(key string) (res []string, err error)
+	GetList(key string, start, end int64) (res []string, err error)
 	SetList(key string, l []interface{}, timeout time.Duration)
 	AddListItem(key string, val string)
 }
@@ -84,7 +84,7 @@ func PutMap[Key cacheKey, Val any](key string, field Key, val Val, timeout time.
 }
 
 func GetList[Res any](key string) []Res {
-	if res, err := cache.GetList(key); err == nil {
+	if res, err := cache.GetList(key, 0, -1); err == nil {
 		data := make([]Res, len(res))
 		for i, r := range res {
 			data[i], _ = util.StrToAny[Res](r)
@@ -94,22 +94,29 @@ func GetList[Res any](key string) []Res {
 	return nil
 }
 
-func AddListItem(key string, val any) error {
-	data, err := util.AnyToStr(val)
-	if err != nil {
-		return err
+func GetListLimit[Res any](key string, start, end int64) []Res {
+	if res, err := cache.GetList(key, start, end); err == nil {
+		data := make([]Res, len(res))
+		for i, r := range res {
+			data[i], _ = util.StrToAny[Res](r)
+		}
+		return data
 	}
-	cache.AddListItem(key, data)
 	return nil
 }
 
-func SetList[Val any](key string, l []Val, timeout time.Duration) {
-	data := make([]interface{}, len(l))
-	for i, val := range l {
-		a, _ := util.AnyToStr(val)
+func AddListItem[Val any](key string, timeout time.Duration, val ...Val) (err error) {
+	data := make([]interface{}, len(val))
+	for i, v := range val {
+		a, e := util.AnyToStr(v)
+		if e != nil {
+			err = e
+			return
+		}
 		data[i] = a
 	}
 	cache.SetList(key, data, timeout)
+	return
 }
 
 func Del(key string) {
@@ -156,9 +163,29 @@ func (this *AutoCacheBuilder[Key, Val]) New() IAutoCacheService[Key, Val] {
 	return manager
 }
 
-func (this *AutoCacheBuilder[Key, Val]) WithAutoCache(open bool) *AutoCacheBuilder[Key, Val] {
+func (this *AutoCacheBuilder[Key, Val]) WithAutoCache(cacheKey Key, cacheTimeOut time.Duration) *AutoCacheBuilder[Key, Val] {
 	var ()
-	this.autoClear = open
+	this.cache = true
+	this.keyFun = func(key Key) string {
+		return fmt.Sprintf("%v:%v", cacheKey, key)
+	}
+
+	if cacheTimeOut > 0 {
+		this.autoClear = true
+		this.cacheTimeOut = cacheTimeOut
+	}
+
+	return this
+}
+
+func (this *AutoCacheBuilder[Key, Val]) WithMemCache(memTimeOutSecond uint32) *AutoCacheBuilder[Key, Val] {
+	var ()
+	this.mem = true
+	if memTimeOutSecond>>31 == 1 {
+		memTimeOutSecond = 0
+	}
+	this.memTimeOutSecond = int64(memTimeOutSecond)
+
 	return this
 }
 
@@ -173,8 +200,10 @@ func NewDefaultAutoCacheManager[Key cacheKey, Val any](cacheKey string) IAutoCac
 		return fmt.Sprintf("%v:%v", cacheKey, key)
 	}
 	builder.mem = true
+	builder.autoClear = true
 	builder.cache = true
 	builder.cacheTimeOut = time.Hour * 24 * 3
+	builder.memTimeOutSecond = 60 * 60 * 3
 	builder.longevity = false
 	builder.tableName = ""
 	return builder.New()
@@ -186,17 +215,17 @@ func NewDefaultAutoCacheManager[Key cacheKey, Val any](cacheKey string) IAutoCac
 //	@param cacheKey
 //	@param tableName
 //	@return IAutoCacheService [Key comparable, Val any]
-func NewLongevityAutoCacheManager[Key cacheKey, Val any](cacheKey, tableName string) IAutoCacheService[Key, Val] {
+func NewLongevityAutoCacheManager[Key cacheKey, Val IModel](cacheKey string) IAutoCacheService[Key, Val] {
 	builder := &AutoCacheBuilder[Key, Val]{}
 	builder.keyFun = func(key Key) string {
 		return fmt.Sprintf("%v:%v", cacheKey, key)
 	}
 	builder.mem = true
+	builder.autoClear = true
 	builder.cache = true
 	builder.cacheTimeOut = time.Hour * 24 * 3
+	builder.memTimeOutSecond = 60 * 60 * 3
 	builder.longevity = true
-	builder.tableName = tableName
-
 	return builder.New()
 }
 
@@ -215,7 +244,9 @@ func NewAutoCacheManager[Key cacheKey, Val any]() IAutoCacheService[Key, Val] {
 }
 
 func NewAutoCacheBuilder[Key cacheKey, Val any]() *AutoCacheBuilder[Key, Val] {
-	return &AutoCacheBuilder[Key, Val]{}
+	builder := &AutoCacheBuilder[Key, Val]{}
+	builder.mem = true
+	return builder
 }
 
 func WithCacheModule(module tgf.CacheModule) {
