@@ -195,10 +195,12 @@ func TestAddListItem(t *testing.T) {
 
 func TestNewAutoCacheBuilder(t *testing.T) {
 	//builder := db.NewAutoCacheBuilder[string, User]()
-
+	var longevityManager = db.NewLongevityAutoCacheManager[string, *ExampleUser]("test:user")
+	longevityManager.Get("1")
 }
 
-type User struct {
-	Uid  int64 "'orm:`pk`'"
+type ExampleUser struct {
+	db.Model
+	Id   string `orm:"pk"`
 	Name string
 }

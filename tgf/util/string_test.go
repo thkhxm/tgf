@@ -46,29 +46,35 @@ func TestStrToAny(t *testing.T) {
 }
 
 func TestRecover(t *testing.T) {
-	//source := make([]string, 0)
-	//n := make([]string, 0)
-	//for i := 1; i <= 32; i++ {
-	//	source = append(source, strconv.Itoa(i))
-	//}
-	////{
-	////	"1", "2", "3", "4", "5", "6", "7", "8", "9", "10", "11", "12"
-	////}
-	////1234,5678,9101112,
-	////24689101112
-	////1357,2
-	//sliceSize := len(source)
-	//sp := 4
-	////group := sliceSize / sp
-	//old := strings.Join(source, ",")
-	//t.Logf(old)
-	//index := 0
-	//for i := 0; i < sliceSize; {
-	//	if index>sliceSize
-	//	n[i] =
-	//}
-	//msg := strings.Join(source, ",")
-	//t.Logf(msg)
+	//s, _ := util.StrToAny[float64]("0.38")
+	//t.Logf("-->%v", s)
+	//var (
+	//	a int            = 1
+	//	b int32          = 1
+	//	c int64          = 1
+	//	d float32        = 0.38
+	//	e float64        = 0.38
+	//	f bool           = true
+	//	g StringDemoType = *new(StringDemoType)
+	//)
+	//g.Name = "tim"
+	//a0, _ := util.AnyToStr(a)
+	//a1, _ := util.AnyToStr(b)
+	//a2, _ := util.AnyToStr(c)
+	//a3, _ := util.AnyToStr(d)
+	//a4, _ := util.AnyToStr(e)
+	//a5, _ := util.AnyToStr(f)
+	//a6, _ := util.AnyToStr(g)
+	//t.Log("--->", a0)
+	//t.Log("--->", a1)
+	//t.Log("--->", a2)
+	//t.Log("--->", a3)
+	//t.Log("--->", a4)
+	//t.Log("--->", a5)
+	//t.Log("--->", a6)
+	dd, _ := util.StrToAny[*StringDemoType]("{\"Name\":\"tim\"}")
+
+	t.Log("--->", dd)
 }
 
 type StringDemoType struct {

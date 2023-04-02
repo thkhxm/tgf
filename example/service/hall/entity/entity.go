@@ -10,7 +10,7 @@ package hallentity
 //***************************************************
 
 type UserModel struct {
-	Uid  string `orm:primaryKey`
+	Uid  string `orm:pk`
 	Name string
 }
 

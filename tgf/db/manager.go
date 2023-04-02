@@ -4,6 +4,8 @@ import (
 	"github.com/cornelk/hashmap"
 	"github.com/thkhxm/tgf/log"
 	"github.com/thkhxm/tgf/util"
+	"golang.org/x/net/context"
+	"reflect"
 	"time"
 )
 
@@ -23,6 +25,24 @@ type cacheKey interface {
 type cacheData[Val any] struct {
 	data      Val
 	clearTime int64
+}
+
+type autoCacheManager[Key cacheKey, Val any] struct {
+	builder *AutoCacheBuilder[Key, Val]
+	//
+	cacheMap *hashmap.Map[Key, *cacheData[Val]]
+	//
+	clearTimer *time.Ticker
+	//
+}
+
+type autoSql struct {
+}
+
+func (this *autoSql) selectOne() {
+	var ()
+	stmt, _ := dbService.getConnection().PrepareContext(context.Background(), "")
+	stmt.Exec()
 }
 
 func newCacheData[Val any](data Val, second int64) *cacheData[Val] {
@@ -47,14 +67,6 @@ func (this *cacheData[Val]) getData(second int64) Val {
 	return this.data
 }
 
-type autoCacheManager[Key cacheKey, Val any] struct {
-	builder *AutoCacheBuilder[Key, Val]
-	//
-	cacheMap *hashmap.Map[Key, *cacheData[Val]]
-	//
-	clearTimer *time.Ticker
-}
-
 func (this *autoCacheManager[Key, Val]) get(key Key) (Val, bool) {
 	var ()
 	if data, suc := this.cacheMap.Get(key); suc {
@@ -77,7 +89,10 @@ func (this *autoCacheManager[Key, Val]) Get(key Key) (val Val, err error) {
 			this.cacheMap.Set(key, newCacheData[Val](val, this.memTimeOutSecond()))
 		}
 	}
-	//TODO 从db获取
+	//从db获取
+	if this.longevity() {
+
+	}
 	return
 }
 
@@ -178,6 +193,15 @@ func (this *autoCacheManager[Key, Val]) cacheTimeOut() time.Duration {
 func (this *autoCacheManager[Key, Val]) InitStruct() {
 	var ()
 	this.cacheMap = hashmap.New[Key, *cacheData[Val]]()
+	var k Val
+	v := reflect.ValueOf(k)
+	//
+	switch v.Kind() {
+	case reflect.Bool, reflect.Int, reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64, reflect.Uint, reflect.Uint8, reflect.Uint16, reflect.Uint32, reflect.Uint64, reflect.String:
+	case reflect.Struct:
+		log.WarnTag("init", "自定义数据管理警告 建议使用指针类型做为值类型 否则可能会发生一些数据上的错乱")
+	}
+
 	//开启自动清除过期数据
 	if this.builder.autoClear {
 		this.clearTimer = time.NewTicker(time.Minute)
@@ -189,5 +213,16 @@ func (this *autoCacheManager[Key, Val]) InitStruct() {
 				}
 			}
 		})
+	}
+	////初始化db结构
+	if this.builder.longevity {
+		rf := v.Type().Elem()
+		for i := 0; i < rf.NumField(); i++ {
+			field := rf.Field(i)
+			if field.Tag != "" {
+				orm := field.Tag.Get("orm")
+				log.DebugTag("omr", "结构化日志打印 structName=%v field=%v tag=%v", rf.Name(), field.Name, orm)
+			}
+		}
 	}
 }
