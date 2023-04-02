@@ -2,7 +2,8 @@ package db_test
 
 import (
 	"github.com/thkhxm/tgf/db"
-	"reflect"
+	"golang.org/x/net/context"
+	"sync"
 	"testing"
 )
 
@@ -16,11 +17,29 @@ import (
 //***************************************************
 
 func Test_autoCacheManager_Get(t *testing.T) {
-	cacheManager := db.NewAutoCacheManager[string, string]()
-	key := "123"
-	val := "321"
-	cacheManager.Set(key, val)
-	data, _ := cacheManager.Get(key)
-	t.Log("get val ", data, reflect.DeepEqual(val, data))
+	//cacheManager := db.NewDefaultAutoCacheManager[string, *CacheExampleData]("example:cachemanager")
+	//key := "123"
+	//val := &CacheExampleData{Name: "tim"}
+	////cacheManager.Set(key, val)
+	//data, _ := cacheManager.Get(key)
+	////data.Name = "sam"
+	//t.Log("get val ", data, reflect.DeepEqual(val, data))
+	////data2, _ := cacheManager.Get(key)
+	////t.Log("get val ", data2)
 
+	//db.NewDefaultAutoCacheManager[string, int32]("example:cachemanager")
+
+	con, _ := db.GetConn().PrepareContext(context.Background(), "insert into t_user(id,nick_name) values(?,?)")
+	rs, _ := con.Exec("5", "a5", "6", "a6")
+	o, _ := rs.RowsAffected()
+	t.Log("ok -> ", o)
+	defer con.Close()
+	w := &sync.WaitGroup{}
+	w.Add(1)
+	w.Wait()
+}
+
+type CacheExampleData struct {
+	Name string `orm:"pk"`
+	Age  int32
 }

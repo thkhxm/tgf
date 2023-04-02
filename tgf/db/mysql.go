@@ -21,9 +21,16 @@ import (
 var dbService *mysqlService
 
 type IModel interface {
-	GetTableName() string
-	SelectOne()
-	SelectAll()
+	IsInsert() bool
+}
+
+type Model struct {
+	Insert bool
+}
+
+func (this *Model) IsInsert() bool {
+	var ()
+	return this.Insert
 }
 
 type mysqlService struct {
@@ -38,7 +45,7 @@ func (this *mysqlService) isRunning() bool {
 func (this *mysqlService) getConnection() *sql.Conn {
 	var ()
 
-	if this.isRunning() {
+	if !this.isRunning() {
 		return nil
 	}
 
@@ -46,6 +53,10 @@ func (this *mysqlService) getConnection() *sql.Conn {
 		return conn
 	}
 	return nil
+}
+
+func GetConn() *sql.Conn {
+	return dbService.getConnection()
 }
 
 func initMySql() {
@@ -68,11 +79,12 @@ func initMySql() {
 		log.WarnTag("init", "mysql dataSourceName is wrong")
 		return
 	}
-	defer db.Close()
+	//defer db.Close()
 	if err = db.Ping(); err != nil {
 		log.WarnTag("init", "mysql unable to connect to database")
 		return
 	}
 	dbService.running = true
+	dbService.db = db
 	log.InfoTag("init", "mysql is running hostName=%v port=%v database=%v", hostName, port, database)
 }
