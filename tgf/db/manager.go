@@ -6,6 +6,7 @@ import (
 	"github.com/thkhxm/tgf/util"
 	"golang.org/x/net/context"
 	"reflect"
+	"strings"
 	"time"
 )
 
@@ -30,7 +31,7 @@ type cacheData[Val any] struct {
 type autoCacheManager[Key cacheKey, Val any] struct {
 	builder *AutoCacheBuilder[Key, Val]
 	//
-	cacheMap *hashmap.Map[Key, *cacheData[Val]]
+	cacheMap *hashmap.Map[string, *cacheData[Val]]
 	//
 	clearTimer *time.Ticker
 	//
@@ -66,27 +67,44 @@ func (this *cacheData[Val]) getData(second int64) Val {
 	}
 	return this.data
 }
-
-func (this *autoCacheManager[Key, Val]) get(key Key) (Val, bool) {
+func (this *autoCacheManager[Key, Val]) getLocalKey(key ...Key) (ck string) {
+	var (
+		size = len(key)
+	)
+	if size > 1 {
+		l := make([]string, size, size)
+		for i, k := range key {
+			v, _ := util.AnyToStr(k)
+			l[i] = v
+		}
+		ck = strings.Join(l, ":")
+	} else {
+		ck, _ = util.AnyToStr(key[0])
+	}
+	return
+}
+func (this *autoCacheManager[Key, Val]) get(key string) (Val, bool) {
 	var ()
+
 	if data, suc := this.cacheMap.Get(key); suc {
 		return data.getData(this.memTimeOutSecond()), true
 	}
 	return *new(Val), false
 }
 
-func (this *autoCacheManager[Key, Val]) Get(key Key) (val Val, err error) {
+func (this *autoCacheManager[Key, Val]) Get(key ...Key) (val Val, err error) {
 	var suc bool
+	localKey := this.getLocalKey(key...)
 	//先从本地缓存获取
 	if this.mem() {
-		if val, suc = this.get(key); suc {
+		if val, suc = this.get(localKey); suc {
 			return
 		}
 	}
 	//从cache缓存中获取
 	if this.cache() {
-		if val, suc = Get[Val](this.getCacheKey(key)); suc {
-			this.cacheMap.Set(key, newCacheData[Val](val, this.memTimeOutSecond()))
+		if val, suc = Get[Val](this.getCacheKey(localKey)); suc {
+			this.cacheMap.Set(localKey, newCacheData[Val](val, this.memTimeOutSecond()))
 		}
 	}
 	//从db获取
@@ -96,30 +114,33 @@ func (this *autoCacheManager[Key, Val]) Get(key Key) (val Val, err error) {
 	return
 }
 
-func (this *autoCacheManager[Key, Val]) Set(key Key, val Val) (success bool) {
-	this.cacheMap.Set(key, newCacheData[Val](val, this.memTimeOutSecond()))
+func (this *autoCacheManager[Key, Val]) Set(val Val, key ...Key) (success bool) {
+	localKey := this.getLocalKey(key...)
+	this.cacheMap.Set(localKey, newCacheData[Val](val, this.memTimeOutSecond()))
 	if this.cache() {
-		Set(this.getCacheKey(key), val, this.cacheTimeOut())
+		Set(this.getCacheKey(localKey), val, this.cacheTimeOut())
 	}
 	success = true
 	return
 }
 
-func (this *autoCacheManager[Key, Val]) Push(key Key) {
+func (this *autoCacheManager[Key, Val]) Push(key ...Key) {
 	var ()
 	if !this.cache() {
 		return
 	}
-	if val, err := this.Get(key); err == nil {
-		Set(this.getCacheKey(key), val, this.cacheTimeOut())
+	localKey := this.getLocalKey(key...)
+	if val, err := this.Get(key...); err == nil {
+		Set(this.getCacheKey(localKey), val, this.cacheTimeOut())
 	}
 }
 
-func (this *autoCacheManager[Key, Val]) Remove(key Key) (success bool) {
-	this.cacheMap.Del(key)
+func (this *autoCacheManager[Key, Val]) Remove(key ...Key) (success bool) {
+	localKey := this.getLocalKey(key...)
+	this.cacheMap.Del(localKey)
 	//设置过期时间，不直接删除
 	if this.cache() {
-		Del(this.getCacheKey(key))
+		Del(this.getCacheKey(localKey))
 	}
 	success = true
 	return
@@ -142,8 +163,8 @@ func (this *autoCacheManager[Key, Val]) autoClear() {
 	var ()
 	now := time.Now().Unix()
 	//初始化1/5的容量
-	removeKeys := make([]Key, 0, this.cacheMap.Len()/5)
-	this.cacheMap.Range(func(k Key, c *cacheData[Val]) bool {
+	removeKeys := make([]string, 0, this.cacheMap.Len()/5)
+	this.cacheMap.Range(func(k string, c *cacheData[Val]) bool {
 		if c.checkTimeOut(now) {
 			removeKeys = append(removeKeys, k)
 		}
@@ -158,9 +179,9 @@ func (this *autoCacheManager[Key, Val]) autoClear() {
 
 //TODO 使用定时器，分阶段对数据进行远程数据落库
 
-func (this *autoCacheManager[Key, Val]) getCacheKey(key Key) string {
+func (this *autoCacheManager[Key, Val]) getCacheKey(key string) string {
 	var ()
-	return this.builder.keyFun(key)
+	return this.builder.keyFun + ":" + key
 }
 
 func (this *autoCacheManager[Key, Val]) toLongevity() {
@@ -192,7 +213,7 @@ func (this *autoCacheManager[Key, Val]) cacheTimeOut() time.Duration {
 
 func (this *autoCacheManager[Key, Val]) InitStruct() {
 	var ()
-	this.cacheMap = hashmap.New[Key, *cacheData[Val]]()
+	this.cacheMap = hashmap.New[string, *cacheData[Val]]()
 	var k Val
 	v := reflect.ValueOf(k)
 	//
@@ -214,13 +235,23 @@ func (this *autoCacheManager[Key, Val]) InitStruct() {
 			}
 		})
 	}
+
+	//	//INSERT INTO table_name (id, name, value) VALUES (1, 'John', 10), (2, 'Peter', 20), (3, 'Mary', 30)
+	//	//ON DUPLICATE KEY UPDATE name=VALUES(name), value=VALUES(value);
 	////初始化db结构
 	if this.builder.longevity {
 		rf := v.Type().Elem()
+		//fieldStr := make([]string, rf.NumField(), rf.NumField())
 		for i := 0; i < rf.NumField(); i++ {
 			field := rf.Field(i)
 			if field.Tag != "" {
 				orm := field.Tag.Get("orm")
+				data := strings.Split(orm, ";")
+				for _, t := range data {
+					switch t {
+					case pk:
+					}
+				}
 				log.DebugTag("omr", "结构化日志打印 structName=%v field=%v tag=%v", rf.Name(), field.Name, orm)
 			}
 		}

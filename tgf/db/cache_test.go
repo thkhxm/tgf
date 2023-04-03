@@ -28,7 +28,7 @@ func TestDefaultAutoCacheManager(t *testing.T) {
 	//
 	t.Logf("[test] cache first get key %v , val %v", key, val)
 
-	cacheManager.Set(key, setVal)
+	cacheManager.Set(setVal, key)
 	t.Logf("[test] cache set key %v , val %v ", key, setVal)
 	val, err = cacheManager.Get(key)
 	if err != nil {

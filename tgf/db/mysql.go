@@ -18,19 +18,30 @@ import (
 //2023/3/22
 //***************************************************
 
+var (
+	pk = "pk"
+)
+
 var dbService *mysqlService
 
 type IModel interface {
-	IsInsert() bool
+	GetTableName() string
+	GetTableValues() string
 }
 
 type Model struct {
-	Insert bool
+	DD        string
+	CreatedAt string
 }
 
-func (this *Model) IsInsert() bool {
-	var ()
-	return this.Insert
+func (m Model) GetTableName() string {
+	//TODO implement me
+	panic("implement me")
+}
+
+func (m Model) GetTableValues() string {
+	//TODO implement me
+	panic("implement me")
 }
 
 type mysqlService struct {
