@@ -2,7 +2,6 @@ package db
 
 import (
 	"encoding/json"
-	"fmt"
 	"github.com/thkhxm/tgf"
 	"github.com/thkhxm/tgf/util"
 	"time"
@@ -34,9 +33,9 @@ type iCacheService interface {
 }
 
 type IAutoCacheService[Key cacheKey, Val any] interface {
-	Get(key Key) (val Val, err error)
-	Set(key Key, val Val) (success bool)
-	Remove(key Key) (success bool)
+	Get(key ...Key) (val Val, err error)
+	Set(val Val, key ...Key) (success bool)
+	Remove(key ...Key) (success bool)
 	Reset() IAutoCacheService[Key, Val]
 }
 
@@ -139,7 +138,7 @@ type AutoCacheBuilder[Key cacheKey, Val any] struct {
 	//数据是否缓存
 	cache bool
 	//获取唯一key的拼接函数
-	keyFun func(key Key) string
+	keyFun string
 
 	//
 
@@ -163,12 +162,10 @@ func (this *AutoCacheBuilder[Key, Val]) New() IAutoCacheService[Key, Val] {
 	return manager
 }
 
-func (this *AutoCacheBuilder[Key, Val]) WithAutoCache(cacheKey Key, cacheTimeOut time.Duration) *AutoCacheBuilder[Key, Val] {
+func (this *AutoCacheBuilder[Key, Val]) WithAutoCache(cacheKey string, cacheTimeOut time.Duration) *AutoCacheBuilder[Key, Val] {
 	var ()
 	this.cache = true
-	this.keyFun = func(key Key) string {
-		return fmt.Sprintf("%v:%v", cacheKey, key)
-	}
+	this.keyFun = cacheKey
 
 	if cacheTimeOut > 0 {
 		this.autoClear = true
@@ -196,9 +193,7 @@ func (this *AutoCacheBuilder[Key, Val]) WithMemCache(memTimeOutSecond uint32) *A
 //	@return IAutoCacheService [Key comparable, Val any] 返回一个全新的自动化数据缓存管理对象
 func NewDefaultAutoCacheManager[Key cacheKey, Val any](cacheKey string) IAutoCacheService[Key, Val] {
 	builder := &AutoCacheBuilder[Key, Val]{}
-	builder.keyFun = func(key Key) string {
-		return fmt.Sprintf("%v:%v", cacheKey, key)
-	}
+	builder.keyFun = cacheKey
 	builder.mem = true
 	builder.autoClear = true
 	builder.cache = true
@@ -217,9 +212,7 @@ func NewDefaultAutoCacheManager[Key cacheKey, Val any](cacheKey string) IAutoCac
 //	@return IAutoCacheService [Key comparable, Val any]
 func NewLongevityAutoCacheManager[Key cacheKey, Val IModel](cacheKey string) IAutoCacheService[Key, Val] {
 	builder := &AutoCacheBuilder[Key, Val]{}
-	builder.keyFun = func(key Key) string {
-		return fmt.Sprintf("%v:%v", cacheKey, key)
-	}
+	builder.keyFun = cacheKey
 	builder.mem = true
 	builder.autoClear = true
 	builder.cache = true
@@ -233,9 +226,7 @@ func NewLongevityAutoCacheManager[Key cacheKey, Val IModel](cacheKey string) IAu
 // @Description: 创建一个持久化的自动化数据管理，包含本地缓存，不包含持久化数据落地(mysql)，cache缓存(redis)
 func NewAutoCacheManager[Key cacheKey, Val any]() IAutoCacheService[Key, Val] {
 	builder := &AutoCacheBuilder[Key, Val]{}
-	builder.keyFun = func(key Key) string {
-		return ""
-	}
+	builder.keyFun = ""
 	builder.mem = true
 	builder.cache = false
 	builder.longevity = false
