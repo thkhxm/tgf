@@ -19,29 +19,14 @@ import (
 //***************************************************
 
 var (
-	pk = "pk"
+	pk     = "pk"
+	ignore = "ignore"
 )
 
 var dbService *mysqlService
 
 type IModel interface {
 	GetTableName() string
-	GetTableValues() string
-}
-
-type Model struct {
-	DD        string
-	CreatedAt string
-}
-
-func (m Model) GetTableName() string {
-	//TODO implement me
-	panic("implement me")
-}
-
-func (m Model) GetTableValues() string {
-	//TODO implement me
-	panic("implement me")
 }
 
 type mysqlService struct {
