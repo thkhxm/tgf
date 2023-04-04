@@ -144,8 +144,6 @@ type AutoCacheBuilder[Key cacheKey, Val any] struct {
 
 	//数据是否持久化
 	longevity bool
-	//持久化表名
-	tableName string
 
 	//
 	//是否自动清除过期数据
@@ -185,6 +183,10 @@ func (this *AutoCacheBuilder[Key, Val]) WithMemCache(memTimeOutSecond uint32) *A
 
 	return this
 }
+func (this *AutoCacheBuilder[Key, Val]) WithLongevityCache() *AutoCacheBuilder[Key, Val] {
+	this.longevity = true
+	return this
+}
 
 // NewDefaultAutoCacheManager [Key comparable, Val any]
 //
@@ -200,7 +202,6 @@ func NewDefaultAutoCacheManager[Key cacheKey, Val any](cacheKey string) IAutoCac
 	builder.cacheTimeOut = time.Hour * 24 * 3
 	builder.memTimeOutSecond = 60 * 60 * 3
 	builder.longevity = false
-	builder.tableName = ""
 	return builder.New()
 }
 
@@ -230,7 +231,6 @@ func NewAutoCacheManager[Key cacheKey, Val any]() IAutoCacheService[Key, Val] {
 	builder.mem = true
 	builder.cache = false
 	builder.longevity = false
-	builder.tableName = ""
 	return builder.New()
 }
 

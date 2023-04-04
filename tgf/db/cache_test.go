@@ -194,13 +194,26 @@ func TestAddListItem(t *testing.T) {
 }
 
 func TestNewAutoCacheBuilder(t *testing.T) {
-	//builder := db.NewAutoCacheBuilder[string, User]()
-	var longevityManager = db.NewLongevityAutoCacheManager[string, *ExampleUser]("test:user")
-	longevityManager.Get("1")
+	builder := db.NewAutoCacheBuilder[string, *DemoUser]()
+	builder.WithLongevityCache()
+	manager := builder.New()
+	manager.Get("2", "3")
+	//var longevityManager = db.NewLongevityAutoCacheManager[string, *ExampleUser]("test:user")
+	//data, _ := longevityManager.Get("1", "2")
+	//t.Log("---->", *data)
+}
+
+type DemoUser struct {
+	Name string
 }
 
 type ExampleUser struct {
-	db.Model
-	Id   string `orm:"pk"`
-	Name string
+	Uid    string `orm:"pk"`
+	Name   string
+	Aid    int32 `orm:"pk"`
+	ignore string
+}
+
+func (e ExampleUser) GetTableName() string {
+	return "user"
 }
