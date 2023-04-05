@@ -2,12 +2,14 @@ package db
 
 import (
 	"errors"
+	"fmt"
 	"github.com/cornelk/hashmap"
 	"github.com/thkhxm/tgf/log"
 	"github.com/thkhxm/tgf/util"
 	"golang.org/x/net/context"
 	"reflect"
 	"strings"
+	"sync"
 	"time"
 )
 
@@ -27,7 +29,10 @@ type cacheKey interface {
 type cacheData[Val any] struct {
 	data      Val
 	clearTime int64
+	update    bool
 }
+
+var defaultUpdateGroupSize int = 5
 
 type autoCacheManager[Key cacheKey, Val any] struct {
 	builder *AutoCacheBuilder[Key, Val]
@@ -37,6 +42,8 @@ type autoCacheManager[Key cacheKey, Val any] struct {
 	clearTimer *time.Ticker
 	//
 	sb *sqlBuilder[Val]
+	//
+	longevityLock *sync.Mutex
 }
 
 func newCacheData[Val any](data Val, second int64) *cacheData[Val] {
@@ -59,35 +66,6 @@ func (this *cacheData[Val]) getData(second int64) Val {
 		this.clearTime = time.Now().Unix() + second
 	}
 	return this.data
-}
-func (this *autoCacheManager[Key, Val]) getLocalKey(key ...Key) (ck string) {
-	var (
-		size = len(key)
-	)
-	if size > 1 {
-		l := make([]string, size, size)
-		for i, k := range key {
-			v, _ := util.AnyToStr(k)
-			l[i] = v
-		}
-		ck = strings.Join(l, ":")
-	} else {
-		ck, _ = util.AnyToStr(key[0])
-	}
-	return
-}
-func (this *autoCacheManager[Key, Val]) get(key string) (Val, bool) {
-	var ()
-
-	if data, suc := this.cacheMap.Get(key); suc {
-		return data.getData(this.memTimeOutSecond()), true
-	}
-	return *new(Val), false
-}
-
-func (this *autoCacheManager[Key, Val]) set(key string, val Val) {
-	var ()
-	this.cacheMap.Set(key, newCacheData[Val](val, this.memTimeOutSecond()))
 }
 
 func (this *autoCacheManager[Key, Val]) Get(key ...Key) (val Val, err error) {
@@ -123,23 +101,38 @@ func (this *autoCacheManager[Key, Val]) Get(key ...Key) (val Val, err error) {
 
 func (this *autoCacheManager[Key, Val]) Set(val Val, key ...Key) (success bool) {
 	localKey := this.getLocalKey(key...)
-	this.cacheMap.Set(localKey, newCacheData[Val](val, this.memTimeOutSecond()))
+	cd := newCacheData[Val](val, this.memTimeOutSecond())
+	this.cacheMap.Set(localKey, cd)
 	if this.cache() {
 		Set(this.getCacheKey(localKey), val, this.cacheTimeOut())
+	}
+	if this.longevity() {
+		cd.update = true
 	}
 	success = true
 	return
 }
 
+// Push
+//
+//	@Description: 数据变更后,可以调用该接口进行数据的更新,cache缓存会实时更新,longevity缓存会异步更新
+//	@receiver this
+//	@param key
 func (this *autoCacheManager[Key, Val]) Push(key ...Key) {
 	var ()
-	if !this.cache() {
-		return
-	}
 	localKey := this.getLocalKey(key...)
-	if val, err := this.Get(key...); err == nil {
-		Set(this.getCacheKey(localKey), val, this.cacheTimeOut())
+	if this.cache() {
+		if val, err := this.Get(key...); err == nil {
+			Set(this.getCacheKey(localKey), val, this.cacheTimeOut())
+		}
 	}
+
+	if this.longevity() {
+		if localCacheData, ok := this.cacheMap.Get(localKey); ok {
+			localCacheData.update = true
+		}
+	}
+
 }
 
 func (this *autoCacheManager[Key, Val]) Remove(key ...Key) (success bool) {
@@ -162,8 +155,38 @@ func (this *autoCacheManager[Key, Val]) Reset() IAutoCacheService[Key, Val] {
 
 func (this *autoCacheManager[Key, Val]) Destroy() {
 	var ()
-	//TODO 缓存之前的列表
 	this.toLongevity()
+}
+
+func (this *autoCacheManager[Key, Val]) getLocalKey(key ...Key) (ck string) {
+	var (
+		size = len(key)
+	)
+	if size > 1 {
+		l := make([]string, size, size)
+		for i, k := range key {
+			v, _ := util.AnyToStr(k)
+			l[i] = v
+		}
+		ck = strings.Join(l, ":")
+	} else {
+		ck, _ = util.AnyToStr(key[0])
+	}
+	return
+}
+
+func (this *autoCacheManager[Key, Val]) get(key string) (Val, bool) {
+	var ()
+
+	if data, suc := this.cacheMap.Get(key); suc {
+		return data.getData(this.memTimeOutSecond()), true
+	}
+	return *new(Val), false
+}
+
+func (this *autoCacheManager[Key, Val]) set(key string, val Val) {
+	var ()
+	this.cacheMap.Set(key, newCacheData[Val](val, this.memTimeOutSecond()))
 }
 
 func (this *autoCacheManager[Key, Val]) autoClear() {
@@ -193,12 +216,31 @@ func (this *autoCacheManager[Key, Val]) getCacheKey(key string) string {
 
 func (this *autoCacheManager[Key, Val]) toLongevity() {
 	var ()
+	if this.longevityLock.TryLock() {
+		defer this.longevityLock.Unlock()
+		size := this.cacheMap.Len()
+		valueStr := make([]any, 0, size*len(this.sb.tableFieldNum))
+		count := 0
+		this.cacheMap.Range(func(s string, c *cacheData[Val]) bool {
+			if c.update {
+				valueStr = append(valueStr, this.sb.toValueSql(c.getData(0))...)
+				count++
+				c.update = false
+			}
+			return true
+		})
+		util.Go(func() {
+			this.sb.updateOrCreate(valueStr, count)
+		})
+		log.DebugTag("orm", "execute longevity logic , longevity size=%v", count)
+	}
 }
 
 func (this *autoCacheManager[Key, Val]) mem() bool {
 	var ()
 	return this.builder.mem
 }
+
 func (this *autoCacheManager[Key, Val]) memTimeOutSecond() int64 {
 	var ()
 	return this.builder.memTimeOutSecond
@@ -213,6 +255,7 @@ func (this *autoCacheManager[Key, Val]) longevity() bool {
 	var ()
 	return this.builder.longevity
 }
+
 func (this *autoCacheManager[Key, Val]) cacheTimeOut() time.Duration {
 	var ()
 	return this.builder.cacheTimeOut
@@ -221,6 +264,7 @@ func (this *autoCacheManager[Key, Val]) cacheTimeOut() time.Duration {
 func (this *autoCacheManager[Key, Val]) InitStruct() {
 	var ()
 	this.cacheMap = hashmap.New[string, *cacheData[Val]]()
+	this.longevityLock = &sync.Mutex{}
 	this.sb = &sqlBuilder[Val]{}
 	var k Val
 	v := reflect.ValueOf(k)
@@ -258,7 +302,6 @@ func (this *autoCacheManager[Key, Val]) InitStruct() {
 			log.WarnTag("omr", "value %v need implements db.IMode", rf.Name())
 			return
 		}
-		//fieldStr := make([]string, rf.NumField(), rf.NumField())
 		pkFields := make([]string, 0)
 		fieldName := make([]string, 0)
 		tableFieldNum := make([]int, 0)
@@ -290,16 +333,66 @@ func (this *autoCacheManager[Key, Val]) InitStruct() {
 		queryListSql := strings.Join(fieldName, ",")
 
 		res := getTableNameValue.Call(make([]reflect.Value, 0))
-		querySql := "select " + queryListSql + " from " + res[0].Interface().(string) + " where " + pkSql
-		this.sb.querySql = querySql
+		this.sb.tableName = res[0].Interface().(string)
+		this.sb.tableField = queryListSql
+		this.sb.tableFieldName = fieldName
+		this.sb.pkSql = pkSql
 		this.sb.tableFieldNum = tableFieldNum
-		log.DebugTag("omr", "%v query model : %v", rf.Name(), querySql)
+		this.sb.initStruct()
 	}
 }
 
 type sqlBuilder[Val any] struct {
-	querySql      string
-	tableFieldNum []int
+	//table
+	tableFieldNum  []int
+	tableName      string
+	tableField     string
+	tableFieldName []string
+	//sql
+	pkSql              string
+	querySql           string
+	updateStartSql     string
+	updateEndSql       string
+	updateValueBaseSql string
+	updateAsSql        string
+	//chan
+	updateChan chan Val
+}
+
+func (this *sqlBuilder[Val]) initStruct() {
+	var ()
+	this.querySql = "select " + this.tableField + " from " + this.tableName + " where " + this.pkSql
+	log.DebugTag("omr", "table=%v query sql=%v", this.tableName, this.querySql)
+	//
+	this.updateStartSql = "INSERT INTO " + this.tableName + "(" + this.tableField + ")  VALUES "
+	appendSql := make([]string, len(this.tableFieldName), len(this.tableFieldName))
+	for i, s := range this.tableFieldName {
+		appendSql[i] = fmt.Sprintf("%v=v.%v", s, s)
+	}
+	this.updateEndSql = "ON DUPLICATE KEY UPDATE " + strings.Join(appendSql, ",")
+	//拼接默认单个值的字符串
+	fieldCount := len(this.tableFieldNum)
+	updateValueBaseSql := "("
+	for i := 0; i < fieldCount; i++ {
+		updateValueBaseSql += "?,"
+	}
+	updateValueBaseSql = updateValueBaseSql[:len(updateValueBaseSql)-1]
+	updateValueBaseSql += ") "
+	this.updateValueBaseSql = updateValueBaseSql
+	this.updateAsSql = "AS v "
+	log.DebugTag("omr", "table=%v update sql=%v", this.tableName, this.updateStartSql+this.updateValueBaseSql+this.updateAsSql+this.updateEndSql)
+	this.updateChan = make(chan Val)
+}
+
+func (this *sqlBuilder[Val]) toValueSql(val Val) (s []any) {
+	var ()
+	ref := reflect.ValueOf(val).Elem()
+	sliceSize := len(this.tableFieldNum)
+	s = make([]any, sliceSize, sliceSize)
+	for i, index := range this.tableFieldNum {
+		s[i] = ref.Field(index).Interface()
+	}
+	return
 }
 
 func (this *sqlBuilder[Val]) queryOne(args ...any) (val Val, err error) {
@@ -324,7 +417,7 @@ func (this *sqlBuilder[Val]) queryOne(args ...any) (val Val, err error) {
 	}
 	defer rows.Close()
 	ex := time.Since(start)
-	log.DebugTag("orm", "query model=%v params=%v time=%v/ms", this.querySql, args, ex)
+	log.DebugTag("orm", "query=%v params=%v time=%v/ms", this.querySql, args, ex)
 	if rows.Next() {
 		v := reflect.ValueOf(val)
 		if v.IsNil() {
@@ -348,4 +441,46 @@ func (this *sqlBuilder[Val]) queryOne(args ...any) (val Val, err error) {
 		return v.Interface().(Val), err
 	}
 	return val, errors.New("data is empty")
+}
+
+func (this *sqlBuilder[Val]) updateOrCreate(values []any, count int) {
+
+	//按批次发送所有更新脚本
+	group := count/defaultUpdateGroupSize + 1
+	fieldCount := len(this.tableFieldNum)
+	baseValueSize := len(values)
+	for i := 0; i < group; i++ {
+		//初始化更新脚本
+		start := time.Now()
+		startIndex := i * defaultUpdateGroupSize * fieldCount
+		if startIndex >= baseValueSize {
+			break
+		}
+		endIndex := startIndex + defaultUpdateGroupSize*fieldCount
+		if endIndex > baseValueSize {
+			endIndex = baseValueSize
+		}
+		valueSize := (endIndex - startIndex) / fieldCount
+		insertValues := make([]string, valueSize, valueSize)
+		for x := 0; x < valueSize; x++ {
+			insertValues[x] = this.updateValueBaseSql
+		}
+		insertValuesSql := strings.Join(insertValues, ",")
+		updateSql := this.updateStartSql + insertValuesSql + this.updateAsSql + this.updateEndSql
+		//执行脚本
+		stmt, err := dbService.getConnection().PrepareContext(context.Background(), updateSql)
+		if err != nil {
+			log.WarnTag("orm", "update script=%v params=%v error=%v", updateSql, values[startIndex:endIndex], err)
+			continue
+		}
+		_, err = stmt.Exec(values[startIndex:endIndex]...)
+		if err != nil {
+			log.WarnTag("orm", "update run script=%v params=%v error=%v", updateSql, values[startIndex:endIndex], err)
+			continue
+		}
+		stmt.Close()
+		ex := time.Since(start)
+		log.DebugTag("orm", "update=%v params=%v time=%v/ms", updateSql, values[startIndex:endIndex], ex)
+	}
+
 }
