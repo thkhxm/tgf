@@ -35,6 +35,7 @@ type iCacheService interface {
 type IAutoCacheService[Key cacheKey, Val any] interface {
 	Get(key ...Key) (val Val, err error)
 	Set(val Val, key ...Key) (success bool)
+	Push(key ...Key)
 	Remove(key ...Key) (success bool)
 	Reset() IAutoCacheService[Key, Val]
 }
@@ -237,6 +238,7 @@ func NewAutoCacheManager[Key cacheKey, Val any]() IAutoCacheService[Key, Val] {
 func NewAutoCacheBuilder[Key cacheKey, Val any]() *AutoCacheBuilder[Key, Val] {
 	builder := &AutoCacheBuilder[Key, Val]{}
 	builder.mem = true
+	builder.memTimeOutSecond = 60 * 60 * 3
 	return builder
 }
 

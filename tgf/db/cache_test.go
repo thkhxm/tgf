@@ -1,6 +1,7 @@
 package db_test
 
 import (
+	"fmt"
 	"github.com/thkhxm/tgf/db"
 	"reflect"
 	"testing"
@@ -188,16 +189,31 @@ func TestAddListItem(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			db.AddListItem[string](tt.args.key, tt.args.timeout, tt.args.l...)
+			_ = db.AddListItem[string](tt.args.key, tt.args.timeout, tt.args.l...)
 		})
 	}
 }
 
 func TestNewAutoCacheBuilder(t *testing.T) {
-	builder := db.NewAutoCacheBuilder[string, *DemoUser]()
+	builder := db.NewAutoCacheBuilder[string, *ExampleUser]()
 	builder.WithLongevityCache()
+	builder.WithAutoCache("example", time.Minute*5)
 	manager := builder.New()
-	manager.Get("2", "3")
+	for i := 0; i < 50; i++ {
+		id := fmt.Sprintf("%v", i)
+		name := fmt.Sprintf("tim2-%v", i)
+		data, _ := manager.Get(id)
+		if data == nil {
+			data = &ExampleUser{
+				Id: id, NickName: name,
+			}
+			manager.Set(data, id)
+		}
+		data.NickName = name
+		manager.Push(data.Id)
+	}
+	manager.Reset()
+	time.Sleep(time.Second * 5)
 	//var longevityManager = db.NewLongevityAutoCacheManager[string, *ExampleUser]("test:user")
 	//data, _ := longevityManager.Get("1", "2")
 	//t.Log("---->", *data)
@@ -208,12 +224,11 @@ type DemoUser struct {
 }
 
 type ExampleUser struct {
-	Uid    string `orm:"pk"`
-	Name   string
-	Aid    int32 `orm:"pk"`
-	ignore string
+	Id       string `orm:"pk"`
+	NickName string
+	ignore   string
 }
 
 func (e ExampleUser) GetTableName() string {
-	return "user"
+	return "t_user"
 }

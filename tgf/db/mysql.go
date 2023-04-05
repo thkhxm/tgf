@@ -30,8 +30,9 @@ type IModel interface {
 }
 
 type mysqlService struct {
-	running bool
-	db      *sql.DB
+	running     bool
+	db          *sql.DB
+	executeChan chan string
 }
 
 func (this *mysqlService) isRunning() bool {
@@ -40,15 +41,18 @@ func (this *mysqlService) isRunning() bool {
 }
 func (this *mysqlService) getConnection() *sql.Conn {
 	var ()
-
 	if !this.isRunning() {
 		return nil
 	}
-
 	if conn, err := this.db.Conn(context.Background()); err == nil {
 		return conn
 	}
 	return nil
+}
+
+func (this *mysqlService) AsyncExecuteUpdateOrCreate(sqlScript string) {
+	var ()
+	dbService.executeChan <- sqlScript
 }
 
 func GetConn() *sql.Conn {
@@ -66,7 +70,7 @@ func initMySql() {
 		database = tgf.GetStrConfig[string](tgf.EnvironmentMySqlDB)
 	)
 	dbService = new(mysqlService)
-
+	dbService.executeChan = make(chan string)
 	// 定义 MySQL 数据库连接信息
 	dataSourceName := fmt.Sprintf("%v:%v@tcp(%v:%v)/%v?charset=utf8", userName, password, hostName, port, database)
 	// 创建数据库连接池
