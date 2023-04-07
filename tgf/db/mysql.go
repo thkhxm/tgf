@@ -62,29 +62,32 @@ func GetConn() *sql.Conn {
 func initMySql() {
 	var (
 		err      error
-		db       *sql.DB
+		d        *sql.DB
 		userName = tgf.GetStrConfig[string](tgf.EnvironmentMySqlUser)
 		password = tgf.GetStrConfig[string](tgf.EnvironmentMySqlPwd)
 		hostName = tgf.GetStrConfig[string](tgf.EnvironmentMySqlAddr)
 		port     = tgf.GetStrConfig[string](tgf.EnvironmentMySqlPort)
 		database = tgf.GetStrConfig[string](tgf.EnvironmentMySqlDB)
 	)
+
 	dbService = new(mysqlService)
 	dbService.executeChan = make(chan string)
 	// 定义 MySQL 数据库连接信息
 	dataSourceName := fmt.Sprintf("%v:%v@tcp(%v:%v)/%v?charset=utf8", userName, password, hostName, port, database)
 	// 创建数据库连接池
-	db, err = sql.Open("mysql", dataSourceName)
+	d, err = sql.Open("mysql", dataSourceName)
+	d.SetMaxIdleConns(10)
+	d.SetMaxOpenConns(50)
 	if err != nil {
 		log.WarnTag("init", "mysql dataSourceName is wrong")
 		return
 	}
 	//defer db.Close()
-	if err = db.Ping(); err != nil {
+	if err = d.Ping(); err != nil {
 		log.WarnTag("init", "mysql unable to connect to database")
 		return
 	}
 	dbService.running = true
-	dbService.db = db
+	dbService.db = d
 	log.InfoTag("init", "mysql is running hostName=%v port=%v database=%v", hostName, port, database)
 }
