@@ -32,7 +32,7 @@ type cacheData[Val any] struct {
 	update    bool
 }
 
-var defaultUpdateGroupSize int = 5
+var defaultUpdateGroupSize = 500
 
 type autoCacheManager[Key cacheKey, Val any] struct {
 	builder *AutoCacheBuilder[Key, Val]
@@ -236,6 +236,15 @@ func (this *autoCacheManager[Key, Val]) toLongevity() {
 	}
 }
 
+func (this *autoCacheManager[Key, Val]) longevityInterval() time.Duration {
+	var ()
+	if this.builder.longevityInterval == 0 {
+		log.DebugTag("orm", "load default timer interval 5 second")
+		return time.Second * 5
+	}
+	return this.builder.longevityInterval
+}
+
 func (this *autoCacheManager[Key, Val]) mem() bool {
 	var ()
 	return this.builder.mem
@@ -280,12 +289,17 @@ func (this *autoCacheManager[Key, Val]) InitStruct() {
 
 	//开启自动清除过期数据
 	if this.builder.autoClear {
-		this.clearTimer = time.NewTicker(time.Minute)
+		this.clearTimer = time.NewTicker(this.longevityInterval())
 		util.Go(func() {
+			counter := 0
 			for {
 				select {
 				case <-this.clearTimer.C:
-					this.autoClear()
+					counter++
+					this.toLongevity()
+					if counter%10 == 0 {
+						this.autoClear()
+					}
 				}
 			}
 		})

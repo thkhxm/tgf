@@ -3,6 +3,7 @@ package db
 import (
 	"encoding/json"
 	"github.com/thkhxm/tgf"
+	"github.com/thkhxm/tgf/log"
 	"github.com/thkhxm/tgf/util"
 	"time"
 )
@@ -144,8 +145,8 @@ type AutoCacheBuilder[Key cacheKey, Val any] struct {
 	//
 
 	//数据是否持久化
-	longevity bool
-
+	longevity         bool
+	longevityInterval time.Duration
 	//
 	//是否自动清除过期数据
 	autoClear        bool
@@ -184,8 +185,14 @@ func (this *AutoCacheBuilder[Key, Val]) WithMemCache(memTimeOutSecond uint32) *A
 
 	return this
 }
-func (this *AutoCacheBuilder[Key, Val]) WithLongevityCache() *AutoCacheBuilder[Key, Val] {
+
+func (this *AutoCacheBuilder[Key, Val]) WithLongevityCache(updateInterval time.Duration) *AutoCacheBuilder[Key, Val] {
 	this.longevity = true
+	if updateInterval < time.Second {
+		log.WarnTag("orm", "updateInterval minimum is 1 second")
+		updateInterval = time.Second
+	}
+	this.longevityInterval = updateInterval
 	return this
 }
 
