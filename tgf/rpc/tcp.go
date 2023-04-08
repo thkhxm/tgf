@@ -477,6 +477,8 @@ func (this *TCPServer) ToUser(userId string, data []byte) {
 	var ()
 	if connectData, ok := this.users.Get(userId); ok {
 		connectData.Send(data)
+	} else {
+		log.DebugTag("tcp", "userid=%v user connection not found", userId)
 	}
 }
 

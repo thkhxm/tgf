@@ -321,10 +321,13 @@ func (this *autoCacheManager[Key, Val]) InitStruct() {
 		tableFieldNum := make([]int, 0)
 		for i := 0; i < rf.NumField(); i++ {
 			field := rf.Field(i)
+			if !field.IsExported() {
+				continue
+			}
 			orm := ""
 			name := field.Name
 			name = strings.ToLower(name[0:1]) + name[1:]
-			isTableField := field.Name != name
+			isTableField := true
 			if field.Tag != "" {
 				orm = field.Tag.Get("orm")
 				data := strings.Split(orm, ";")
