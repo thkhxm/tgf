@@ -443,8 +443,32 @@ func BorderRPCMessage[Req any, Res any](ct context.Context, api *ServiceAPI[Req,
 	xclient.Broadcast(context.Background(), api.Name, api.args, api.reply)
 }
 
+// SendToGate
+// @Description: 发送消息到用户所在的网关
+// @param ct
+// @param pbMessage
+// @return error
 func SendToGate(ct context.Context, pbMessage proto.Message) error {
 	data, err := proto.Marshal(pbMessage)
+	req := &ToUserReq{
+		Data:   data,
+		UserId: GetUserId(ct),
+	}
+	if err != nil {
+		return err
+	}
+	err = SendNoReplyRPCMessage[*ToUserReq, *ToUserRes](ct, ToUser.New(req, &ToUserRes{}))
+	return err
+}
+
+// SendToGateByUserId
+// @Description: 根据用户id发送消息到用户所在的网关
+// @param userId
+// @param pbMessage
+// @return error
+func SendToGateByUserId(userId string, pbMessage proto.Message) error {
+	data, err := proto.Marshal(pbMessage)
+	ct := NewUserContext(userId)
 	req := &ToUserReq{
 		Data:   data,
 		UserId: GetUserId(ct),
