@@ -1,4 +1,8 @@
-package util
+package component_test
+
+import (
+	"testing"
+)
 
 //***************************************************
 //@Link  https://github.com/thkhxm/tgf
@@ -6,13 +10,9 @@ package util
 //@QQ群 7400585
 //author tim.huang<thkhxm@gmail.com>
 //@Description
-//2023/3/14
+//2023/4/11
 //***************************************************
 
-func IsNil[Val any](val Val) {
-
-	switch any(val).(type) {
-
-	}
+func TestInitGameConfig(t *testing.T) {
 
 }

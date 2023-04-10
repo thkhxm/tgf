@@ -1,4 +1,4 @@
-package util
+package component
 
 //***************************************************
 //@Link  https://github.com/thkhxm/tgf
@@ -6,13 +6,9 @@ package util
 //@QQ群 7400585
 //author tim.huang<thkhxm@gmail.com>
 //@Description
-//2023/3/14
+//2023/4/10
 //***************************************************
 
-func IsNil[Val any](val Val) {
-
-	switch any(val).(type) {
-
-	}
+func init() {
 
 }
