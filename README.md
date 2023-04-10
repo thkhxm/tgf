@@ -20,6 +20,7 @@
 | godotenv   | 环境变量工具   | https://github.com/joho/godotenv         |
 | zap        | 日志框架       | https://go.uber.org/zap                  |
 | lumberjack | 日志切割工具   | https://gopkg.in/natefinch/lumberjack.v2 |
+| excelize   | Excel工具      | https://github.com/qax-os/excelize       |
 
 ## 基础架构图
 
