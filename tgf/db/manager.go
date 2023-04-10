@@ -216,6 +216,9 @@ func (this *autoCacheManager[Key, Val]) getCacheKey(key string) string {
 
 func (this *autoCacheManager[Key, Val]) toLongevity() {
 	var ()
+	if !this.longevity() {
+		return
+	}
 	if this.longevityLock.TryLock() {
 		defer this.longevityLock.Unlock()
 		size := this.cacheMap.Len()

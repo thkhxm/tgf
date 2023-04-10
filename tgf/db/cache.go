@@ -181,6 +181,9 @@ func (this *AutoCacheBuilder[Key, Val]) WithMemCache(memTimeOutSecond uint32) *A
 	if memTimeOutSecond>>31 == 1 {
 		memTimeOutSecond = 0
 	}
+	if memTimeOutSecond != 0 {
+		this.autoClear = true
+	}
 	this.memTimeOutSecond = int64(memTimeOutSecond)
 
 	return this

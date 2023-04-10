@@ -1,0 +1,14 @@
+[
+	{
+		"Id":1,
+		"Name":"出入江湖",
+		"LimitLevel":1,
+		"NextId":2
+	},
+	{
+		"Id":2,
+		"Name":"酒楼相遇",
+		"LimitLevel":1,
+		"NextId":3
+	}
+]
