@@ -357,7 +357,7 @@ func sendMessage(ct IUserConnectData, moduleName, serviceName string, args, repl
 //	@Description: 远程rpc调用
 //	@param ct
 //	@param api
-//	@param Res]
+//	@param Res
 //	@return res
 //	@return err
 func SendRPCMessage[Req any, Res any](ct context.Context, api *ServiceAPI[Req, Res]) (res Res, err error) {
