@@ -6,6 +6,8 @@
 // @Ref  https://www.cnblogs.com/stulzq/p/16741844.html
 package log
 
+import "github.com/thkhxm/tgf"
+
 //***************************************************
 //@Link  https://github.com/thkhxm/tgf
 //@Link  https://gitee.com/timgame/tgf
@@ -17,4 +19,5 @@ package log
 
 func init() {
 	initLogger()
+	Info(tgf.Logo)
 }

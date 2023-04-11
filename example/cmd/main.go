@@ -20,6 +20,7 @@ func main() {
 	//util.SetExcelToJsonPath("./cmd/json")
 	//util.SetExcelToGoPath("./conf")
 	//util.ExcelExport()
+	//
 	component.WithConfPath("./cmd/json")
 	component.InitGameConfToMem()
 	component.LoadGameConf[*conf.HeroConf]()

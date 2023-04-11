@@ -29,7 +29,7 @@ var (
 // ExcelExport
 // @Description: Excel导出json文件
 func ExcelExport() {
-	fmt.Println("---------------start export------------------", excelToJsonPath)
+	fmt.Println("---------------start export------------------")
 	fmt.Println("")
 	fmt.Println("")
 	files := GetFileList(excelPath, fileExt)
@@ -43,7 +43,7 @@ func ExcelExport() {
 	}
 	fmt.Println("")
 	fmt.Println("")
-	fmt.Println("---------------end export-------------------", excelToJsonPath)
+	fmt.Println("---------------end export-------------------")
 
 }
 

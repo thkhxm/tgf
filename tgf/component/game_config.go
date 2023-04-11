@@ -30,6 +30,7 @@ func GetGameConf[Val any](id string) (res Val) {
 	t := util.ReflectType[Val]()
 	key := t.Name()
 	data, _ := cacheDataManager.Get(key)
+
 	tmp, _ := data.Get(id)
 	return tmp.(Val)
 }
