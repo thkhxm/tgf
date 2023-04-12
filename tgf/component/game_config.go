@@ -10,6 +10,7 @@ import (
 	"path/filepath"
 	"reflect"
 	"strings"
+	"sync"
 )
 
 //***************************************************
@@ -26,6 +27,8 @@ var confPath = "./conf/json"
 var contextDataManager db.IAutoCacheService[string, []byte]
 var cacheDataManager db.IAutoCacheService[string, *hashmap.Map[string, interface{}]]
 
+var newLock = &sync.Mutex{}
+
 func GetGameConf[Val any](id string) (res Val) {
 	t := util.ReflectType[Val]()
 	key := t.Name()
@@ -33,6 +36,40 @@ func GetGameConf[Val any](id string) (res Val) {
 
 	tmp, _ := data.Get(id)
 	return tmp.(Val)
+}
+
+// GetAllGameConf [Val any]
+// @Description: 不建议使用这个函数除非特殊需求，建议使用RangeGameConf
+func GetAllGameConf[Val any]() (res []Val) {
+	t := util.ReflectType[Val]()
+	key := t.Name()
+	data, _ := cacheDataManager.Get(key)
+	res = make([]Val, 0, data.Len())
+	data.Range(func(s string, i interface{}) bool {
+		res = append(res, i)
+		return true
+	})
+	return res
+}
+
+// RangeGameConf [Val any]
+// @Description:
+// @param f
+func RangeGameConf[Val any](f func(s string, i Val) bool) {
+	t := util.ReflectType[Val]()
+	key := t.Name()
+	data, _ := cacheDataManager.Get(key)
+	ff := func(a string, b interface{}) bool {
+		return f(a, b)
+	}
+	data.Range(ff)
+}
+
+func getCacheGameConfData(key string) {
+	//data := cacheDataManager.Get(key)
+	//if data == nil {
+	//
+	//}
 }
 
 // LoadGameConf [Val any]
