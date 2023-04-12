@@ -32,8 +32,7 @@ var newLock = &sync.Mutex{}
 func GetGameConf[Val any](id string) (res Val) {
 	t := util.ReflectType[Val]()
 	key := t.Name()
-	data, _ := cacheDataManager.Get(key)
-
+	data := getCacheGameConfData[Val](key)
 	tmp, _ := data.Get(id)
 	return tmp.(Val)
 }
@@ -43,10 +42,10 @@ func GetGameConf[Val any](id string) (res Val) {
 func GetAllGameConf[Val any]() (res []Val) {
 	t := util.ReflectType[Val]()
 	key := t.Name()
-	data, _ := cacheDataManager.Get(key)
+	data := getCacheGameConfData[Val](key)
 	res = make([]Val, 0, data.Len())
 	data.Range(func(s string, i interface{}) bool {
-		res = append(res, i)
+		res = append(res, i.(Val))
 		return true
 	})
 	return res
@@ -58,25 +57,28 @@ func GetAllGameConf[Val any]() (res []Val) {
 func RangeGameConf[Val any](f func(s string, i Val) bool) {
 	t := util.ReflectType[Val]()
 	key := t.Name()
-	data, _ := cacheDataManager.Get(key)
+	data := getCacheGameConfData[Val](key)
 	ff := func(a string, b interface{}) bool {
-		return f(a, b)
+		return f(a, b.(Val))
 	}
 	data.Range(ff)
 }
 
-func getCacheGameConfData(key string) {
-	//data := cacheDataManager.Get(key)
-	//if data == nil {
-	//
-	//}
+func getCacheGameConfData[Val any](key string) *hashmap.Map[string, interface{}] {
+	data, _ := cacheDataManager.Get(key)
+	if data == nil {
+		newLock.Lock()
+		defer newLock.Unlock()
+		data = LoadGameConf[Val]()
+	}
+	return data
 }
 
 // LoadGameConf [Val any]
 //
 //	 泛型传入自动生成的配置即可
 //		@Description: 预加载
-func LoadGameConf[Val any]() {
+func LoadGameConf[Val any]() *hashmap.Map[string, interface{}] {
 	t := util.ReflectType[Val]()
 	key := t.Name()
 	context, _ := contextDataManager.Get(key)
@@ -84,11 +86,13 @@ func LoadGameConf[Val any]() {
 	cc := hashmap.New[string, interface{}]()
 	for _, d := range data {
 		rd := reflect.ValueOf(d).Elem()
-		id := rd.FieldByName("Id")
-		cc.Set(id.Interface().(string), d)
+		id := rd.Field(0)
+		uniqueId, _ := util.AnyToStr(id.Interface())
+		cc.Set(uniqueId, d)
 	}
 	cacheDataManager.Set(cc, key)
 	log.DebugTag("GameConf", "load game conf , name=%v", t.Name())
+	return cc
 }
 
 func WithConfPath(path string) {
