@@ -4,6 +4,7 @@ import (
 	"github.com/thkhxm/tgf/component"
 	"github.com/thkhxm/tgf/log"
 	"github.com/thkhxm/tgf/service/conf"
+	"github.com/thkhxm/tgf/util"
 )
 
 //***************************************************
@@ -23,7 +24,12 @@ func main() {
 	//
 	component.WithConfPath("./cmd/json")
 	component.InitGameConfToMem()
-	component.LoadGameConf[*conf.HeroConf]()
 	heroConf := component.GetGameConf[*conf.HeroConf]("f_01")
 	log.Debug("--->%v", heroConf.Attack)
+	component.GetAllGameConf[*conf.HeroConf]()
+	component.RangeGameConf[*conf.HeroConf](func(s string, i *conf.HeroConf) bool {
+		msg, _ := util.AnyToStr(i)
+		log.Debug("print hero conf ->%v", msg)
+		return true
+	})
 }
