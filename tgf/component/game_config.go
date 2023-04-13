@@ -34,7 +34,17 @@ func GetGameConf[Val any](id string) (res Val) {
 	key := t.Name()
 	data := getCacheGameConfData[Val](key)
 	tmp, _ := data.Get(id)
-	return tmp.(Val)
+	res = tmp.([]Val)[0]
+	return
+}
+
+func GetGameConfBySlice[Val any](id string) (res []Val) {
+	t := util.ReflectType[Val]()
+	key := t.Name()
+	data := getCacheGameConfData[Val](key)
+	tmp, _ := data.Get(id)
+	res = tmp.([]Val)
+	return
 }
 
 // GetAllGameConf [Val any]
@@ -43,12 +53,15 @@ func GetAllGameConf[Val any]() (res []Val) {
 	t := util.ReflectType[Val]()
 	key := t.Name()
 	data := getCacheGameConfData[Val](key)
-	res = make([]Val, 0, data.Len())
+	tmp := make([]Val, 0, data.Len())
 	data.Range(func(s string, i interface{}) bool {
-		res = append(res, i.(Val))
+		for _, v := range i.([]Val) {
+			tmp = append(tmp, v)
+		}
 		return true
 	})
-	return res
+	res = tmp
+	return
 }
 
 // RangeGameConf [Val any]
@@ -59,7 +72,12 @@ func RangeGameConf[Val any](f func(s string, i Val) bool) {
 	key := t.Name()
 	data := getCacheGameConfData[Val](key)
 	ff := func(a string, b interface{}) bool {
-		return f(a, b.(Val))
+		for _, i := range b.([]Val) {
+			if !f(a, i) {
+				return false
+			}
+		}
+		return true
 	}
 	data.Range(ff)
 }
@@ -88,7 +106,12 @@ func LoadGameConf[Val any]() *hashmap.Map[string, interface{}] {
 		rd := reflect.ValueOf(d).Elem()
 		id := rd.Field(0)
 		uniqueId, _ := util.AnyToStr(id.Interface())
-		cc.Set(uniqueId, d)
+		v, _ := cc.Get(uniqueId)
+		if v == nil {
+			v = make([]Val, 0)
+		}
+		v = append(v.([]Val), d)
+		cc.Set(uniqueId, v)
 	}
 	cacheDataManager.Set(cc, key)
 	log.DebugTag("GameConf", "load game conf , name=%v", t.Name())

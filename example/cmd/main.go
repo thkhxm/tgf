@@ -26,7 +26,15 @@ func main() {
 	component.InitGameConfToMem()
 	heroConf := component.GetGameConf[*conf.HeroConf]("f_01")
 	log.Debug("--->%v", heroConf.Attack)
-	component.GetAllGameConf[*conf.HeroConf]()
+	heroList := component.GetAllGameConf[*conf.HeroConf]()
+	for _, c := range heroList {
+		log.Debug("for --->%v", c.Attack)
+	}
+	groupList := component.GetGameConfBySlice[*conf.HeroConf]("f_01")
+	for _, c := range groupList {
+		log.Debug("for group --->%v", c.Attack)
+	}
+
 	component.RangeGameConf[*conf.HeroConf](func(s string, i *conf.HeroConf) bool {
 		msg, _ := util.AnyToStr(i)
 		log.Debug("print hero conf ->%v", msg)
