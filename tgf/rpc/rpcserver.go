@@ -341,7 +341,6 @@ func (this *Call) Done() error {
 
 func sendMessage(ct IUserConnectData, moduleName, serviceName string, args, reply interface{}) (*Call, error) {
 	var (
-		//TODO 这里的chan，可以根据用户，每个用户自己维护自己的一个chan，这样可以保证，用户级别的消息队列
 		rc      = getRPCClient()
 		xclient = rc.getClient(moduleName)
 	)
