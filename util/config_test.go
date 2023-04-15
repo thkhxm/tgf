@@ -1,6 +1,7 @@
 package util_test
 
 import (
+	"github.com/thkhxm/tgf/util"
 	"testing"
 )
 
@@ -14,7 +15,7 @@ import (
 //***************************************************
 
 func TestExcelToJson(t *testing.T) {
-	SetExcelPath("C:\\Users\\AUSA\\Desktop\\配置文件")
-	SetExcelToJsonPath("./")
-	ExcelExport()
+	util.SetExcelPath("C:\\Users\\AUSA\\Desktop\\配置文件")
+	util.SetExcelToJsonPath("./")
+	util.ExcelExport()
 }
