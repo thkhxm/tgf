@@ -1,7 +1,6 @@
 package log_test
 
 import (
-	"github.com/thkhxm/tgf/log"
 	"testing"
 )
 
@@ -28,7 +27,7 @@ func TestDebug(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			log.Debug(tt.args.msg, tt.args.params...)
+			Debug(tt.args.msg, tt.args.params...)
 		})
 	}
 }
@@ -47,7 +46,7 @@ func TestError(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			log.Error(tt.args.msg, tt.args.params...)
+			Error(tt.args.msg, tt.args.params...)
 		})
 	}
 }
@@ -66,7 +65,7 @@ func TestInfo(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			log.Info(tt.args.msg, tt.args.params...)
+			Info(tt.args.msg, tt.args.params...)
 		})
 	}
 }
@@ -85,7 +84,7 @@ func TestWarn(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			log.Warn(tt.args.msg, tt.args.params...)
+			Warn(tt.args.msg, tt.args.params...)
 		})
 	}
 }

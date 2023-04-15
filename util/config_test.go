@@ -1,4 +1,8 @@
-package hallentity
+package util_test
+
+import (
+	"testing"
+)
 
 //***************************************************
 //@Link  https://github.com/thkhxm/tgf
@@ -6,14 +10,11 @@ package hallentity
 //@QQ群 7400585
 //author tim.huang<thkhxm@gmail.com>
 //@Description
-//2023/3/25
+//2023/4/10
 //***************************************************
 
-type UserModel struct {
-	Uid  string `orm:pk`
-	Name string
-}
-
-type User struct {
-	UserModel
+func TestExcelToJson(t *testing.T) {
+	SetExcelPath("C:\\Users\\AUSA\\Desktop\\配置文件")
+	SetExcelToJsonPath("./")
+	ExcelExport()
 }

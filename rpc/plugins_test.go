@@ -1,7 +1,6 @@
 package rpc_test
 
 import (
-	"github.com/thkhxm/tgf/rpc"
 	"testing"
 )
 
@@ -31,7 +30,7 @@ func TestCustomSelector_UpdateServer(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			this := rpc.NewCustomSelector(tt.fields.moduleName)
+			this := NewCustomSelector(tt.fields.moduleName)
 			this.UpdateServer(tt.args.servers)
 		})
 	}
