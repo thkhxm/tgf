@@ -2,7 +2,6 @@ package db_test
 
 import (
 	"fmt"
-	"github.com/thkhxm/tgf/db"
 	"golang.org/x/net/context"
 	"reflect"
 	"strings"
@@ -34,7 +33,7 @@ func Test_autoCacheManager_Get(t *testing.T) {
 	//INSERT INTO table_name (id, name, value) VALUES (1, 'John', 10), (2, 'Peter', 20), (3, 'Mary', 30)
 	//ON DUPLICATE KEY UPDATE name=VALUES(name), value=VALUES(value);
 
-	con, _ := db.GetConn().PrepareContext(context.Background(), "INSERT INTO ... ON DUPLICATE KEY UPDATE")
+	con, _ := GetConn().PrepareContext(context.Background(), "INSERT INTO ... ON DUPLICATE KEY UPDATE")
 	rs, err := con.Exec("1", "a1", 1, "1", "a1", 2)
 	t.Log("err -> ", err)
 	o, _ := rs.RowsAffected()

@@ -1,7 +1,6 @@
 package util_test
 
 import (
-	"github.com/thkhxm/tgf/util"
 	"sync"
 	"testing"
 )
@@ -36,7 +35,7 @@ func TestGo(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			util.Go(tt.args.f)
+			Go(tt.args.f)
 		})
 	}
 	w := sync.WaitGroup{}
@@ -52,7 +51,7 @@ func TestInitGoroutinePool(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			util.InitGoroutinePool()
+			InitGoroutinePool()
 		})
 	}
 }

@@ -2,7 +2,6 @@ package util_test
 
 import (
 	"encoding/json"
-	"github.com/thkhxm/tgf/util"
 	"reflect"
 	"testing"
 )
@@ -33,7 +32,7 @@ func TestStrToAny(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			got, err := util.StrToAny[StringDemoType](tt.args.a)
+			got, err := StrToAny[StringDemoType](tt.args.a)
 			if (err != nil) != tt.wantErr {
 				t.Errorf("StrToAny() error = %v, wantErr %v", err, tt.wantErr)
 				return
@@ -72,7 +71,7 @@ func TestRecover(t *testing.T) {
 	//t.Log("--->", a4)
 	//t.Log("--->", a5)
 	//t.Log("--->", a6)
-	dd, _ := util.StrToAny[*StringDemoType]("{\"Name\":\"tim\"}")
+	dd, _ := StrToAny[*StringDemoType]("{\"Name\":\"tim\"}")
 
 	t.Log("--->", dd)
 }
