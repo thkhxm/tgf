@@ -62,7 +62,8 @@ func (this *CustomSelector) Select(ctx context.Context, servicePath, serviceMeth
 				if this.checkServerAlive(selected) {
 					return
 				}
-
+				//如果上面的用户节点获取，没有命中，那么取当前请求模式
+				//如果是rpc推送请求，
 				switch reqMetaData[tgf.ContextKeyRPCType] {
 				case tgf.RPCTip:
 					//从数据缓存中获取用户的节点数据
@@ -77,30 +78,34 @@ func (this *CustomSelector) Select(ctx context.Context, servicePath, serviceMeth
 						this.cacheManager.Set(uid, selected)
 						return
 					}
-					fallthrough
-				default:
-					//通过一致性hash的方式,命中一个活跃的业务节点
-					key := client2.HashString(uid)
-					selected, _ = this.h.Get(key).(string)
-					reqMetaData[servicePath] = selected
-					//将节点信息放入数据缓存中
-					reqMetaDataKey := fmt.Sprintf(tgf.RedisKeyUserNodeMeta, uid)
-					db.PutMap(reqMetaDataKey, servicePath, selected, reqMetaDataTimeout)
-					//将节点数据，放入本地缓存
-					this.cacheManager.Set(uid, selected)
-					if UploadUserNodeInfo.ModuleName != servicePath {
-						//推送协议通知用户网关
-						if _, err := SendRPCMessage(ctx, UploadUserNodeInfo.New(&UploadUserNodeInfoReq{
-							UserId:      uid,
-							NodeId:      selected,
-							ServicePath: servicePath,
-						}, &UploadUserNodeInfoRes{ErrorCode: 0})); err != nil {
-							log.Warn("[rpc] 节点更新异常 %v", err)
-						}
+				}
+				//通过一致性hash的方式,命中一个活跃的业务节点
+				key := client2.HashString(uid)
+				selected, _ = this.h.Get(key).(string)
+				reqMetaData[servicePath] = selected
+				//将节点信息放入数据缓存中
+				reqMetaDataKey := fmt.Sprintf(tgf.RedisKeyUserNodeMeta, uid)
+				db.PutMap(reqMetaDataKey, servicePath, selected, reqMetaDataTimeout)
+				//将节点数据，放入本地缓存
+				this.cacheManager.Set(uid, selected)
+				if UploadUserNodeInfo.ModuleName != servicePath {
+					//推送协议通知用户网关
+					if _, err := SendRPCMessage(ctx, UploadUserNodeInfo.New(&UploadUserNodeInfoReq{
+						UserId:      uid,
+						NodeId:      selected,
+						ServicePath: servicePath,
+					}, &UploadUserNodeInfoRes{ErrorCode: 0})); err != nil {
+						log.Warn("[rpc] 节点更新异常 %v", err)
 					}
 				}
-				return
+			} else {
+				if selected = reqMetaData[servicePath]; this.checkServerAlive(selected) {
+					key := client2.HashString(fmt.Sprintf("%v", time.Now().Unix()))
+					selected, _ = this.h.Get(key).(string)
+				}
 			}
+
+			return
 		}
 	}
 

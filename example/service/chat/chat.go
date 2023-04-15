@@ -28,7 +28,6 @@ func (this *ChatService) RPCSayHello(ctx context.Context, req *string, response 
 	)
 	log.DebugTag("example", "RPCSayHello userId=%v ,msg=%v", userId, msg)
 	response.Msg = fmt.Sprintf("%v say %v", userId, msg)
-	//time.Sleep(time.Second * 10)
 	return nil
 }
 
