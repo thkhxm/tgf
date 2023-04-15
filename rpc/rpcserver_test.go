@@ -8,6 +8,7 @@ import (
 	"github.com/smallnest/rpcx/client"
 	"github.com/thkhxm/tgf"
 	"github.com/thkhxm/tgf/log"
+	"github.com/thkhxm/tgf/rpc"
 	"golang.org/x/net/context"
 	"net"
 	"sync"
@@ -24,7 +25,7 @@ import (
 //***************************************************
 
 func TestStartRpcServer(t *testing.T) {
-	rpcServer := NewRPCServer()
+	rpcServer := rpc.NewRPCServer()
 	service := new(DemoService)
 
 	service2 := new(Demo2Service)
@@ -92,7 +93,7 @@ func LoginByteTest() *bytes.Buffer {
 	tmp := make([]byte, 0, 4+len(data))
 	buff := bytes.NewBuffer(tmp)
 	buff.WriteByte(250)
-	buff.WriteByte(byte(Login))
+	buff.WriteByte(byte(rpc.Login))
 	reqSizeLenByte := make([]byte, 2)
 	binary.BigEndian.PutUint16(reqSizeLenByte, uint16(len(data)))
 	buff.Write(reqSizeLenByte)
@@ -109,7 +110,7 @@ func LogicByteTest() *bytes.Buffer {
 	tmp := make([]byte, 0, 6+len(data)+len(reqName))
 	buff := bytes.NewBuffer(tmp)
 	buff.WriteByte(250)
-	buff.WriteByte(byte(Logic))
+	buff.WriteByte(byte(rpc.Logic))
 	reqLenByte := make([]byte, 2)
 	binary.BigEndian.PutUint16(reqLenByte, uint16(len(reqName)))
 	buff.Write(reqLenByte)
@@ -134,7 +135,7 @@ func TestClientSender(t *testing.T) {
 }
 
 type Demo2Service struct {
-	Module
+	rpc.Module
 }
 
 func (this *Demo2Service) GetName() string {
@@ -157,7 +158,7 @@ func (this *Demo2Service) RPCSayHello(ctx context.Context, args *interface{}, re
 }
 
 type DemoService struct {
-	Module
+	rpc.Module
 }
 
 func (this *DemoService) GetName() string {

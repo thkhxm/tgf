@@ -2,6 +2,7 @@ package db_test
 
 import (
 	"fmt"
+	"github.com/thkhxm/tgf/db"
 	"reflect"
 	"testing"
 	"time"
@@ -17,7 +18,7 @@ import (
 //***************************************************
 
 func TestDefaultAutoCacheManager(t *testing.T) {
-	cacheManager := NewDefaultAutoCacheManager[string, int64]("example")
+	cacheManager := db.NewDefaultAutoCacheManager[string, int64]("example")
 	key := "1001"
 	var setVal int64 = 10086
 	val, err := cacheManager.Get(key)
@@ -62,7 +63,7 @@ func TestGetList(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			if got := GetList[string](tt.args.key); !reflect.DeepEqual(got, tt.want) {
+			if got := db.GetList[string](tt.args.key); !reflect.DeepEqual(got, tt.want) {
 				t.Errorf("GetList() = %v, want %v", got, tt.want)
 			}
 		})
@@ -81,7 +82,7 @@ func TestDel(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			Del(tt.args.key)
+			db.Del(tt.args.key)
 		})
 	}
 }
@@ -98,7 +99,7 @@ func TestDelNow(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			DelNow(tt.args.key)
+			db.DelNow(tt.args.key)
 		})
 	}
 }
@@ -164,7 +165,7 @@ func TestSet(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			Set(tt.args.key, tt.args.val, tt.args.timeout)
+			db.Set(tt.args.key, tt.args.val, tt.args.timeout)
 		})
 	}
 }
@@ -188,13 +189,13 @@ func TestAddListItem(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			_ = AddListItem[string](tt.args.key, tt.args.timeout, tt.args.l...)
+			_ = db.AddListItem[string](tt.args.key, tt.args.timeout, tt.args.l...)
 		})
 	}
 }
 
 func TestNewAutoCacheBuilder(t *testing.T) {
-	builder := NewAutoCacheBuilder[string, *ExampleUser]()
+	builder := db.NewAutoCacheBuilder[string, *ExampleUser]()
 	builder.WithLongevityCache(time.Second * 5)
 	builder.WithAutoCache("example", time.Minute*5)
 	manager := builder.New()
