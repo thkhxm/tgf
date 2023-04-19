@@ -93,6 +93,7 @@ type CacheModule int
 
 const (
 	CacheModuleRedis CacheModule = iota
+	CacheModuleClose
 )
 
 // redisKey
