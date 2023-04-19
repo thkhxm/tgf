@@ -260,6 +260,8 @@ func run() {
 	switch cacheModule {
 	case tgf.CacheModuleRedis:
 		cache = newRedisService()
+	case tgf.CacheModuleClose:
+		return
 	}
 	//初始化mysql
 	initMySql()
