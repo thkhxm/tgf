@@ -280,7 +280,7 @@ func (this *autoCacheManager[Key, Val]) InitStruct() {
 	this.sb = &sqlBuilder[Val]{}
 	var k Val
 	v := reflect.ValueOf(k)
-	if v.IsNil() {
+	if (v.Kind() == reflect.Ptr || v.Kind() == reflect.Interface) && v.IsNil() {
 		v = reflect.New(v.Type().Elem())
 	}
 	//

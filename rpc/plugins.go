@@ -47,12 +47,11 @@ func (this *CustomSelector) Select(ctx context.Context, servicePath, serviceMeth
 			return ""
 		default:
 			reqMetaData := sc.Value(share.ReqMetaDataKey).(map[string]string)
+			selected = reqMetaData[servicePath]
 			//用户级别的请求
 			uid := reqMetaData[tgf.ContextKeyUserId]
 			if uid != "" {
-				//判断之前的节点是否存活,如果存活,直接命中
-				//先判断是否有携带节点信息
-				selected = reqMetaData[servicePath]
+				//先判断携带节点信息是否存活
 				if this.checkServerAlive(selected) {
 					return
 				}
@@ -99,12 +98,14 @@ func (this *CustomSelector) Select(ctx context.Context, servicePath, serviceMeth
 					}
 				}
 			} else {
-				if selected = reqMetaData[servicePath]; this.checkServerAlive(selected) {
+				if this.checkServerAlive(selected) {
 					key := client2.HashString(fmt.Sprintf("%v", time.Now().Unix()))
 					selected, _ = this.h.Get(key).(string)
+					return
 				}
+				key := client2.HashString(fmt.Sprintf("%v", time.Now().UnixNano()))
+				selected, _ = this.h.Get(key).(string)
 			}
-
 			return
 		}
 	}
@@ -133,7 +134,7 @@ func (this *CustomSelector) UpdateServer(servers map[string]string) {
 
 	if clearUserCache {
 		this.clearAllUserCache()
-		log.DebugTag("discovery", "moduleName=%v 更新服务节点 services=%v", this.moduleName, this.servers)
+		log.DebugTag("discovery", "moduleName=%v 更新服务节点", this.moduleName)
 	}
 
 }
