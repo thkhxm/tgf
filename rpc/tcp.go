@@ -85,6 +85,8 @@ type IUserConnectData interface {
 	GetContextData() *share.Context
 	GetChannel() chan *client.Call
 	Send(data []byte)
+	IsLogin() bool
+	Login(userId string)
 }
 
 type ITCPService interface {
@@ -360,6 +362,7 @@ func (this *TCPServer) doLogin(userData IUserConnectData, token string) {
 	reqMetaData[tgf.ContextKeyUserId] = uuid
 	ct.SetValue(share.ReqMetaDataKey, reqMetaData)
 	this.users.Set(uuid, userData)
+	userData.Login(uuid)
 	log.InfoTag("tcp", "login token %v , uuid %v", token, uuid)
 }
 func (this *TCPServer) doLogic(data *RequestData) {
@@ -489,6 +492,11 @@ func (this *UserConnectData) UpdateUserNodeId(servicePath, nodeId string) {
 		metaData.(map[string]string)[servicePath] = nodeId
 	}
 }
+func (this *UserConnectData) IsLogin() bool {
+	var ()
+	return this.userId != ""
+}
+
 func (this *UserConnectData) GetContextData() *share.Context {
 	var ()
 	return this.contextData
@@ -496,6 +504,10 @@ func (this *UserConnectData) GetContextData() *share.Context {
 func (this *UserConnectData) GetChannel() chan *client.Call {
 	var ()
 	return this.reqChan
+}
+func (this *UserConnectData) Login(userId string) {
+	var ()
+	this.userId = userId
 }
 func (this *UserConnectData) Send(data []byte) {
 	var ()

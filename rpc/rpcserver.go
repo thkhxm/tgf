@@ -59,6 +59,9 @@ type Server struct {
 	maxPort int32
 
 	//
+
+	//
+	whiteServiceList []string
 }
 
 type Optional func(*Server)
@@ -95,12 +98,24 @@ func (this *Server) WithRandomServicePort(minPort, maxPort int32) *Server {
 	return this
 }
 
-func (this *Server) WithCache(module tgf2.CacheModule) {
+func (this *Server) WithCache(module tgf2.CacheModule) *Server {
 	var ()
 	switch module {
 	case tgf2.CacheModuleRedis:
 		db.WithCacheModule(module)
 	}
+	return this
+}
+
+func (this *Server) WithWhiteService(serviceName string) *Server {
+	var ()
+	this.whiteServiceList = append(this.whiteServiceList, serviceName)
+	if len(this.whiteServiceList) == 1 {
+		this.afterOptionals = append(this.afterOptionals, func(s *Server) {
+
+		})
+	}
+	return this
 }
 
 // withServiceClient
@@ -111,8 +126,14 @@ func (this *Server) withServiceClient() *Server {
 	var ()
 	//
 	this.afterOptionals = append(this.afterOptionals, func(server *Server) {
-		newRPCClient().startup()
+		c := newRPCClient().startup()
 		log.InfoTag("init", "装载RPCClient服务")
+		if len(server.whiteServiceList) > 0 {
+			for _, s := range server.whiteServiceList {
+				c.AddWhiteService(s)
+				log.InfoTag("init", "加入请求无需登录的白名单 serviceName=%v", s)
+			}
+		}
 	})
 	return this
 }
@@ -217,6 +238,7 @@ var rpcClient *Client
 type Client struct {
 	clients     *hashmap.Map[string, client.XClient]
 	noReplyChan chan *client.Call
+	whiteMethod []string
 }
 
 type ClientOptional struct {
@@ -229,12 +251,13 @@ func newRPCClient() *ClientOptional {
 // startup
 // @Description: 启动rpc客户端
 // @receiver this
-func (this *ClientOptional) startup() {
+func (this *ClientOptional) startup() *Client {
 	var ()
 	//
 	rpcClient = new(Client)
 	rpcClient.clients = hashmap.New[string, client.XClient]()
 	rpcClient.noReplyChan = make(chan *client.Call, 1e5)
+	rpcClient.whiteMethod = make([]string, 0)
 	util2.Go(func() {
 		for true {
 			select {
@@ -256,7 +279,21 @@ func (this *ClientOptional) startup() {
 		}
 	}
 	rpcClient.watchBaseDiscovery(discovery, baseDiscovery)
-
+	return rpcClient
+}
+func (this *Client) AddWhiteService(serviceName string) *Client {
+	var ()
+	this.whiteMethod = append(this.whiteMethod, serviceName)
+	return this
+}
+func (this *Client) CheckWhiteList(serviceName string) bool {
+	var ()
+	for _, s := range this.whiteMethod {
+		if s == serviceName {
+			return true
+		}
+	}
+	return false
 }
 
 func (this *Client) watchBaseDiscovery(d internal.IRPCDiscovery, discovery *client2.ConsulDiscovery) {
@@ -348,8 +385,11 @@ func sendMessage(ct IUserConnectData, moduleName, serviceName string, args, repl
 	if xclient == nil {
 		return nil, errors.New(fmt.Sprintf("找不到对应模块的服务 moduleName=%v", moduleName))
 	}
-	call, err := xclient.Go(ct.GetContextData(), serviceName, args, reply, ct.GetChannel())
-	return newCall(call), err
+	if ct.IsLogin() || rc.CheckWhiteList(serviceName) {
+		call, err := xclient.Go(ct.GetContextData(), serviceName, args, reply, ct.GetChannel())
+		return newCall(call), err
+	}
+	return nil, errors.New(fmt.Sprintf("用户未登录 非白名单请求无法抵达 moduleName=%v serviceName=%v", moduleName, serviceName))
 }
 
 // SendRPCMessage [Req, Res any]
