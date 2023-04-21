@@ -12,7 +12,6 @@ import (
 	"github.com/thkhxm/tgf"
 	"github.com/thkhxm/tgf/db"
 	"github.com/thkhxm/tgf/log"
-	"github.com/thkhxm/tgf/rpc/internal"
 	"github.com/thkhxm/tgf/util"
 	"github.com/valyala/bytebufferpool"
 	"golang.org/x/net/context"
@@ -65,7 +64,6 @@ var (
 const (
 	Heartbeat HeaderMessageType = iota
 	Logic
-	Login
 )
 
 const (
@@ -84,28 +82,29 @@ type IUserConnectData interface {
 	UpdateUserNodeId(servicePath, nodeId string)
 	GetContextData() *share.Context
 	GetChannel() chan *client.Call
+	Offline()
 	Send(data []byte)
 	IsLogin() bool
 	Login(userId string)
+	Stop()
 }
 
 type ITCPService interface {
 	Run()
 	UpdateUserNodeInfo(userId, servicePath, nodeId string) bool
 	ToUser(userId string, data []byte)
+	DoLogin(userId, templateUserId string) (err error)
 }
 
 type ITCPBuilder interface {
 	WithPort(port string) ITCPBuilder
 	WithBuffer(readBuffer, writeBuffer int) ITCPBuilder
-	WithLoginCheck(f ILoginCheck) ITCPBuilder
 	Address() string
 	Port() string
 	MaxConnections() int32
 	DeadLineTime() time.Duration
 	ReadBufferSize() int
 	WriteBufferSize() int
-	LoginCheck() ILoginCheck
 }
 
 type TCPServer struct {
@@ -127,7 +126,6 @@ type ServerConfig struct {
 	deadLineTime    time.Duration
 	readBufferSize  int
 	writeBufferSize int
-	loginCheck      ILoginCheck
 }
 
 func (this *ServerConfig) Address() string {
@@ -154,10 +152,6 @@ func (this *ServerConfig) WriteBufferSize() int {
 	return this.writeBufferSize
 }
 
-func (this *ServerConfig) LoginCheck() ILoginCheck {
-	return this.loginCheck
-}
-
 func (this *ServerConfig) WithPort(port string) ITCPBuilder {
 	var ()
 	this.port = port
@@ -171,12 +165,6 @@ func (this *ServerConfig) WithBuffer(readBuffer, writeBuffer int) ITCPBuilder {
 	return this
 }
 
-func (this *ServerConfig) WithLoginCheck(f ILoginCheck) ITCPBuilder {
-	var ()
-	this.loginCheck = f
-	return this
-}
-
 type UserConnectData struct {
 	conn        *net.TCPConn
 	reqCount    int32
@@ -184,6 +172,7 @@ type UserConnectData struct {
 	userId      string
 	contextData *share.Context
 	reqChan     chan *client.Call
+	stop        chan struct{}
 }
 
 type RequestData struct {
@@ -221,26 +210,30 @@ func (this *TCPServer) handlerConn(conn *net.TCPConn) {
 		reader:      bufio.NewReader(conn),
 		contextData: share.NewContext(context.Background()),
 		reqChan:     make(chan *client.Call, 1), // 限制用户的请求处于并行状态
+		stop:        make(chan struct{}),
 	}
-
-	log.DebugTag("tcp", "接收到一条新的连接 addr=%v ", conn.RemoteAddr().String())
+	reqMetaData := make(map[string]string)
+	reqMetaData[tgf.ContextKeyTemplateUserId] = util.GenerateSnowflakeId()
+	connectData.contextData.SetValue(share.ReqMetaDataKey, reqMetaData)
+	this.users.Set(reqMetaData[tgf.ContextKeyTemplateUserId], connectData)
+	log.DebugTag("tcp", "接收到一条新的连接 addr=%v , templateUserId=%v", conn.RemoteAddr().String(), reqMetaData[tgf.ContextKeyTemplateUserId])
 	//
-	stop := make(chan struct{})
+
 	reqChan := make(chan *RequestData)
 	defer func() {
 		if err := recover(); err != nil {
 			log.DebugTag("tcp", "tcp连接异常关闭 %v", err)
 		}
-		stop <- struct{}{}
-		conn.Close()
+		connectData.stop <- struct{}{}
+		connectData.Offline()
 	}()
 	go func() {
 		for {
 			select {
 			case req := <-reqChan:
 				this.doLogic(req)
-			case <-stop:
-				close(stop)
+			case <-connectData.stop:
+				close(connectData.stop)
 				close(reqChan)
 				return
 			}
@@ -268,25 +261,25 @@ func (this *TCPServer) handlerConn(conn *net.TCPConn) {
 			connectData.conn.SetDeadline(time.Now().Add(time.Second * this.config.DeadLineTime()))
 			connectData.conn.Write([]byte{byte(Heartbeat)})
 			continue
-		case byte(Login):
-			//	[1][1][2][n]
-			//magic number|message type|data size|data
-			head, err = connectData.reader.Peek(int(requestLoginHeadSize))
-			if err != nil {
-				log.DebugTag("tcp", "Login 请求头数据异常,强制断开连接 %v", err)
-				break
-			}
-			dataSize = binary.BigEndian.Uint16(head[2:4])
-			totalLen := requestLoginHeadSize + dataSize
-			if connectData.reader.Buffered() < int(totalLen) {
-				log.DebugTag("tcp", "Login 包长度不足，重新读取等待长度足够 %v--%v", connectData.reader.Buffered(), totalLen)
-				continue
-			}
-			allData := make(RequestHeader, totalLen)
-			rdLen, err = connectData.reader.Read(allData)
-			data := allData[requestLoginHeadSize:]
-			//
-			this.doLogin(connectData, string(data))
+		//case byte(Login):
+		//	//	[1][1][2][n]
+		//	//magic number|message type|data size|data
+		//	head, err = connectData.reader.Peek(int(requestLoginHeadSize))
+		//	if err != nil {
+		//		log.DebugTag("tcp", "Login 请求头数据异常,强制断开连接 %v", err)
+		//		break
+		//	}
+		//	dataSize = binary.BigEndian.Uint16(head[2:4])
+		//	totalLen := requestLoginHeadSize + dataSize
+		//	if connectData.reader.Buffered() < int(totalLen) {
+		//		log.DebugTag("tcp", "Login 包长度不足，重新读取等待长度足够 %v--%v", connectData.reader.Buffered(), totalLen)
+		//		continue
+		//	}
+		//	allData := make(RequestHeader, totalLen)
+		//	rdLen, err = connectData.reader.Read(allData)
+		//	data := allData[requestLoginHeadSize:]
+		//	//
+		//	this.doLogin(connectData, string(data))
 		case byte(Logic): //处理请求业务逻辑
 			head, err = connectData.reader.Peek(int(requestHeadSize))
 			if err != nil {
@@ -330,41 +323,38 @@ func (this *TCPServer) handlerConn(conn *net.TCPConn) {
 	}
 }
 
-func (this *TCPServer) doLogin(userData IUserConnectData, token string) {
+func (this *TCPServer) DoLogin(userId, templateUserId string) (err error) {
 	var (
-		key, uuid, reqMetaDataKey string
-		ok                        bool
-		ct                        = userData.GetContextData()
+		reqMetaDataKey string
 	)
-
-	// TODO 通过jwt验证token有效性
-	//通过token,获取到uuid
-	if ok, uuid = this.config.LoginCheck().CheckLogin(token); !ok {
-		log.DebugTag("tcp", "login failed token %v , uuid %v", token, uuid)
-		return
+	userData, _ := this.users.Get(templateUserId)
+	if userData == nil {
+		return errors.New("用户不存在")
 	}
-
-	//判断当前uuid的token是否一致
-	key = fmt.Sprintf(tgf.RedisKeyUserLoginToken, uuid)
-	curToken, _ := db.Get[string](key)
-	//token不一致,拒绝登录,用户刷新token,广播网关协议,移除旧token的用户连接
-	if token != curToken {
-		// TODO 重复登录,踢出之前登录的用户
-		db.Set(key, token, loginTokenTimeOut)
+	oldUser, _ := this.users.Get(userId)
+	if oldUser != nil {
+		//断开已经在线的玩家上下文
+		oldUser.Offline()
+		oldUser.Stop()
+		log.InfoTag("login", "重复登录,踢掉在线玩家 userId=%v", userId)
 	}
-	ct.SetValue(tgf.ContextKeyUserId, uuid)
+	ct := userData.GetContextData()
 	//
-	reqMetaDataKey = fmt.Sprintf(tgf.RedisKeyUserNodeMeta, uuid)
+	reqMetaDataKey = fmt.Sprintf(tgf.RedisKeyUserNodeMeta, userId)
 	reqMetaData, suc := db.GetMap[string, string](reqMetaDataKey)
 	if !suc {
 		reqMetaData = make(map[string]string)
 	}
-	reqMetaData[tgf.ContextKeyUserId] = uuid
+	reqMetaData[tgf.ContextKeyUserId] = userId
 	ct.SetValue(share.ReqMetaDataKey, reqMetaData)
-	this.users.Set(uuid, userData)
-	userData.Login(uuid)
-	log.InfoTag("tcp", "login token %v , uuid %v", token, uuid)
+	this.users.Set(userId, userData)
+	userData.Login(userId)
+	//remove key
+	this.users.Del(templateUserId)
+	log.InfoTag("tcp", "login templateUserId %v , uuid %v", templateUserId, userId)
+	return
 }
+
 func (this *TCPServer) doLogic(data *RequestData) {
 	var (
 		compress  byte = 0
@@ -505,6 +495,15 @@ func (this *UserConnectData) GetChannel() chan *client.Call {
 	var ()
 	return this.reqChan
 }
+func (this *UserConnectData) Offline() {
+	var ()
+	this.contextData.Deadline()
+	this.conn.Close()
+}
+func (this *UserConnectData) Stop() {
+	var ()
+	this.stop <- struct{}{}
+}
 func (this *UserConnectData) Login(userId string) {
 	var ()
 	this.userId = userId
@@ -522,7 +521,6 @@ func newTCPBuilder() ITCPBuilder {
 		deadLineTime:    defaultDeadLineTime,
 		maxConnections:  defaultMaxConnections,
 	}
-	serverConfig.loginCheck = &internal.LoginCheck{}
 	return serverConfig
 }
 
