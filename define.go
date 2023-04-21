@@ -98,13 +98,13 @@ const (
 
 // redisKey
 const (
-	RedisKeyUserNodeMeta   = "user:node:meta:%v"
-	RedisKeyUserLoginToken = "user:login:token:Mapping:%v"
+	RedisKeyUserNodeMeta = "user:node:meta:%v"
 )
 
 const (
-	ContextKeyUserId  = "UserId"
-	ContextKeyRPCType = "RPCType"
+	ContextKeyUserId         = "UserId"
+	ContextKeyRPCType        = "RPCType"
+	ContextKeyTemplateUserId = "TemplateUserId"
 )
 
 const (

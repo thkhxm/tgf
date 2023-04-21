@@ -47,6 +47,11 @@ func (this *GateService) UploadUserNodeInfo(ctx context.Context, args *UploadUse
 	return nil
 }
 
+func (this *GateService) Login(ctx context.Context, args *LoginReq, reply *LoginRes) error {
+	var ()
+	return this.tcpService.DoLogin(args.UserId, args.TemplateUserId)
+}
+
 func (this *GateService) ToUser(ctx context.Context, args *ToUserReq, reply *ToUserRes) error {
 	var ()
 	this.tcpService.ToUser(args.UserId, args.Data)
@@ -71,6 +76,11 @@ var (
 		ModuleName: Gate.Name,
 		Name:       "ToUser",
 	}
+
+	Login = &ServiceAPI[*LoginReq, *LoginRes]{
+		ModuleName: Gate.Name,
+		Name:       "Login",
+	}
 )
 
 type UploadUserNodeInfoReq struct {
@@ -87,6 +97,16 @@ type ToUserReq struct {
 	Data   []byte
 	UserId string
 }
+
 type ToUserRes struct {
+	ErrorCode int32
+}
+
+type LoginReq struct {
+	UserId         string
+	TemplateUserId string
+}
+
+type LoginRes struct {
 	ErrorCode int32
 }

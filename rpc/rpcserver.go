@@ -408,11 +408,15 @@ func SendRPCMessage[Req any, Res any](ct context.Context, api *ServiceAPI[Req, R
 	)
 
 	if xclient == nil {
-		return res, errors.New(fmt.Sprintf("找不到对应模块的服务 moduleName=%v serviceName=%v", api.ModuleName, api.Name))
+		err = errors.New(fmt.Sprintf("找不到对应模块的服务 moduleName=%v serviceName=%v", api.ModuleName, api.Name))
+		log.WarnTag("tcp", err.Error())
+		return
 	}
 	call, err := xclient.Go(ct, api.Name, api.args, api.reply, done)
 	if err != nil {
-		return res, errors.New(fmt.Sprintf("rpc请求异常 moduleName=%v serviceName=%v error=%v", api.ModuleName, api.Name, err))
+		err = errors.New(fmt.Sprintf("rpc请求异常 moduleName=%v serviceName=%v error=%v", api.ModuleName, api.Name, err))
+		log.WarnTag("tcp", err.Error())
+		return
 	}
 	//这里需要处理超时，避免channel的内存泄漏
 	select {
