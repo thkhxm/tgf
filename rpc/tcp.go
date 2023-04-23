@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"github.com/cornelk/hashmap"
+	"github.com/golang/protobuf/proto"
 	"github.com/smallnest/rpcx/client"
 	"github.com/smallnest/rpcx/share"
 	util2 "github.com/smallnest/rpcx/util"
@@ -15,8 +16,10 @@ import (
 	"github.com/thkhxm/tgf/util"
 	"github.com/valyala/bytebufferpool"
 	"golang.org/x/net/context"
+	"google.golang.org/protobuf/runtime/protoiface"
 	"io"
 	"net"
+	"reflect"
 	"strings"
 	"sync"
 	"time"
@@ -42,6 +45,29 @@ type RequestHeader []byte
 type ResponseHeader []byte
 
 type HeaderMessageType byte
+
+type Args[T protoiface.MessageV1] struct {
+	ByteData []byte
+}
+
+func (a *Args[T]) GetData() (res T) {
+	var ()
+	v := reflect.ValueOf(res)
+	if v.Kind() == reflect.Interface && v.IsNil() {
+		v = reflect.New(v.Type().Elem())
+	}
+	return util.ConvertToPB[T](a.ByteData)
+}
+
+type Reply[T protoiface.MessageV1] struct {
+	ByteData []byte
+}
+
+func (r *Reply[T]) SetData(data T) (err error) {
+	var ()
+	r.ByteData, err = proto.Marshal(data)
+	return
+}
 
 var (
 
@@ -363,7 +389,11 @@ func (this *TCPServer) doLogic(data *RequestData) {
 	)
 	reply := make([]byte, 0)
 
-	callback, err := sendMessage(data.User, data.Module, data.RequestMethod, data.Data, &reply)
+	reqData := &Args[protoiface.MessageV1]{}
+	reqData.ByteData = data.Data
+
+	resData := &Reply[protoiface.MessageV1]{}
+	callback, err := sendMessage(data.User, data.Module, data.RequestMethod, reqData, resData)
 	if err != nil {
 		log.InfoTag("tcp", "请求异常 数据 [%v] [%v]", data, err)
 		return
