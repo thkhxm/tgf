@@ -403,6 +403,7 @@ func (this *TCPServer) doLogic(data *RequestData) {
 		log.InfoTag("tcp", "请求异常 数据 [%v] [%v]", data, callbackErr)
 		return
 	}
+	reply = resData.ByteData
 	consumeTime := time.Now().UnixMilli() - startTime
 	log.DebugTag("tcp", "请求耗时统计 module=%v serviceName=%v consumeTime=%v", data.Module, data.RequestMethod, consumeTime)
 	bp := bytebufferpool.Get()
