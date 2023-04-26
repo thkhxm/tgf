@@ -54,7 +54,7 @@ func (this *GateService) Login(ctx context.Context, args *LoginReq, reply *Login
 
 func (this *GateService) ToUser(ctx context.Context, args *ToUserReq, reply *ToUserRes) error {
 	var ()
-	this.tcpService.ToUser(args.UserId, args.Data)
+	this.tcpService.ToUser(args.UserId, args.MessageType, args.Data)
 	log.DebugTag("gate", "主动推送 userId=%v msgLen=%v", args.UserId, args.UserId, len(args.Data))
 	return nil
 }
@@ -94,8 +94,9 @@ type UploadUserNodeInfoRes struct {
 }
 
 type ToUserReq struct {
-	Data   []byte
-	UserId string
+	Data        []byte
+	UserId      string
+	MessageType string
 }
 
 type ToUserRes struct {

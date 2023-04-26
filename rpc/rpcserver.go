@@ -492,11 +492,12 @@ func BorderRPCMessage[Req any, Res any](ct context.Context, api *ServiceAPI[Req,
 // @param ct
 // @param pbMessage
 // @return error
-func SendToGate(ct context.Context, pbMessage proto.Message) error {
+func SendToGate(ct context.Context, messageType string, pbMessage proto.Message) error {
 	data, err := proto.Marshal(pbMessage)
 	req := &ToUserReq{
-		Data:   data,
-		UserId: GetUserId(ct),
+		Data:        data,
+		UserId:      GetUserId(ct),
+		MessageType: messageType,
 	}
 	if err != nil {
 		return err
@@ -510,12 +511,13 @@ func SendToGate(ct context.Context, pbMessage proto.Message) error {
 // @param userId
 // @param pbMessage
 // @return error
-func SendToGateByUserId(userId string, pbMessage proto.Message) error {
+func SendToGateByUserId(userId, messageType string, pbMessage proto.Message) error {
 	data, err := proto.Marshal(pbMessage)
 	ct := NewUserContext(userId)
 	req := &ToUserReq{
-		Data:   data,
-		UserId: GetUserId(ct),
+		Data:        data,
+		UserId:      GetUserId(ct),
+		MessageType: messageType,
 	}
 	if err != nil {
 		return err

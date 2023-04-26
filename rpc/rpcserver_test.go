@@ -93,7 +93,6 @@ func LoginByteTest() *bytes.Buffer {
 	tmp := make([]byte, 0, 4+len(data))
 	buff := bytes.NewBuffer(tmp)
 	buff.WriteByte(250)
-	buff.WriteByte(byte(rpc.Login))
 	reqSizeLenByte := make([]byte, 2)
 	binary.BigEndian.PutUint16(reqSizeLenByte, uint16(len(data)))
 	buff.Write(reqSizeLenByte)
