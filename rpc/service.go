@@ -57,6 +57,11 @@ func (this *ServiceAPI[Req, Res]) GetResult() Res {
 func GetUserId(ctx context.Context) string {
 	return ctx.Value(share.ReqMetaDataKey).(map[string]string)[tgf.ContextKeyUserId]
 }
+
+func GetNodeId(ctx context.Context) string {
+	return ctx.Value(share.ReqMetaDataKey).(map[string]string)[tgf.ContextKeyNodeId]
+}
+
 func GetTemplateUserId(ctx context.Context) string {
 	return ctx.Value(share.ReqMetaDataKey).(map[string]string)[tgf.ContextKeyTemplateUserId]
 }

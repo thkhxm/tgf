@@ -24,12 +24,12 @@ import (
 //2023/4/26
 //***************************************************
 
-type Tcp struct {
+type tcp struct {
 	buf    *bufio.Reader
 	client *net.TCPConn
 }
 
-func (t *Tcp) Connect(address string) IRobot {
+func (t *tcp) Connect(address string) IRobot {
 	add, err := net.ResolveTCPAddr("tcp", address)
 	t.client, err = net.DialTCP("tcp", nil, add)
 	if err != nil {
@@ -101,12 +101,12 @@ func (t *Tcp) Connect(address string) IRobot {
 	return t
 }
 
-func (t *Tcp) RegisterCallbackMessage(messageType string, f CallbackLogic) IRobot {
+func (t *tcp) RegisterCallbackMessage(messageType string, f CallbackLogic) IRobot {
 	//TODO implement me
 	panic("implement me")
 }
 
-func (t *Tcp) Send(messageType string, v1 proto.Message) {
+func (t *tcp) Send(messageType string, v1 proto.Message) {
 	data, _ := proto.Marshal(v1)
 	reqName := []byte(fmt.Sprintf("%v.%v", hallapi.HallService.Name, "SayHello"))
 	tmp := make([]byte, 0, 6+len(data)+len(reqName))
@@ -125,6 +125,7 @@ func (t *Tcp) Send(messageType string, v1 proto.Message) {
 	log.InfoTag("robot", "发送请求 messageType:%v 数据:%v", messageType, buff.Bytes())
 }
 
-func NewRobotTcp() {
-
+func NewRobotTcp() IRobot {
+	t := &tcp{}
+	return t
 }

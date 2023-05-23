@@ -86,12 +86,14 @@ var (
 
 	loginTokenTimeOut = time.Hour * 12
 
-	heartbeatData = []byte{byte(Heartbeat)}
+	heartbeatData    = []byte{byte(Heartbeat)}
+	replaceLoginData = []byte{byte(ReplaceLogin)}
 )
 
 const (
-	Heartbeat HeaderMessageType = iota
+	Heartbeat HeaderMessageType = iota + 1
 	Logic
+	ReplaceLogin
 )
 
 const (
@@ -122,6 +124,7 @@ type ITCPService interface {
 	UpdateUserNodeInfo(userId, servicePath, nodeId string) bool
 	ToUser(userId, messageType string, data []byte)
 	DoLogin(userId, templateUserId string) (err error)
+	Offline(userId string) (exists bool)
 }
 
 type ITCPBuilder interface {
@@ -286,7 +289,7 @@ func (this *TCPServer) handlerConn(conn *net.TCPConn) {
 		switch messageType {
 		case byte(Heartbeat): //处理心跳逻辑
 			connectData.reader.Discard(2)
-			connectData.conn.SetDeadline(time.Now().Add(time.Second * this.config.DeadLineTime()))
+			connectData.conn.SetDeadline(time.Now().Add(this.config.DeadLineTime()))
 			connectData.conn.Write(heartbeatData)
 			continue
 		case byte(Logic): //处理请求业务逻辑
@@ -338,7 +341,7 @@ func (this *TCPServer) handlerConn(conn *net.TCPConn) {
 			}
 			log.DebugTag("tcp", "Logic 完整包数据 [%v]", pack)
 			if failSignal {
-				connectData.conn.SetDeadline(time.Now().Add(time.Second * this.config.DeadLineTime()))
+				connectData.conn.SetDeadline(time.Now().Add(time.Second))
 			}
 			failSignal = false
 			reqChan <- pack
@@ -349,7 +352,19 @@ func (this *TCPServer) handlerConn(conn *net.TCPConn) {
 		connectData.reqCount++
 	}
 }
-
+func (this *TCPServer) Offline(userId string) (exists bool) {
+	oldUser, _ := this.users.Get(userId)
+	if oldUser != nil {
+		//发送重复登录消息通知
+		oldUser.Send(replaceLoginData)
+		//断开已经在线的玩家上下文
+		oldUser.Offline()
+		oldUser.Stop()
+		exists = true
+		log.InfoTag("login", "重复登录,踢掉在线玩家 userId=%v", userId)
+	}
+	return
+}
 func (this *TCPServer) DoLogin(userId, templateUserId string) (err error) {
 	var (
 		reqMetaDataKey string
@@ -358,13 +373,7 @@ func (this *TCPServer) DoLogin(userId, templateUserId string) (err error) {
 	if userData == nil {
 		return errors.New("用户不存在")
 	}
-	oldUser, _ := this.users.Get(userId)
-	if oldUser != nil {
-		//断开已经在线的玩家上下文
-		oldUser.Offline()
-		oldUser.Stop()
-		log.InfoTag("login", "重复登录,踢掉在线玩家 userId=%v", userId)
-	}
+
 	ct := userData.GetContextData()
 	//
 	reqMetaDataKey = fmt.Sprintf(tgf.RedisKeyUserNodeMeta, userId)
