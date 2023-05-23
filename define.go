@@ -105,10 +105,13 @@ const (
 	ContextKeyUserId         = "UserId"
 	ContextKeyRPCType        = "RPCType"
 	ContextKeyTemplateUserId = "TemplateUserId"
+	ContextKeyNodeId         = "NodeId"
 )
 
 const (
 	RPCTip = "rpc_tip"
 )
 
-var GatewayServiceModuleName = "Gate"
+const GatewayServiceModuleName = "Gate"
+
+var NodeId = ""
