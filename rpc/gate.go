@@ -49,7 +49,20 @@ func (this *GateService) UploadUserNodeInfo(ctx context.Context, args *UploadUse
 
 func (this *GateService) Login(ctx context.Context, args *LoginReq, reply *LoginRes) error {
 	var ()
+	//踢人,重复登录的
+	if !this.tcpService.Offline(args.UserId) {
+		BorderRPCMessage(NewRPCContext(), Offline.New(&OfflineReq{UserId: args.UserId}, new(OfflineRes)))
+	}
 	return this.tcpService.DoLogin(args.UserId, args.TemplateUserId)
+}
+
+func (this *GateService) Offline(ctx context.Context, args *OfflineReq, reply *OfflineRes) error {
+	var ()
+	if GetNodeId(ctx) == tgf.NodeId {
+		return nil
+	}
+	this.tcpService.Offline(args.UserId)
+	return nil
 }
 
 func (this *GateService) ToUser(ctx context.Context, args *ToUserReq, reply *ToUserRes) error {
@@ -72,6 +85,7 @@ var (
 		ModuleName: Gate.Name,
 		Name:       "UploadUserNodeInfo",
 	}
+
 	ToUser = &ServiceAPI[*ToUserReq, *ToUserRes]{
 		ModuleName: Gate.Name,
 		Name:       "ToUser",
@@ -80,6 +94,11 @@ var (
 	Login = &ServiceAPI[*LoginReq, *LoginRes]{
 		ModuleName: Gate.Name,
 		Name:       "Login",
+	}
+
+	Offline = &ServiceAPI[*OfflineReq, *OfflineRes]{
+		ModuleName: Gate.Name,
+		Name:       "Offline",
 	}
 )
 
@@ -109,5 +128,13 @@ type LoginReq struct {
 }
 
 type LoginRes struct {
+	ErrorCode int32
+}
+
+type OfflineReq struct {
+	UserId string
+}
+
+type OfflineRes struct {
 	ErrorCode int32
 }

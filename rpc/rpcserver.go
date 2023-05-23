@@ -10,12 +10,11 @@ import (
 	"github.com/smallnest/rpcx/client"
 	"github.com/smallnest/rpcx/server"
 	"github.com/smallnest/rpcx/share"
-	tgf2 "github.com/thkhxm/tgf"
+	"github.com/thkhxm/tgf"
 	"github.com/thkhxm/tgf/db"
 	"github.com/thkhxm/tgf/log"
 	"github.com/thkhxm/tgf/rpc/internal"
-	util2 "github.com/thkhxm/tgf/util"
-
+	"github.com/thkhxm/tgf/util"
 	"math/rand"
 	"os"
 	"strings"
@@ -98,10 +97,10 @@ func (this *Server) WithRandomServicePort(minPort, maxPort int32) *Server {
 	return this
 }
 
-func (this *Server) WithCache(module tgf2.CacheModule) *Server {
+func (this *Server) WithCache(module tgf.CacheModule) *Server {
 	var ()
 	switch module {
-	case tgf2.CacheModuleRedis:
+	case tgf.CacheModuleRedis:
 		db.WithCacheModule(module)
 	}
 	return this
@@ -164,12 +163,12 @@ func (this *Server) Run() chan bool {
 	//注册rpcx服务
 	this.rpcServer = server.NewServer(server.WithPool(this.maxWorkers, this.maxCapacity))
 
-	port := tgf2.GetStrConfig[string](tgf2.EnvironmentServicePort)
+	port := tgf.GetStrConfig[string](tgf.EnvironmentServicePort)
 	if this.minPort > 0 && this.maxPort > this.minPort {
 		port = fmt.Sprintf("%v", rand.Int31n(this.maxPort-this.minPort)+this.minPort)
 	}
 	//rpcx加入服务发现组件
-	ip = fmt.Sprintf("%v:%v", util2.GetLocalHost(), port)
+	ip = fmt.Sprintf("%v:%v", util.GetLocalHost(), port)
 	discovery := internal.GetDiscovery()
 	//如果加入了服务注册，那么走服务注册的流程
 	if discovery != nil {
@@ -193,7 +192,7 @@ func (this *Server) Run() chan bool {
 		}
 	}
 
-	util2.Go(func() {
+	util.Go(func() {
 		if err := this.rpcServer.Serve("tcp", ip); err != nil {
 			log.Error("[init] rpcx务启动异常 serviceName=%v addr=%v err=%v", serviceName, ip, err)
 			os.Exit(0)
@@ -229,7 +228,7 @@ func NewRPCServer() *Server {
 	rpcServer.withConsulDiscovery()
 	rpcServer.withServiceClient()
 	//
-	tgf2.AddDestroyHandler(rpcServer)
+	tgf.AddDestroyHandler(rpcServer)
 	return rpcServer
 }
 
@@ -258,7 +257,7 @@ func (this *ClientOptional) startup() *Client {
 	rpcClient.clients = hashmap.New[string, client.XClient]()
 	rpcClient.noReplyChan = make(chan *client.Call, 1e5)
 	rpcClient.whiteMethod = make([]string, 0)
-	util2.Go(func() {
+	util.Go(func() {
 		for true {
 			select {
 			case <-rpcClient.noReplyChan:
@@ -298,7 +297,7 @@ func (this *Client) CheckWhiteList(serviceName string) bool {
 
 func (this *Client) watchBaseDiscovery(d internal.IRPCDiscovery, discovery *client2.ConsulDiscovery) {
 	var ()
-	util2.Go(func() {
+	util.Go(func() {
 		for {
 			select {
 			case kv := <-discovery.WatchService():
@@ -421,7 +420,7 @@ func SendRPCMessage[Req any, Res any](ct context.Context, api *ServiceAPI[Req, R
 	//这里需要处理超时，避免channel的内存泄漏
 	select {
 	case <-time.After(time.Second * 5):
-		call.Error = tgf2.ErrorRPCTimeOut
+		call.Error = tgf.ErrorRPCTimeOut
 		break
 	case <-call.Done:
 		break
@@ -529,7 +528,18 @@ func SendToGateByUserId(userId, messageType string, pbMessage proto.Message) err
 func NewUserContext(userId string) context.Context {
 	ct := share.NewContext(context.Background())
 	initData := make(map[string]string)
-	initData[tgf2.ContextKeyUserId] = userId
+	initData[tgf.ContextKeyUserId] = userId
 	ct.SetValue(share.ReqMetaDataKey, initData)
+	return ct
+}
+
+func NewRPCContext() context.Context {
+	ct := share.NewContext(context.Background())
+	initData := make(map[string]string)
+	initData[tgf.ContextKeyRPCType] = tgf.RPCTip
+	initData[tgf.ContextKeyNodeId] = tgf.NodeId
+	ct.SetValue(share.ReqMetaDataKey, initData)
+	ct.SetValue(share.ServerTimeout, 5)
+
 	return ct
 }
