@@ -1,0 +1,8 @@
+syntax = "proto3"; //指定版本信息
+option go_package="./;pb";
+
+message WSMessage{
+  string module =1;
+  string serviceName =2;
+   bytes data =3;
+}

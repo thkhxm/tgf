@@ -6,12 +6,15 @@ import (
 	"encoding/binary"
 	"fmt"
 	"github.com/golang/protobuf/proto"
+	"github.com/gorilla/websocket"
 	util2 "github.com/smallnest/rpcx/util"
 	hallapi "github.com/thkhxm/tgf/example/api/hall"
 	"github.com/thkhxm/tgf/log"
 	"github.com/thkhxm/tgf/rpc"
 	"github.com/thkhxm/tgf/util"
 	"net"
+	"net/url"
+	"strings"
 	"time"
 )
 
@@ -125,7 +128,74 @@ func (t *tcp) Send(messageType string, v1 proto.Message) {
 	log.InfoTag("robot", "发送请求 messageType:%v 数据:%v", messageType, buff.Bytes())
 }
 
+func (t *tcp) SendMessage(module, serviceName string, v1 proto.Message) {
+	ms := module + "." + serviceName
+	t.Send(ms, v1)
+}
+
+type ws struct {
+	path string
+	conn *websocket.Conn
+}
+
+func (w *ws) Connect(address string) IRobot {
+	u := url.URL{Scheme: "ws", Host: address, Path: w.path}
+	log.Info("连接到 %s", u.String())
+
+	conn, _, err := websocket.DefaultDialer.Dial(u.String(), nil)
+	if err != nil {
+		log.Info("连接失败:%v", err)
+	}
+	defer conn.Close()
+
+	done := make(chan struct{})
+
+	// 启动读取协程，处理从服务器接收到的消息
+	go func() {
+		defer close(done)
+		for {
+			_, message, err := conn.ReadMessage()
+			if err != nil {
+				log.Info("读取消息失败:%v", err)
+				return
+			}
+			log.Info("收到消息: %s", message)
+		}
+	}()
+	return w
+}
+
+func (w *ws) RegisterCallbackMessage(messageType string, f CallbackLogic) IRobot {
+	//TODO implement me
+	panic("implement me")
+}
+
+func (w *ws) Send(messageType string, v1 proto.Message) {
+	ms := strings.Split(messageType, ".")
+	w.SendMessage(ms[0], ms[1], v1)
+}
+
+func (w *ws) SendMessage(module, serviceName string, v1 proto.Message) {
+	data, _ := proto.Marshal(v1)
+	m := &rpc.WSMessage{
+		Module:      module,
+		ServiceName: serviceName,
+		Data:        data,
+	}
+	md, _ := proto.Marshal(m)
+	err := w.conn.WriteMessage(websocket.BinaryMessage, md)
+	if err != nil {
+		log.Info("发送消息失败:%v", err)
+		return
+	}
+}
+
 func NewRobotTcp() IRobot {
 	t := &tcp{}
+	return t
+}
+func NewRobotWs(path string) IRobot {
+	t := &ws{}
+	t.path = path
 	return t
 }

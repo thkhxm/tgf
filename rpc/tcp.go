@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"github.com/cornelk/hashmap"
 	"github.com/golang/protobuf/proto"
+	"github.com/gorilla/websocket"
 	"github.com/smallnest/rpcx/client"
 	"github.com/smallnest/rpcx/share"
 	util2 "github.com/smallnest/rpcx/util"
@@ -19,6 +20,7 @@ import (
 	"google.golang.org/protobuf/runtime/protoiface"
 	"io"
 	"net"
+	"net/http"
 	"reflect"
 	"strings"
 	"sync"
@@ -88,12 +90,22 @@ var (
 
 	heartbeatData    = []byte{byte(Heartbeat)}
 	replaceLoginData = []byte{byte(ReplaceLogin)}
+	wsUpGrader       = websocket.Upgrader{
+		ReadBufferSize:  1024,
+		WriteBufferSize: 1024 * 8,
+		CheckOrigin:     checkOrigin,
+	}
 )
 
 const (
 	Heartbeat HeaderMessageType = iota + 1
 	Logic
 	ReplaceLogin
+)
+
+const (
+	netTcp = iota
+	netWebsocket
 )
 
 const (
@@ -130,18 +142,22 @@ type ITCPService interface {
 type ITCPBuilder interface {
 	WithPort(port string) ITCPBuilder
 	WithBuffer(readBuffer, writeBuffer int) ITCPBuilder
+	WithWSPath(path string) ITCPBuilder
 	Address() string
 	Port() string
+	WsPath() string
 	MaxConnections() int32
 	DeadLineTime() time.Duration
 	ReadBufferSize() int
 	WriteBufferSize() int
+	IsWebSocket() bool
 }
 
 type TCPServer struct {
-	config    ITCPBuilder       //tcp连接配置
-	conChan   chan *net.TCPConn //客户端连接chan
-	closeChan chan bool         //关闭chan
+	config  ITCPBuilder       //tcp连接配置
+	conChan chan *net.TCPConn //客户端连接chan
+
+	closeChan chan bool //关闭chan
 	users     *hashmap.Map[string, IUserConnectData]
 	optionals []optional
 	//
@@ -153,10 +169,12 @@ type optional func(server *TCPServer)
 type ServerConfig struct {
 	address         string //地址
 	port            string //端口
+	wsPath          string //wsPath
 	maxConnections  int32  //最大连接数
 	deadLineTime    time.Duration
 	readBufferSize  int
 	writeBufferSize int
+	netType         int
 }
 
 func (this *ServerConfig) Address() string {
@@ -166,7 +184,9 @@ func (this *ServerConfig) Address() string {
 func (this *ServerConfig) Port() string {
 	return this.port
 }
-
+func (this *ServerConfig) WsPath() string {
+	return this.wsPath
+}
 func (this *ServerConfig) MaxConnections() int32 {
 	return this.maxConnections
 }
@@ -182,13 +202,21 @@ func (this *ServerConfig) ReadBufferSize() int {
 func (this *ServerConfig) WriteBufferSize() int {
 	return this.writeBufferSize
 }
-
+func (this *ServerConfig) IsWebSocket() bool {
+	return this.netType == netWebsocket
+}
 func (this *ServerConfig) WithPort(port string) ITCPBuilder {
 	var ()
 	this.port = port
+	this.netType = netTcp
 	return this
 }
-
+func (this *ServerConfig) WithWSPath(path string) ITCPBuilder {
+	var ()
+	this.wsPath = path
+	this.netType = netWebsocket
+	return this
+}
 func (this *ServerConfig) WithBuffer(readBuffer, writeBuffer int) ITCPBuilder {
 	var ()
 	this.readBufferSize = readBuffer
@@ -198,6 +226,7 @@ func (this *ServerConfig) WithBuffer(readBuffer, writeBuffer int) ITCPBuilder {
 
 type UserConnectData struct {
 	conn        *net.TCPConn
+	wsConn      *websocket.Conn
 	reqCount    int32
 	reader      *bufio.Reader
 	userId      string
@@ -224,9 +253,108 @@ func (this *TCPServer) selectorChan() {
 		}
 	}
 }
+
 func (this *TCPServer) onDestroy() {
 	this.closeChan <- true
 }
+
+func checkOrigin(r *http.Request) bool {
+	var ()
+	return true
+}
+
+func (this *TCPServer) handlerWSConn(conn *websocket.Conn) {
+	var ()
+	connectData := &UserConnectData{
+		wsConn:      conn,
+		reqCount:    0,
+		contextData: share.NewContext(context.Background()),
+		reqChan:     make(chan *client.Call, 1), // 限制用户的请求处于并行状态
+		stop:        make(chan struct{}),
+	}
+	reqMetaData := make(map[string]string)
+	reqChan := make(chan *RequestData)
+	reqMetaData[tgf.ContextKeyTemplateUserId] = util.GenerateSnowflakeId()
+	connectData.contextData.SetValue(share.ReqMetaDataKey, reqMetaData)
+	this.users.Set(reqMetaData[tgf.ContextKeyTemplateUserId], connectData)
+	log.DebugTag("tcp", "接收到一条新的连接 addr=%v , templateUserId=%v", conn.RemoteAddr().String(), reqMetaData[tgf.ContextKeyTemplateUserId])
+	defer func() {
+		if err := recover(); err != nil {
+			log.DebugTag("tcp", "tcp连接异常关闭 %v", err)
+		}
+		connectData.stop <- struct{}{}
+		connectData.Offline()
+	}()
+
+	//设置pong,响应客户端的ping心跳
+	conn.SetPongHandler(func(m string) error {
+		log.DebugTag("tcp", "收到客户端的ping请求 %v", m)
+		conn.SetReadDeadline(time.Now().Add(this.config.DeadLineTime()))
+		conn.SetWriteDeadline(time.Now().Add(this.config.DeadLineTime()))
+		return nil
+	})
+
+	//收到关闭消息后的处理
+	conn.SetCloseHandler(func(code int, text string) error {
+		log.DebugTag("tcp", "收到客户端的主动关闭连接消息 code=%v text=%v", code, text)
+		return nil
+	})
+
+	//逻辑处理
+	go func() {
+		for {
+			select {
+			case req := <-reqChan:
+				this.doLogic(req)
+			case <-connectData.stop:
+				close(connectData.stop)
+				close(reqChan)
+				return
+			}
+		}
+	}()
+
+	for {
+		// 读取客户端发送的消息
+		messageType, message, err := conn.ReadMessage()
+		if err != nil {
+			log.Info("%v", err)
+			break
+		}
+		switch messageType {
+		case websocket.BinaryMessage:
+			data := &WSMessage{}
+			err := proto.Unmarshal(message, data)
+			if err != nil {
+				return
+			}
+			////请求协议格式
+			pack := &RequestData{
+				RequestMethod: data.ServiceName,
+				Module:        data.Module,
+				Data:          data.Data,
+				User:          connectData,
+			}
+			log.DebugTag("tcp", "Logic 完整包数据 [%v]", pack)
+			reqChan <- pack
+		case websocket.PingMessage:
+			log.InfoTag("tcp", "收到ping请求 %v", message)
+		case websocket.CloseMessage:
+			log.InfoTag("tcp", "收到结束连接请求 %v", message)
+		default:
+			log.DebugTag("tcp", "收到不支持的消息:msType %v   ----   %s", messageType, message)
+		}
+
+		// 将消息原样返回给客户端
+		err = conn.WriteMessage(messageType, message)
+		if err != nil {
+			log.Info("%v", err)
+			break
+		}
+	}
+
+}
+
 func (this *TCPServer) handlerConn(conn *net.TCPConn) {
 	var (
 		err                  error
@@ -258,6 +386,7 @@ func (this *TCPServer) handlerConn(conn *net.TCPConn) {
 		connectData.stop <- struct{}{}
 		connectData.Offline()
 	}()
+
 	go func() {
 		for {
 			select {
@@ -466,6 +595,7 @@ func (this *TCPServer) getSendToClientData(messageType string, reply []byte) (re
 	res = bp.Bytes()
 	return
 }
+
 func (this *TCPServer) Update() {
 	var ()
 }
@@ -489,35 +619,64 @@ func (this *TCPServer) Run() {
 		for _, optional := range this.optionals {
 			optional(this)
 		}
-		//
-		add, _ := net.ResolveTCPAddr("tcp", fmt.Sprintf("%v:%v", this.config.Address(), this.config.Port()))
-		listen, err := net.ListenTCP("tcp", add)
-		if err != nil {
-			log.DebugTag("init", "tcp服务 启动异常 %v", err)
-			return
-		}
-		log.InfoTag("init", "tcp服务 启动成功 %v", add)
-
-		//启动selector线程，等待连接接入
-		util.Go(func() {
-			log.InfoTag("init", "tcp selector 启动成功")
-			this.selectorChan()
-		})
-
-		util.Go(func() {
-			log.InfoTag("init", "tcp 开始监听连接")
-			for {
-				tcp, _ := listen.AcceptTCP()
-				tcp.SetNoDelay(true)                              //无延迟
-				tcp.SetKeepAlive(true)                            //保持激活
-				tcp.SetReadBuffer(this.config.ReadBufferSize())   //设置读缓冲区大小
-				tcp.SetWriteBuffer(this.config.WriteBufferSize()) //设置写缓冲区大小
-				tcp.SetDeadline(time.Now().Add(this.config.DeadLineTime()))
-				this.conChan <- tcp //将链接放入管道中
+		if this.config.IsWebSocket() {
+			util.Go(func() {
+				log.InfoTag("init", "启动ws服务 %v", this.config.Address()+":"+this.config.Port()+"/"+this.config.WsPath())
+				// 定义 WebSocket 路由
+				http.HandleFunc("/"+this.config.WsPath(), this.wsHandler)
+				// 启动服务器
+				err := http.ListenAndServe(this.config.Address()+":"+this.config.Port(), nil)
+				if err != nil {
+					log.Info("服务器启动失败：%v", err)
+					return
+				}
+			})
+		} else {
+			//
+			add, _ := net.ResolveTCPAddr("tcp", fmt.Sprintf("%v:%v", this.config.Address(), this.config.Port()))
+			listen, err := net.ListenTCP("tcp", add)
+			if err != nil {
+				log.DebugTag("init", "tcp服务 启动异常 %v", err)
+				return
 			}
-		})
+			log.InfoTag("init", "tcp服务 启动成功 %v", add)
+
+			//启动selector线程，等待连接接入
+			util.Go(func() {
+				log.InfoTag("init", "tcp selector 启动成功")
+				this.selectorChan()
+			})
+
+			util.Go(func() {
+				log.InfoTag("init", "tcp 开始监听连接")
+				for {
+					tcp, _ := listen.AcceptTCP()
+					tcp.SetNoDelay(true)                              //无延迟
+					tcp.SetKeepAlive(true)                            //保持激活
+					tcp.SetReadBuffer(this.config.ReadBufferSize())   //设置读缓冲区大小
+					tcp.SetWriteBuffer(this.config.WriteBufferSize()) //设置写缓冲区大小
+					tcp.SetDeadline(time.Now().Add(this.config.DeadLineTime()))
+					this.conChan <- tcp //将链接放入管道中
+				}
+			})
+		}
+
 	})
 }
+
+func (this *TCPServer) wsHandler(w http.ResponseWriter, r *http.Request) {
+	var ()
+	// 将 HTTP 连接升级为 WebSocket 连接
+	conn, err := upgrader.Upgrade(w, r, nil)
+	if err != nil {
+		log.Info("%v", err)
+		return
+	}
+	util.Go(func() {
+		this.handlerWSConn(conn)
+	})
+}
+
 func (this *TCPServer) UpdateUserNodeInfo(userId, servicePath, nodeId string) bool {
 	var (
 		res = false
@@ -562,8 +721,18 @@ func (this *UserConnectData) GetChannel() chan *client.Call {
 func (this *UserConnectData) Offline() {
 	var ()
 	this.contextData.Deadline()
-	this.conn.Close()
+	ip := ""
+	if this.conn != nil {
+		this.conn.Close()
+		ip = this.conn.RemoteAddr().String()
+	}
+	if this.wsConn != nil {
+		this.wsConn.Close()
+		ip = this.wsConn.RemoteAddr().String()
+	}
+	log.DebugTag("tcp", "用户 userId=%v 离线 ip=%v", this.userId, ip)
 }
+
 func (this *UserConnectData) Stop() {
 	var ()
 	this.stop <- struct{}{}
@@ -574,7 +743,14 @@ func (this *UserConnectData) Login(userId string) {
 }
 func (this *UserConnectData) Send(data []byte) {
 	var ()
-	this.conn.Write(data)
+	if this.conn != nil {
+		this.conn.Write(data)
+
+	} else if this.wsConn != nil {
+		this.wsConn.WriteMessage(websocket.BinaryMessage, data)
+	} else {
+		log.DebugTag("tcp", "用户没有可用的连接数据 %v", this.userId)
+	}
 }
 func newTCPBuilder() ITCPBuilder {
 	serverConfig := &ServerConfig{

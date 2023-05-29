@@ -21,4 +21,5 @@ type IRobot interface {
 	Connect(address string) IRobot
 	RegisterCallbackMessage(messageType string, f CallbackLogic) IRobot
 	Send(messageType string, v1 proto.Message)
+	SendMessage(module, serviceName string, v1 proto.Message)
 }
