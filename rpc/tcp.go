@@ -48,6 +48,11 @@ type ResponseHeader []byte
 
 type HeaderMessageType byte
 
+var upGrader = websocket.Upgrader{
+	ReadBufferSize:  1024,
+	WriteBufferSize: 1024 * 8,
+}
+
 type Args[T protoiface.MessageV1] struct {
 	ByteData []byte
 }
@@ -667,7 +672,7 @@ func (this *TCPServer) Run() {
 func (this *TCPServer) wsHandler(w http.ResponseWriter, r *http.Request) {
 	var ()
 	// 将 HTTP 连接升级为 WebSocket 连接
-	conn, err := upgrader.Upgrade(w, r, nil)
+	conn, err := upGrader.Upgrade(w, r, nil)
 	if err != nil {
 		log.Info("%v", err)
 		return
