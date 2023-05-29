@@ -6,11 +6,8 @@ package rpc
 
 import (
 	"github.com/thkhxm/tgf"
-	"github.com/thkhxm/tgf/example/conf"
-	"github.com/thkhxm/tgf/example/service/hall/entity"
 	"github.com/thkhxm/tgf/log"
 	"github.com/thkhxm/tgf/util"
-	"golang.org/x/net/context"
 	"math/rand"
 	"time"
 )
@@ -28,9 +25,4 @@ func init() {
 	rand.Seed(time.Now().UnixMilli())
 	tgf.NodeId = util.GenerateSnowflakeId()
 	log.InfoTag("init", "node id %v", tgf.NodeId)
-}
-
-type IExampleService interface {
-	Login(ctx context.Context, args *conf.ChapterConf, reply *hallentity.UserModel) (err error)
-	CallBack(ctx context.Context, args *conf.ChapterConf, reply *hallentity.UserModel) (err error)
 }
