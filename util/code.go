@@ -5,6 +5,7 @@ import (
 	"os"
 	"path/filepath"
 	"reflect"
+	"regexp"
 	"strings"
 	"text/template"
 	"time"
@@ -51,6 +52,7 @@ func GeneratorAPI[T any](moduleName, version, packageName string) {
 		}
 	}{}
 	tt := make(map[string]bool)
+	tt["github.com/thkhxm/tgf/rpc"] = true
 	for i := 0; i < ty.NumMethod(); i++ {
 		m := ty.Method(i)
 		// 遍历方法的参数列表
@@ -63,11 +65,31 @@ func GeneratorAPI[T any](moduleName, version, packageName string) {
 				tt[pkg] = true
 			}
 		}
-		s = append(s, struct {
+		d := struct {
 			Args       string
 			Reply      string
 			MethodName string
-		}{Args: m.Type.In(1).String(), Reply: m.Type.In(2).String(), MethodName: m.Name})
+		}{Args: m.Type.In(1).String(), Reply: m.Type.In(2).String(), MethodName: m.Name}
+
+		var r = regexp.MustCompile("[A-Za-z0-9_]+\\.[A-Za-z0-9_]+\\[(.*)\\]")
+		match := r.FindStringSubmatch(d.Args)
+		if len(match) > 1 {
+			pointIndex := strings.LastIndex(match[1], ".")
+			pk := match[1][1:pointIndex]
+			l := strings.LastIndex(pk, "/")
+			d.Args = "*" + pk[l+1:] + match[1][pointIndex:]
+			tt[pk] = true
+		}
+
+		match = r.FindStringSubmatch(d.Reply)
+		if len(match) > 1 {
+			pointIndex := strings.LastIndex(match[1], ".")
+			pk := match[1][1:pointIndex]
+			l := strings.LastIndex(pk, "/")
+			d.Reply = "*" + pk[l+1:] + match[1][pointIndex:]
+			tt[pk] = true
+		}
+		s = append(s, d)
 	}
 	pi := make([]string, 0)
 	for k, _ := range tt {
@@ -83,7 +105,6 @@ func GeneratorAPI[T any](moduleName, version, packageName string) {
 package %v
 
 import (
-"github.com/thkhxm/tgf/rpc"
 {{range .PackageImports}}
 "{{.}}"
 {{end}}
