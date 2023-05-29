@@ -4,11 +4,9 @@ import (
 	"bufio"
 	"bytes"
 	"encoding/binary"
-	"fmt"
 	"github.com/golang/protobuf/proto"
 	"github.com/gorilla/websocket"
 	util2 "github.com/smallnest/rpcx/util"
-	hallapi "github.com/thkhxm/tgf/example/api/hall"
 	"github.com/thkhxm/tgf/log"
 	"github.com/thkhxm/tgf/rpc"
 	"github.com/thkhxm/tgf/util"
@@ -111,7 +109,7 @@ func (t *tcp) RegisterCallbackMessage(messageType string, f CallbackLogic) IRobo
 
 func (t *tcp) Send(messageType string, v1 proto.Message) {
 	data, _ := proto.Marshal(v1)
-	reqName := []byte(fmt.Sprintf("%v.%v", hallapi.HallService.Name, "SayHello"))
+	reqName := []byte(messageType)
 	tmp := make([]byte, 0, 6+len(data)+len(reqName))
 	buff := bytes.NewBuffer(tmp)
 	buff.WriteByte(250)
