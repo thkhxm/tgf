@@ -115,3 +115,4 @@ const (
 const GatewayServiceModuleName = "Gate"
 
 var NodeId = ""
+var ServerModule = false
