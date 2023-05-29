@@ -167,6 +167,9 @@ func (this *Server) Run() chan bool {
 		ip             string
 		_logServiceMsg string
 	)
+
+	//开启服务器模式
+	tgf.ServerModule = true
 	// TODO 如果有需要，可以对Optional进行优先级的控制，控制加载顺序
 	for _, beforeOptional := range this.beforeOptionals {
 		beforeOptional(this)
