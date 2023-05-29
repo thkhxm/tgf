@@ -148,6 +148,18 @@ func (this *Server) WithGateway(port string) *Server {
 	})
 	return this
 }
+func (this *Server) WithGatewayWS(port, path string) *Server {
+	var ()
+	this.beforeOptionals = append(this.beforeOptionals, func(server *Server) {
+		builder := newTCPBuilder()
+		builder.WithPort(port)
+		builder.WithWSPath(path)
+		gateway := GatewayService(builder)
+		this.service = append(this.service, gateway)
+		log.InfoTag("init", "装载逻辑服务[%v@%v]", gateway.GetName(), gateway.GetVersion())
+	})
+	return this
+}
 
 func (this *Server) Run() chan bool {
 	var (
