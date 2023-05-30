@@ -1,7 +1,7 @@
 package db
 
 import (
-	"encoding/json"
+	"github.com/bytedance/sonic"
 	"github.com/thkhxm/tgf"
 	"github.com/thkhxm/tgf/log"
 	"github.com/thkhxm/tgf/util"
@@ -57,7 +57,7 @@ func Get[Res any](key string) (res Res, success bool) {
 func Set(key string, val any, timeout time.Duration) {
 	switch val.(type) {
 	case interface{}:
-		data, _ := json.Marshal(val)
+		data, _ := sonic.Marshal(val)
 		cache.Set(key, data, timeout)
 	default:
 		cache.Set(key, val, timeout)
