@@ -1,8 +1,8 @@
 package util
 
 import (
-	"encoding/json"
 	"fmt"
+	"github.com/bytedance/sonic"
 	"strconv"
 	"unsafe"
 )
@@ -65,7 +65,7 @@ func StrToAny[T any](a string) (T, error) {
 		v := a
 		t = any(v).(T)
 	case interface{}:
-		err := json.Unmarshal([]byte(a), &t)
+		err := sonic.Unmarshal([]byte(a), &t)
 		if err != nil {
 			return t, err
 		}
@@ -98,7 +98,7 @@ func AnyToStr(a interface{}) (string, error) {
 	case string:
 		return a.(string), nil
 	case interface{}:
-		js, _ := json.Marshal(a)
+		js, _ := sonic.Marshal(a)
 		return ConvertStringByByteSlice(js), nil
 	default:
 		return "", fmt.Errorf("the type %T is not supported", a)

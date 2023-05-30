@@ -21,6 +21,7 @@
 | zap        | 日志框架       | https://go.uber.org/zap                  |
 | lumberjack | 日志切割工具   | https://gopkg.in/natefinch/lumberjack.v2 |
 | excelize   | Excel工具      | https://github.com/qax-os/excelize       |
+| sonic      | json高性能工具 | https://github.com/bytedance/sonic/      |
 
 ## 基础架构图
 
