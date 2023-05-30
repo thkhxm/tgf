@@ -132,8 +132,10 @@ func (t *tcp) SendMessage(module, serviceName string, v1 proto.Message) {
 }
 
 type ws struct {
-	path string
-	conn *websocket.Conn
+	path          string
+	conn          *websocket.Conn
+	heartbeatData []byte
+	closeChan     chan struct{}
 }
 
 func (w *ws) Connect(address string) IRobot {
@@ -144,13 +146,25 @@ func (w *ws) Connect(address string) IRobot {
 	if err != nil {
 		log.Info("连接失败:%v", err)
 	}
-	defer conn.Close()
 
-	done := make(chan struct{})
+	w.heartbeatData = []byte{byte(1)}
+	w.closeChan = make(chan struct{})
+	w.conn = conn
+	//监听关闭事件
+	w.conn.SetCloseHandler(func(code int, text string) error {
+		w.closeChan <- struct{}{}
+		return nil
+	})
+
+	w.conn.SetPongHandler(func(appData string) error {
+		//	收到服务器的pong响应
+		//log.DebugTag("tcp", "收到服务器的pong响应 data=%v", appData)
+		return nil
+	})
 
 	// 启动读取协程，处理从服务器接收到的消息
-	go func() {
-		defer close(done)
+	util.Go(func() {
+		defer w.conn.Close()
 		for {
 			_, message, err := conn.ReadMessage()
 			if err != nil {
@@ -159,7 +173,23 @@ func (w *ws) Connect(address string) IRobot {
 			}
 			log.Info("收到消息: %s", message)
 		}
-	}()
+	})
+
+	//启动心跳
+	util.Go(func() {
+		for true {
+			select {
+			//监听关闭信号
+			case <-w.closeChan:
+				log.InfoTag("tcp", "连接断开,停止心跳发送")
+				return
+			default:
+				w.conn.WriteMessage(websocket.PingMessage, w.heartbeatData)
+				//log.InfoTag("tcp", "心跳发送")
+			}
+			time.Sleep(time.Second * 5)
+		}
+	})
 	return w
 }
 
@@ -192,8 +222,12 @@ func NewRobotTcp() IRobot {
 	t := &tcp{}
 	return t
 }
+
 func NewRobotWs(path string) IRobot {
 	t := &ws{}
+	if path[0:1] != "/" {
+		path = "/" + path
+	}
 	t.path = path
 	return t
 }

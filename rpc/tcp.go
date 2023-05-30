@@ -218,6 +218,9 @@ func (this *ServerConfig) WithPort(port string) ITCPBuilder {
 }
 func (this *ServerConfig) WithWSPath(path string) ITCPBuilder {
 	var ()
+	if path[0:1] == "/" {
+		path = path[1:]
+	}
 	this.wsPath = path
 	this.netType = netWebsocket
 	return this
@@ -291,13 +294,24 @@ func (this *TCPServer) handlerWSConn(conn *websocket.Conn) {
 		connectData.Offline()
 	}()
 
-	//设置pong,响应客户端的ping心跳
-	conn.SetPongHandler(func(m string) error {
-		log.DebugTag("tcp", "收到客户端的ping请求 %v", m)
-		conn.SetReadDeadline(time.Now().Add(this.config.DeadLineTime()))
-		conn.SetWriteDeadline(time.Now().Add(this.config.DeadLineTime()))
-		return nil
+	conn.SetPingHandler(func(message string) error {
+
+		err := conn.WriteControl(websocket.PongMessage, []byte(message), time.Now().Add(this.config.DeadLineTime()))
+		log.DebugTag("tcp", "收到客户端的ping请求 %v err=%v", message, err)
+		if err == websocket.ErrCloseSent {
+			return nil
+		} else if e, ok := err.(net.Error); ok && e.Timeout() {
+			return nil
+		}
+		return err
 	})
+	////设置pong,响应客户端的ping心跳
+	//conn.SetPongHandler(func(m string) error {
+	//	log.DebugTag("tcp", "收到客户端的ping请求 %v", m)
+	//	conn.SetReadDeadline(time.Now().Add(this.config.DeadLineTime()))
+	//	conn.SetWriteDeadline(time.Now().Add(this.config.DeadLineTime()))
+	//	return nil
+	//})
 
 	//收到关闭消息后的处理
 	conn.SetCloseHandler(func(code int, text string) error {
