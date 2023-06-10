@@ -37,16 +37,17 @@ func (this *Module) Destroy(sub IService) {
 }
 
 type ServiceAPI[Req, Res any] struct {
-	ModuleName string
-	Name       string
-	Des        string
-	args       Req
-	reply      Res
+	ModuleName  string
+	Name        string
+	MessageType string
+	Des         string
+	args        Req
+	reply       Res
 }
 
 func (this *ServiceAPI[Req, Res]) New(req Req, res Res) *ServiceAPI[Req, Res] {
 	var ()
-	return &ServiceAPI[Req, Res]{ModuleName: this.ModuleName, Name: this.Name, args: req, reply: res}
+	return &ServiceAPI[Req, Res]{ModuleName: this.ModuleName, Name: this.Name, args: req, reply: res, MessageType: this.MessageType}
 }
 
 func (this *ServiceAPI[Req, Res]) GetResult() Res {

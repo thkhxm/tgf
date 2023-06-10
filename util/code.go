@@ -116,11 +116,12 @@ var (
 	{{.MethodName}} = rpc.ServiceAPI[{{.Args}}, {{.Reply}}]{
 		ModuleName: %vService.Name,
 		Name:       "{{.MethodName}}",
+		MessageType: %vService.Name+"."+"{{.MethodName}}",
 	}
 	{{end}}
 )
 
-`, time.Now().String(), packageName, moduleName, moduleName, version, moduleName)
+`, time.Now().String(), packageName, moduleName, moduleName, version, moduleName, moduleName)
 	tm := template.New("apiStruct")
 	tp, _ := tm.Parse(tpl)
 	fileName := strings.ToLower(moduleName) + "_api.go"
