@@ -3,8 +3,6 @@
 // @Link  https://github.com/bsm/redislock redis分布式锁
 package db
 
-import "github.com/thkhxm/tgf"
-
 //***************************************************
 //@Link  https://github.com/thkhxm/tgf
 //@Link  https://gitee.com/timgame/tgf
@@ -15,7 +13,9 @@ import "github.com/thkhxm/tgf"
 //***************************************************
 
 func init() {
-	if tgf.ServerModule {
-		run()
-	}
+
+}
+
+func Run() {
+	run()
 }
