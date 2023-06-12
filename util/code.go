@@ -157,7 +157,7 @@ namespace %v
 		tmCS := template.New("apiCSStruct")
 		tpCS, _ := tmCS.Parse(tplCS)
 		fileCSName := "ServerApi.cs"
-		fileCS, errCS := os.Create(autoGenerateAPICodePath + string(filepath.Separator) + fileCSName)
+		fileCS, errCS := os.Create(autoGenerateAPICSCodePath + string(filepath.Separator) + fileCSName)
 		if errCS != nil {
 			panic(errCS)
 		}
