@@ -168,6 +168,9 @@ func (this *Server) Run() chan bool {
 		_logServiceMsg string
 	)
 
+	//运行数据初始化
+	db.Run()
+
 	//开启服务器模式
 	tgf.ServerModule = true
 	// TODO 如果有需要，可以对Optional进行优先级的控制，控制加载顺序
