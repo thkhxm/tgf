@@ -4,5 +4,10 @@ option go_package="./;pb";
 message WSMessage{
   string module =1;
   string serviceName =2;
-   bytes data =3;
+  bytes data =3;
+}
+
+message WSResponse{
+  string messageType =1;
+  bytes data =2;
 }

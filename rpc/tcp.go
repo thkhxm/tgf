@@ -572,6 +572,14 @@ func (this *TCPServer) getSendToClientData(messageType string, reply []byte) (re
 		compress byte = 0
 		err      error
 	)
+
+	if this.config.IsWebSocket() {
+		data := &WSResponse{}
+		data.MessageType = messageType
+		data.Data = reply
+		res, _ = proto.Marshal(data)
+		return
+	}
 	bp := bytebufferpool.Get()
 	// [1][1][2][4][n][n]
 	// message type|compress|request method name size|data size|method name|data
