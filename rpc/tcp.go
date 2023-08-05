@@ -291,7 +291,13 @@ func (this *TCPServer) handlerWSConn(conn *websocket.Conn) {
 		if err := recover(); err != nil {
 			log.DebugTag("tcp", "tcp连接异常关闭 %v", err)
 		}
-		connectData.stop <- struct{}{}
+		//避免并发情况下,新登录用户数据比移除用户先执行
+		if tmpUser, ok := this.users.Get(connectData.userId); ok {
+			if GetTemplateUserId(tmpUser.GetContextData()) == GetTemplateUserId(connectData.GetContextData()) {
+				this.users.Del(connectData.userId)
+			}
+		}
+		//
 		connectData.Offline()
 	}()
 
@@ -404,7 +410,12 @@ func (this *TCPServer) handlerConn(conn *net.TCPConn) {
 		if err := recover(); err != nil {
 			log.DebugTag("tcp", "tcp连接异常关闭 %v", err)
 		}
-		connectData.stop <- struct{}{}
+		//避免并发情况下,新登录用户数据比移除用户先执行
+		if tmpUser, ok := this.users.Get(connectData.userId); ok {
+			if GetTemplateUserId(tmpUser.GetContextData()) == GetTemplateUserId(connectData.GetContextData()) {
+				this.users.Del(connectData.userId)
+			}
+		}
 		connectData.Offline()
 	}()
 
@@ -509,7 +520,6 @@ func (this *TCPServer) Offline(userId string) (exists bool) {
 		oldUser.Send(replaceLoginData)
 		//断开已经在线的玩家上下文
 		oldUser.Offline()
-		oldUser.Stop()
 		exists = true
 		log.InfoTag("login", "重复登录,踢掉在线玩家 userId=%v", userId)
 	}
@@ -750,6 +760,11 @@ func (this *UserConnectData) GetChannel() chan *client.Call {
 	return this.reqChan
 }
 func (this *UserConnectData) Offline() {
+	defer func() {
+		if r := recover(); r != nil {
+			log.DebugTag("tcp", "用户 userId=%v Offline: %v", this.userId, r)
+		}
+	}()
 	var ()
 	this.contextData.Deadline()
 	ip := ""
@@ -762,6 +777,7 @@ func (this *UserConnectData) Offline() {
 		ip = this.wsConn.RemoteAddr().String()
 	}
 	log.DebugTag("tcp", "用户 userId=%v 离线 ip=%v", this.userId, ip)
+	this.stop <- struct{}{}
 }
 
 func (this *UserConnectData) Stop() {
