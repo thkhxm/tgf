@@ -249,6 +249,7 @@ type RequestData struct {
 	Module        string
 	Data          []byte
 	MessageType   HeaderMessageType
+	ReqId         int32
 }
 
 func (this *TCPServer) selectorChan() {
@@ -353,6 +354,7 @@ func (this *TCPServer) handlerWSConn(conn *websocket.Conn) {
 				Module:        data.Module,
 				Data:          data.Data,
 				User:          connectData,
+				ReqId:         data.ReqId,
 			}
 			log.DebugTag("tcp", "Logic 完整包数据 [%v]", pack)
 			reqChan <- pack
@@ -364,12 +366,12 @@ func (this *TCPServer) handlerWSConn(conn *websocket.Conn) {
 			log.DebugTag("tcp", "收到不支持的消息:msType %v   ----   %s", messageType, message)
 		}
 
-		// 将消息原样返回给客户端
-		err = conn.WriteMessage(messageType, message)
-		if err != nil {
-			log.Info("%v", err)
-			break
-		}
+		//// 将消息原样返回给客户端
+		//err = conn.WriteMessage(messageType, message)
+		//if err != nil {
+		//	log.Info("%v", err)
+		//	break
+		//}
 	}
 
 }
@@ -563,11 +565,11 @@ func (this *TCPServer) doLogic(data *RequestData) {
 	reply = resData.ByteData
 	consumeTime := time.Now().UnixMilli() - startTime
 	log.DebugTag("tcp", "请求耗时统计 module=%v serviceName=%v consumeTime=%v", data.Module, data.RequestMethod, consumeTime)
-	clientData := this.getSendToClientData(data.Module+"."+data.RequestMethod, reply)
+	clientData := this.getSendToClientData(data.Module+"."+data.RequestMethod, data.ReqId, reply)
 	data.User.Send(clientData)
 }
 
-func (this *TCPServer) getSendToClientData(messageType string, reply []byte) (res []byte) {
+func (this *TCPServer) getSendToClientData(messageType string, reqId int32, reply []byte) (res []byte) {
 	var (
 		compress byte = 0
 		err      error
@@ -581,6 +583,7 @@ func (this *TCPServer) getSendToClientData(messageType string, reply []byte) (re
 		data := &WSResponse{}
 		data.MessageType = messageType
 		data.Data = reply
+		data.ReqId = reqId
 		b, _ := proto.Marshal(data)
 		bp.Write(b)
 		res = bp.Bytes()
@@ -719,7 +722,7 @@ func (this *TCPServer) UpdateUserNodeInfo(userId, servicePath, nodeId string) bo
 func (this *TCPServer) ToUser(userId, messageType string, data []byte) {
 	var ()
 	if connectData, ok := this.users.Get(userId); ok {
-		res := this.getSendToClientData(messageType, data)
+		res := this.getSendToClientData(messageType, 0, data)
 		connectData.Send(res)
 	} else {
 		log.DebugTag("tcp", "userid=%v user connection not found", userId)
