@@ -23,6 +23,7 @@ import (
 var autoGenerateAPICodePath = ""
 var autoGenerateAPICSCodePath = ""
 var autoGenerateAPICSCodeNamespace = ""
+var autoGenerateFileNameSuffix = "api"
 
 func SetAutoGenerateAPICodePath(path string) {
 	var err error
@@ -32,7 +33,10 @@ func SetAutoGenerateAPICodePath(path string) {
 	}
 	fmt.Printf("设置api代码自动生成路径为 %v", autoGenerateAPICodePath)
 }
-
+func SetGenerateFileNameSuffix(suffix string) {
+	autoGenerateFileNameSuffix = suffix
+	fmt.Printf("设置文件后缀为 %v", autoGenerateFileNameSuffix)
+}
 func SetAutoGenerateAPICSCode(path, namespace string) {
 	var err error
 	autoGenerateAPICSCodePath, err = filepath.Abs(path)
@@ -166,7 +170,7 @@ namespace %v
 	}
 	tm := template.New("apiStruct")
 	tp, _ := tm.Parse(tpl)
-	fileName := strings.ToLower(moduleName) + "_api.go"
+	fileName := strings.ToLower(moduleName) + "_" + autoGenerateFileNameSuffix + ".go"
 	file, err := os.Create(autoGenerateAPICodePath + string(filepath.Separator) + fileName)
 	if err != nil {
 		panic(err)
