@@ -3,7 +3,6 @@ package util
 import (
 	"fmt"
 	"net"
-	"strings"
 )
 
 //***************************************************
@@ -19,14 +18,31 @@ import (
 // @Description: 获取本机ip
 // @return ip
 func GetLocalHost() (ip string) {
-	// 使用udp发起网络连接, 这样不需要关注连接是否可通, 随便填一个即可
-	conn, err := net.Dial("udp", "8.8.8.8:53")
+	return GetLocalHost2()
+	//// 使用udp发起网络连接, 这样不需要关注连接是否可通, 随便填一个即可
+	//conn, err := net.Dial("udp", "8.8.8.8:53")
+	//if err != nil {
+	//	fmt.Println(err)
+	//	return
+	//}
+	//localAddr := conn.LocalAddr().(*net.UDPAddr)
+	//// fmt.Println(localAddr.String())
+	//ip = strings.Split(localAddr.String(), ":")[0]
+	//return
+}
+
+func GetLocalHost2() (ip string) {
+	addrList, err := net.InterfaceAddrs()
 	if err != nil {
-		fmt.Println(err)
-		return
+		panic(err)
 	}
-	localAddr := conn.LocalAddr().(*net.UDPAddr)
-	// fmt.Println(localAddr.String())
-	ip = strings.Split(localAddr.String(), ":")[0]
+	for _, address := range addrList {
+		if ipNet, ok := address.(*net.IPNet); ok && !ipNet.IP.IsLoopback() {
+			if ipNet.IP.To4() != nil {
+				fmt.Println(ipNet.IP.String())
+				return ipNet.IP.String()
+			}
+		}
+	}
 	return
 }
