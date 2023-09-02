@@ -5,10 +5,12 @@ go 1.19
 require (
 	github.com/bsm/redislock v0.9.0
 	github.com/bwmarrin/snowflake v0.3.0
+	github.com/bytedance/sonic v1.9.1
 	github.com/cornelk/hashmap v1.0.8
 	github.com/edwingeng/doublejump v1.0.1
 	github.com/go-sql-driver/mysql v1.7.0
 	github.com/golang/protobuf v1.5.2
+	github.com/gorilla/websocket v1.5.0
 	github.com/joho/godotenv v1.5.1
 	github.com/panjf2000/ants/v2 v2.7.1
 	github.com/rcrowley/go-metrics v0.0.0-20201227073835-cf1acfcdf475
@@ -20,6 +22,7 @@ require (
 	github.com/xuri/excelize/v2 v2.7.1
 	go.uber.org/zap v1.24.0
 	golang.org/x/net v0.9.0
+	google.golang.org/protobuf v1.28.1
 	gopkg.in/natefinch/lumberjack.v2 v2.2.1
 )
 
@@ -31,7 +34,6 @@ require (
 	github.com/alitto/pond v1.8.3 // indirect
 	github.com/apache/thrift v0.18.0 // indirect
 	github.com/armon/go-metrics v0.4.0 // indirect
-	github.com/bytedance/sonic v1.9.1 // indirect
 	github.com/cenk/backoff v2.2.1+incompatible // indirect
 	github.com/cenkalti/backoff v2.2.1+incompatible // indirect
 	github.com/cespare/xxhash/v2 v2.2.0 // indirect
@@ -47,7 +49,6 @@ require (
 	github.com/golang/snappy v0.0.4 // indirect
 	github.com/google/pprof v0.0.0-20230222194610-99052d3372e7 // indirect
 	github.com/google/uuid v1.3.0 // indirect
-	github.com/gorilla/websocket v1.5.0 // indirect
 	github.com/grandcat/zeroconf v1.0.0 // indirect
 	github.com/hashicorp/consul/api v1.13.0 // indirect
 	github.com/hashicorp/errwrap v1.1.0 // indirect
@@ -102,5 +103,4 @@ require (
 	golang.org/x/sys v0.7.0 // indirect
 	golang.org/x/text v0.9.0 // indirect
 	golang.org/x/tools v0.7.0 // indirect
-	google.golang.org/protobuf v1.28.1 // indirect
 )
