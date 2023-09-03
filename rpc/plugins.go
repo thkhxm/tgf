@@ -127,6 +127,7 @@ func (this *CustomSelector) UpdateServer(servers map[string]string) {
 	this.servers.Range(func(k string, v string) bool {
 		if servers[k] == "" { // remove
 			this.h.Remove(k)
+			this.servers.Del(k)
 			clearUserCache = true
 		}
 		return true
