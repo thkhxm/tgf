@@ -86,7 +86,8 @@ const (
 	EnvironmentMySqlDB Environment = "MySqlDB"
 
 	// EnvironmentServicePort 当前进程提供的服务端口
-	EnvironmentServicePort = "ServicePort"
+	EnvironmentServicePort    = "ServicePort"
+	EnvironmentServiceAddress = "ServiceAddress"
 )
 
 type CacheModule int

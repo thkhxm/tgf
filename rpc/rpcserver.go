@@ -57,6 +57,8 @@ type Server struct {
 	minPort int32
 	maxPort int32
 
+	customServiceAddress bool
+
 	//
 
 	//
@@ -115,6 +117,13 @@ func (this *Server) WithWhiteService(serviceName string) *Server {
 		})
 	}
 	return this
+}
+
+// WithCustomServiceAddress
+// @Description: 开启自定义地址注册，通过常量ServiceAddress注册绑定的ip
+// @receiver this
+func (this *Server) WithCustomServiceAddress() {
+	this.customServiceAddress = true
 }
 
 // withServiceClient
@@ -186,7 +195,11 @@ func (this *Server) Run() chan bool {
 		port = fmt.Sprintf("%v", rand.Int31n(this.maxPort-this.minPort)+this.minPort)
 	}
 	//rpcx加入服务发现组件
-	ip = fmt.Sprintf("%v:%v", util.GetLocalHost(), port)
+	local := util.GetLocalHost()
+	if this.customServiceAddress {
+		local = tgf.GetStrConfig[string](tgf.EnvironmentServiceAddress)
+	}
+	ip = fmt.Sprintf("%v:%v", local, port)
 	discovery := internal.GetDiscovery()
 	//如果加入了服务注册，那么走服务注册的流程
 	if discovery != nil {
