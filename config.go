@@ -37,6 +37,7 @@ func initMapping() {
 	mapping[EnvironmentRedisPassword] = &config{env: EnvironmentRedisPassword, val: defaultRedisPassword}
 	mapping[EnvironmentRedisDB] = &config{env: EnvironmentRedisDB, val: defaultRedisDB}
 	mapping[EnvironmentServicePort] = &config{env: EnvironmentServicePort, val: defaultServicePort}
+	mapping[EnvironmentServiceAddress] = &config{env: EnvironmentServiceAddress, val: defaultServiceAddress}
 
 	mapping[EnvironmentMySqlUser] = &config{env: EnvironmentMySqlUser, val: defaultMySqlUser}
 	mapping[EnvironmentMySqlPwd] = &config{env: EnvironmentMySqlPwd, val: defaultMySqlPwd}
@@ -69,7 +70,8 @@ const (
 	defaultConsulAddress = "127.0.0.1:8500"
 	defaultConsulPath    = "/tgf"
 
-	defaultServicePort = "8082"
+	defaultServicePort    = "8082"
+	defaultServiceAddress = "127.0.0.1"
 
 	defaultRedisAddr     = "127.0.0.1:6379"
 	defaultRedisPassword = ""
