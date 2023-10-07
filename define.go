@@ -103,10 +103,11 @@ const (
 )
 
 const (
-	ContextKeyUserId         = "UserId"
-	ContextKeyRPCType        = "RPCType"
-	ContextKeyTemplateUserId = "TemplateUserId"
-	ContextKeyNodeId         = "NodeId"
+	ContextKeyUserId          = "UserId"
+	ContextKeyRPCType         = "RPCType"
+	ContextKeyTemplateUserId  = "TemplateUserId"
+	ContextKeyNodeId          = "NodeId"
+	ContextKeyCloseLocalCache = "CloseLocalCache"
 )
 
 const (

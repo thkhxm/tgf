@@ -74,7 +74,9 @@ func (this *CustomSelector) Select(ctx context.Context, servicePath, serviceMeth
 					selected = reqMetaCacheData[servicePath]
 					if this.checkServerAlive(selected) {
 						//将节点数据，放入本地缓存
-						this.cacheManager.Set(uid, selected)
+						if reqMetaData[tgf.ContextKeyCloseLocalCache] == "" {
+							this.cacheManager.Set(uid, selected)
+						}
 						return
 					}
 				}
@@ -86,16 +88,20 @@ func (this *CustomSelector) Select(ctx context.Context, servicePath, serviceMeth
 				reqMetaDataKey := fmt.Sprintf(tgf.RedisKeyUserNodeMeta, uid)
 				db.PutMap(reqMetaDataKey, servicePath, selected, reqMetaDataTimeout)
 				//将节点数据，放入本地缓存
-				this.cacheManager.Set(uid, selected)
+				if reqMetaData[tgf.ContextKeyCloseLocalCache] == "" {
+					this.cacheManager.Set(uid, selected)
+				}
 				if UploadUserNodeInfo.ModuleName != servicePath {
 					//推送协议通知用户网关
-					if _, err := SendRPCMessage(ctx, UploadUserNodeInfo.New(&UploadUserNodeInfoReq{
-						UserId:      uid,
-						NodeId:      selected,
-						ServicePath: servicePath,
-					}, &UploadUserNodeInfoRes{ErrorCode: 0})); err != nil {
-						log.Warn("[rpc] 节点更新异常 %v", err)
-					}
+					go func() {
+						if _, err := SendRPCMessage(ctx, UploadUserNodeInfo.New(&UploadUserNodeInfoReq{
+							UserId:      uid,
+							NodeId:      selected,
+							ServicePath: servicePath,
+						}, &UploadUserNodeInfoRes{ErrorCode: 0})); err != nil {
+							log.Warn("[rpc] 节点更新异常 %v", err)
+						}
+					}()
 				}
 			} else {
 				if this.checkServerAlive(selected) {

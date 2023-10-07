@@ -68,12 +68,17 @@ func (a *Args[T]) GetData() (res T) {
 
 type Reply[T protoiface.MessageV1] struct {
 	ByteData []byte
+	Code     int32
 }
 
 func (r *Reply[T]) SetData(data T) (err error) {
 	var ()
 	r.ByteData, err = proto.Marshal(data)
 	return
+}
+
+func (r *Reply[T]) SetCode(code int32) {
+	r.Code = code
 }
 
 var (
@@ -575,11 +580,11 @@ func (this *TCPServer) doLogic(data *RequestData) {
 	reply = resData.ByteData
 	consumeTime := time.Now().UnixMilli() - startTime
 	log.DebugTag("tcp", "请求耗时统计 module=%v serviceName=%v consumeTime=%v", data.Module, data.RequestMethod, consumeTime)
-	clientData := this.getSendToClientData(data.Module+"."+data.RequestMethod, data.ReqId, reply)
+	clientData := this.getSendToClientData(data.Module+"."+data.RequestMethod, data.ReqId, resData.Code, reply)
 	data.User.Send(clientData)
 }
 
-func (this *TCPServer) getSendToClientData(messageType string, reqId int32, reply []byte) (res []byte) {
+func (this *TCPServer) getSendToClientData(messageType string, reqId, code int32, reply []byte) (res []byte) {
 	var (
 		compress byte = 0
 		err      error
@@ -594,6 +599,7 @@ func (this *TCPServer) getSendToClientData(messageType string, reqId int32, repl
 		data.MessageType = messageType
 		data.Data = reply
 		data.ReqId = reqId
+		data.Code = code
 		b, _ := proto.Marshal(data)
 		bp.Write(b)
 		res = bp.Bytes()
@@ -732,7 +738,7 @@ func (this *TCPServer) UpdateUserNodeInfo(userId, servicePath, nodeId string) bo
 func (this *TCPServer) ToUser(userId, messageType string, data []byte) {
 	var ()
 	if connectData, ok := this.users.Get(userId); ok {
-		res := this.getSendToClientData(messageType, 0, data)
+		res := this.getSendToClientData(messageType, 0, 0, data)
 		connectData.Send(res)
 	} else {
 		log.DebugTag("tcp", "userid=%v user connection not found", userId)
