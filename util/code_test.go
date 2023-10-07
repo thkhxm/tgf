@@ -14,10 +14,12 @@ import (
 // ***************************************************
 //type IExampleService interface {
 //	Login(ctx context.Context, args *rpc.Args[*hallpb.HallSayRequest], reply *rpc.Reply[*hallpb.HallSayRequest]) (err error)
+//	Login2(ctx context.Context, args *rpc.Args[*hallpb.HallSayRequest], reply *rpc.Reply[*hallpb.HallSayRequest]) (err error)
 //}
 
 func TestGeneratorAPI(x *testing.T) {
 	//util.SetAutoGenerateAPICodePath("./api")
+	//util.SetAutoGenerateAPICSCode("./api", "HotFix.Code")
 	//util.GeneratorAPI[IExampleService]("Hall", "1.0", "api")
 	//var t IExampleService
 	//v := reflect.ValueOf(&t)
