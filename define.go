@@ -103,15 +103,17 @@ const (
 )
 
 const (
-	ContextKeyUserId          = "UserId"
-	ContextKeyRPCType         = "RPCType"
-	ContextKeyTemplateUserId  = "TemplateUserId"
-	ContextKeyNodeId          = "NodeId"
-	ContextKeyCloseLocalCache = "CloseLocalCache"
+	ContextKeyUserId           = "UserId"
+	ContextKeyRPCType          = "RPCType"
+	ContextKeyTemplateUserId   = "TemplateUserId"
+	ContextKeyNodeId           = "NodeId"
+	ContextKeyCloseLocalCache  = "CloseLocalCache"
+	ContextKeyBroadcastUserIds = "BroadcastUserIds"
 )
 
 const (
-	RPCTip = "rpc_tip"
+	RPCTip          = "rpc_tip"
+	RPCBroadcastTip = "rpc_broadcast_tip"
 )
 
 const GatewayServiceModuleName = "Gate"

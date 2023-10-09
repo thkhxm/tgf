@@ -236,12 +236,13 @@ func NewLongevityAutoCacheManager[Key cacheKey, Val IModel](cacheKey string) IAu
 
 // NewAutoCacheManager [Key comparable, Val any]
 // @Description: 创建一个持久化的自动化数据管理，包含本地缓存，不包含持久化数据落地(mysql)，cache缓存(redis)
-func NewAutoCacheManager[Key cacheKey, Val any]() IAutoCacheService[Key, Val] {
+func NewAutoCacheManager[Key cacheKey, Val any](memTimeOutSecond int64) IAutoCacheService[Key, Val] {
 	builder := &AutoCacheBuilder[Key, Val]{}
 	builder.keyFun = ""
 	builder.mem = true
 	builder.cache = false
 	builder.longevity = false
+	builder.memTimeOutSecond = memTimeOutSecond
 	return builder.New()
 }
 
