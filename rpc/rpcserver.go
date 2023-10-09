@@ -11,6 +11,7 @@ import (
 	"github.com/smallnest/rpcx/server"
 	"github.com/smallnest/rpcx/share"
 	"github.com/thkhxm/tgf"
+	"github.com/thkhxm/tgf/component"
 	"github.com/thkhxm/tgf/db"
 	"github.com/thkhxm/tgf/log"
 	"github.com/thkhxm/tgf/rpc/internal"
@@ -116,6 +117,15 @@ func (this *Server) WithWhiteService(serviceName string) *Server {
 
 		})
 	}
+	return this
+}
+
+func (this *Server) WithGameConfig(path string) *Server {
+	this.beforeOptionals = append(this.beforeOptionals, func(server *Server) {
+		component.WithConfPath(path)
+		component.InitGameConfToMem()
+		log.InfoTag("init", "装载游戏配置,读取[%v@%v]路径下的json文件", path)
+	})
 	return this
 }
 
@@ -571,6 +581,37 @@ func NewRPCContext() context.Context {
 	initData[tgf.ContextKeyNodeId] = tgf.NodeId
 	ct.SetValue(share.ReqMetaDataKey, initData)
 	ct.SetValue(share.ServerTimeout, 5)
+	return ct
+}
 
+// NewUserRPCContext
+// @Description: instantiate rpc context with user id
+// @param userId
+// @return context.Context
+func NewUserRPCContext(userId string) context.Context {
+	ct := share.NewContext(context.Background())
+	initData := make(map[string]string)
+	initData[tgf.ContextKeyRPCType] = tgf.RPCTip
+	initData[tgf.ContextKeyNodeId] = tgf.NodeId
+	initData[tgf.ContextKeyUserId] = userId
+	ct.SetValue(share.ReqMetaDataKey, initData)
+	ct.SetValue(share.ServerTimeout, 5)
+	return ct
+}
+
+// NewBindRPCContext
+// @Description: instantiate rpc context with binding, all user binging same node id.
+// @param userId
+// @return context.Context
+func NewBindRPCContext(userId ...string) context.Context {
+	ct := share.NewContext(context.Background())
+	initData := make(map[string]string)
+	initData[tgf.ContextKeyRPCType] = tgf.RPCBroadcastTip
+	initData[tgf.ContextKeyNodeId] = tgf.NodeId
+	ids := strings.Join(userId, ",")
+	initData[tgf.ContextKeyBroadcastUserIds] = ids
+	initData[tgf.ContextKeyBroadcastUserIds] = tgf.NodeId
+	ct.SetValue(share.ReqMetaDataKey, initData)
+	ct.SetValue(share.ServerTimeout, 5)
 	return ct
 }
