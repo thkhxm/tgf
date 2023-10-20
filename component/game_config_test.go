@@ -14,5 +14,7 @@ import (
 //***************************************************
 
 func TestInitGameConfig(t *testing.T) {
-
+	//component.WithConfPath("./example/internal/cmd/json")
+	//component.InitGameConfToMem()
+	//heroConf := component.GetGameConf[*conf.HeroConf]("f_01")
 }
