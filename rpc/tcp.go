@@ -796,6 +796,11 @@ func (this *UserConnectData) Login(userId string) {
 }
 func (this *UserConnectData) Send(data []byte) {
 	var ()
+	defer func() {
+		if e := recover(); e != nil {
+			log.WarnTag("tcp", "发送请求异常")
+		}
+	}()
 	if this.conn != nil {
 		this.conn.Write(data)
 

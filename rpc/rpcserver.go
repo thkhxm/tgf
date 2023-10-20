@@ -574,6 +574,20 @@ func NewUserContext(userId string) context.Context {
 	return ct
 }
 
+func NewCacheUserContext(userId string) context.Context {
+	reqMetaDataKey := fmt.Sprintf(tgf.RedisKeyUserNodeMeta, userId)
+	reqMetaCacheData, suc := db.GetMap[string, string](reqMetaDataKey)
+	ct := share.NewContext(context.Background())
+	if suc {
+		ct.SetValue(share.ReqMetaDataKey, reqMetaCacheData)
+	} else {
+		initData := make(map[string]string)
+		initData[tgf.ContextKeyUserId] = userId
+		ct.SetValue(share.ReqMetaDataKey, initData)
+	}
+	return ct
+}
+
 func NewRPCContext() context.Context {
 	ct := share.NewContext(context.Background())
 	initData := make(map[string]string)
