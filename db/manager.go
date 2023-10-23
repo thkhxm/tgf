@@ -222,7 +222,7 @@ func (this *autoCacheManager[Key, Val]) toLongevity() {
 	if this.longevityLock.TryLock() {
 		defer this.longevityLock.Unlock()
 		size := this.cacheMap.Len()
-		valueStr := make([]any, 0, size*len(this.sb.tableFieldNum))
+		valueStr := make([]any, 0, size*len(this.sb.modelFieldName))
 		count := 0
 		this.cacheMap.Range(func(s string, c *cacheData[Val]) bool {
 			if c.update {
@@ -273,6 +273,49 @@ func (this *autoCacheManager[Key, Val]) cacheTimeOut() time.Duration {
 	return this.builder.cacheTimeOut
 }
 
+func (this *autoCacheManager[Key, Val]) initField(rf reflect.Type, pkFields, fieldName, tableFieldNum []string) (newPkFields, newFieldName, newTableFieldNum []string) {
+	// 使用参数初始化新的切片
+	newPkFields = append([]string{}, pkFields...)
+	newFieldName = append([]string{}, fieldName...)
+	newTableFieldNum = append([]string{}, tableFieldNum...)
+
+	for i := 0; i < rf.NumField(); i++ {
+		field := rf.Field(i)
+		if !field.IsExported() {
+			continue
+		}
+		if field.Anonymous {
+			p, f, t := this.initField(field.Type, newPkFields, newFieldName, newTableFieldNum)
+			newPkFields = append(newPkFields, p...)
+			newFieldName = append(newFieldName, f...)
+			newTableFieldNum = append(newTableFieldNum, t...)
+			continue
+		}
+		orm := ""
+		name := ConvertCamelToSnake(field.Name)
+		isTableField := true
+		if field.Tag != "" {
+			orm = field.Tag.Get("orm")
+			data := strings.Split(orm, ";")
+			for _, t := range data {
+				switch t {
+				case ignore:
+					isTableField = false
+				case pk:
+					newPkFields = append(newPkFields, name+" = ?")
+				}
+			}
+		}
+		if isTableField {
+			newFieldName = append(newFieldName, name)
+			newTableFieldNum = append(newTableFieldNum, field.Name)
+		}
+		log.DebugTag("omr", "结构化日志打印 structName=%v field=%v tag=%v", rf.Name(), field.Name, orm)
+	}
+
+	return
+}
+
 func (this *autoCacheManager[Key, Val]) InitStruct() {
 	var ()
 	this.cacheMap = hashmap.New[string, *cacheData[Val]]()
@@ -321,34 +364,8 @@ func (this *autoCacheManager[Key, Val]) InitStruct() {
 		}
 		pkFields := make([]string, 0)
 		fieldName := make([]string, 0)
-		tableFieldNum := make([]int, 0)
-		for i := 0; i < rf.NumField(); i++ {
-			field := rf.Field(i)
-			if !field.IsExported() {
-				continue
-			}
-			orm := ""
-			name := field.Name
-			name = strings.ToLower(name[0:1]) + name[1:]
-			isTableField := true
-			if field.Tag != "" {
-				orm = field.Tag.Get("orm")
-				data := strings.Split(orm, ";")
-				for _, t := range data {
-					switch t {
-					case ignore:
-						isTableField = false
-					case pk:
-						pkFields = append(pkFields, name+" = ?")
-					}
-				}
-			}
-			if isTableField {
-				fieldName = append(fieldName, name)
-				tableFieldNum = append(tableFieldNum, i)
-			}
-			log.DebugTag("omr", "结构化日志打印 structName=%v field=%v tag=%v", rf.Name(), field.Name, orm)
-		}
+		tableFieldNum := make([]string, 0)
+		pkFields, fieldName, tableFieldNum = this.initField(rf, pkFields, fieldName, tableFieldNum)
 		pkSql := strings.Join(pkFields, " and ")
 		queryListSql := strings.Join(fieldName, ",")
 
@@ -357,14 +374,29 @@ func (this *autoCacheManager[Key, Val]) InitStruct() {
 		this.sb.tableField = queryListSql
 		this.sb.tableFieldName = fieldName
 		this.sb.pkSql = pkSql
-		this.sb.tableFieldNum = tableFieldNum
+		this.sb.modelFieldName = tableFieldNum
 		this.sb.initStruct()
 	}
 }
 
+func ConvertCamelToSnake(s string) string {
+	result := ""
+	for i, v := range s {
+		if v >= 'A' && v <= 'Z' {
+			if i != 0 {
+				result += "_"
+			}
+			result += string(v + 32)
+		} else {
+			result += string(v)
+		}
+	}
+	return result
+}
+
 type sqlBuilder[Val any] struct {
 	//table
-	tableFieldNum  []int
+	modelFieldName []string
 	tableName      string
 	tableField     string
 	tableFieldName []string
@@ -391,7 +423,7 @@ func (this *sqlBuilder[Val]) initStruct() {
 	}
 	this.updateEndSql = "ON DUPLICATE KEY UPDATE " + strings.Join(appendSql, ",")
 	//拼接默认单个值的字符串
-	fieldCount := len(this.tableFieldNum)
+	fieldCount := len(this.modelFieldName)
 	updateValueBaseSql := "("
 	for i := 0; i < fieldCount; i++ {
 		updateValueBaseSql += "?,"
@@ -407,11 +439,54 @@ func (this *sqlBuilder[Val]) initStruct() {
 func (this *sqlBuilder[Val]) toValueSql(val Val) (s []any) {
 	var ()
 	ref := reflect.ValueOf(val).Elem()
-	sliceSize := len(this.tableFieldNum)
-	s = make([]any, sliceSize, sliceSize)
-	for i, index := range this.tableFieldNum {
-		s[i] = ref.Field(index).Interface()
+	sliceSize := len(this.modelFieldName)
+	s = make([]any, sliceSize)
+	for i, index := range this.modelFieldName {
+		s[i] = ref.FieldByName(index).Interface()
 	}
+	return
+}
+
+func (this *sqlBuilder[Val]) initField(rf reflect.Type, pkFields, fieldName []string, tableFieldNum []int) (newPkFields, newFieldName []string, newTableFieldNum []int) {
+	// 使用参数初始化新的切片
+	newPkFields = append([]string{}, pkFields...)
+	newFieldName = append([]string{}, fieldName...)
+	newTableFieldNum = append([]int{}, tableFieldNum...)
+
+	for i := 0; i < rf.NumField(); i++ {
+		field := rf.Field(i)
+		if !field.IsExported() {
+			continue
+		}
+		if field.Anonymous {
+			p, f, t := this.initField(field.Type, newPkFields, newFieldName, newTableFieldNum)
+			newPkFields = append([]string{}, p...)
+			newFieldName = append([]string{}, f...)
+			newTableFieldNum = append([]int{}, t...)
+			continue
+		}
+		orm := ""
+		name := ConvertCamelToSnake(field.Name)
+		isTableField := true
+		if field.Tag != "" {
+			orm = field.Tag.Get("orm")
+			data := strings.Split(orm, ";")
+			for _, t := range data {
+				switch t {
+				case ignore:
+					isTableField = false
+				case pk:
+					newPkFields = append(newPkFields, name+" = ?")
+				}
+			}
+		}
+		if isTableField {
+			newFieldName = append(newFieldName, name)
+			newTableFieldNum = append(newTableFieldNum, i)
+		}
+		log.DebugTag("omr", "结构化日志打印 structName=%v field=%v tag=%v", rf.Name(), field.Name, orm)
+	}
+
 	return
 }
 
@@ -443,9 +518,9 @@ func (this *sqlBuilder[Val]) queryOne(args ...any) (val Val, err error) {
 		if v.IsNil() {
 			v = reflect.New(v.Type().Elem())
 		}
-		resPointer := make([]any, 0, len(this.tableFieldNum))
-		for _, num := range this.tableFieldNum {
-			field := v.Elem().Field(num)
+		resPointer := make([]any, 0, len(this.modelFieldName))
+		for _, name := range this.modelFieldName {
+			field := v.Elem().FieldByName(name)
 			param := reflect.New(field.Type()).Interface()
 			resPointer = append(resPointer, param)
 		}
@@ -454,8 +529,8 @@ func (this *sqlBuilder[Val]) queryOne(args ...any) (val Val, err error) {
 			log.WarnTag("orm", "query rows error: %v", err)
 			return
 		}
-		for i, num := range this.tableFieldNum {
-			f := v.Elem().Field(num)
+		for i, name := range this.modelFieldName {
+			f := v.Elem().FieldByName(name)
 			f.Set(reflect.ValueOf(resPointer[i]).Elem())
 		}
 		return v.Interface().(Val), err
@@ -467,7 +542,7 @@ func (this *sqlBuilder[Val]) updateOrCreate(values []any, count int) {
 
 	//按批次发送所有更新脚本
 	group := count/defaultUpdateGroupSize + 1
-	fieldCount := len(this.tableFieldNum)
+	fieldCount := len(this.modelFieldName)
 	baseValueSize := len(values)
 	for i := 0; i < group; i++ {
 		//初始化更新脚本
