@@ -191,13 +191,14 @@ func toJson(datarows []rowdata, metalist []*meta) string {
 		for idx, meta := range metalist {
 			ret += fmt.Sprintf("\n\t\t\"%s\":", meta.Key)
 			switch meta.Typ {
+			case fileType_time:
+				fallthrough
 			case fileType_string:
 				if row[idx] == nil {
 					ret += "\"\""
 				} else {
 					ret += fmt.Sprintf("\"%s\"", row[idx])
 				}
-			case fileType_time:
 			case fileType_arrayInt32:
 				if row[idx] == nil || row[idx] == "" {
 					ret += "[]"

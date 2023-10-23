@@ -82,3 +82,23 @@ type CacheExampleData struct {
 	Name string `orm:"pk"`
 	Age  int32
 }
+
+func Test_convertCamelToSnake(t *testing.T) {
+	type args struct {
+		s string
+	}
+	tests := []struct {
+		name string
+		args args
+		want string
+	}{
+		{name: "UserId", args: args{"UserId"}, want: "user_id"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := db.ConvertCamelToSnake(tt.args.s); got != tt.want {
+				t.Errorf("convertCamelToSnake() = %v, want %v", got, tt.want)
+			}
+		})
+	}
+}
