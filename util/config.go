@@ -20,7 +20,7 @@ import (
 //***************************************************
 
 var (
-	excelToJsonPath = ""
+	excelToJsonPath = make([]string, 0)
 	excelToGoPath   = ""
 	excelPath       = ""
 	goPackage       = "conf"
@@ -52,10 +52,11 @@ func ExcelExport() {
 }
 
 // SetExcelToJsonPath
-// @Description: 设置Excel导出Json地址
+// @Description: 设置Excel导出Json地址,可以追加多个输出地址
 // @param path
 func SetExcelToJsonPath(path string) {
-	excelToJsonPath, _ = filepath.Abs(path)
+	p, _ := filepath.Abs(path)
+	excelToJsonPath = append(excelToJsonPath, p)
 	fmt.Println("set excel to json path", excelToJsonPath)
 }
 
@@ -173,11 +174,13 @@ func parseFile(file string) []*configStruct {
 			}
 		}
 		jsonFile := fmt.Sprintf("%s.json", s)
-		if excelToJsonPath != "" {
-			err = output(jsonFile, toJson(dataList, metaList))
-		}
-		if err != nil {
-			fmt.Println(err)
+		if len(excelToJsonPath) > 0 {
+			for _, p := range excelToJsonPath {
+				err = output(p, jsonFile, toJson(dataList, metaList))
+				if err != nil {
+					fmt.Println(err)
+				}
+			}
 		}
 		result := &configStruct{}
 		result.Fields = metaList
@@ -233,9 +236,9 @@ func toJson(datarows []rowdata, metalist []*meta) string {
 	return ret
 }
 
-func output(filename string, str string) error {
+func output(path, filename, str string) error {
 
-	f, err := os.OpenFile(excelToJsonPath+string(filepath.Separator)+filename, os.O_RDWR|os.O_CREATE|os.O_TRUNC, 0777)
+	f, err := os.OpenFile(path+string(filepath.Separator)+filename, os.O_RDWR|os.O_CREATE|os.O_TRUNC, 0777)
 	if err != nil {
 		return err
 	}
