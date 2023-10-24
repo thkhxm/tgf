@@ -5,6 +5,7 @@ import (
 	"github.com/xuri/excelize/v2"
 	"os"
 	"path/filepath"
+	"strings"
 	"text/template"
 	"time"
 )
@@ -35,7 +36,10 @@ func ExcelExport() {
 	files := GetFileList(excelPath, fileExt)
 	structs := make([]*configStruct, 0)
 	for _, file := range files {
-		structs = append(structs, parseFile(file)...)
+		d := parseFile(file)
+		if d != nil {
+			structs = append(structs, d...)
+		}
 	}
 	//
 	if excelToGoPath != "" {
@@ -113,8 +117,15 @@ type meta struct {
 type rowdata []interface{}
 
 func parseFile(file string) []*configStruct {
+	// Ignoring temporary Excel files
+	if strings.HasPrefix(filepath.Base(file), "~$") {
+		fmt.Println("Skipping temporary file: [", file, "]")
+		return nil
+	}
+
 	fmt.Println("excel file [", file, "]")
-	xlsx, err := excelize.OpenFile(file)
+	fileReader, err := os.OpenFile(file, os.O_RDONLY, 0666)
+	xlsx, err := excelize.OpenReader(fileReader)
 	if err != nil {
 		panic(err.Error())
 	}
