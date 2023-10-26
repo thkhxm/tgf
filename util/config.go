@@ -1,6 +1,7 @@
 package util
 
 import (
+	"encoding/json"
 	"fmt"
 	"github.com/xuri/excelize/v2"
 	"os"
@@ -193,9 +194,10 @@ func parseFile(file string) []*configStruct {
 }
 
 const (
-	fileType_string     = "string"
-	fileType_time       = "time"
-	fileType_arrayInt32 = "[]int32"
+	fileType_string      = "string"
+	fileType_time        = "time"
+	fileType_arrayInt32  = "[]int32"
+	fileType_arrayString = "[]string"
 )
 
 func toJson(datarows []rowdata, metalist []*meta) string {
@@ -219,6 +221,12 @@ func toJson(datarows []rowdata, metalist []*meta) string {
 				} else {
 					ret += fmt.Sprintf("%s", row[idx])
 				}
+			case fileType_arrayString:
+				if row[idx] == nil || row[idx] == "" {
+					ret += "[]"
+				} else {
+					ret += fmt.Sprintf("%s", convertToStringSlice(row[idx].(string)))
+				}
 			default:
 				if row[idx] == nil || row[idx] == "" {
 					ret += "0"
@@ -234,6 +242,17 @@ func toJson(datarows []rowdata, metalist []*meta) string {
 	ret = ret[:len(ret)-1]
 	ret += "\n]"
 	return ret
+}
+
+func convertToStringSlice(input string) string {
+	splitInput := strings.Split(input, ",")
+
+	// Convert the string array to json
+	jsonData, err := json.Marshal(splitInput)
+	if err != nil {
+		fmt.Sprintf("string array error %v", err)
+	}
+	return string(jsonData)
 }
 
 func output(path, filename, str string) error {
