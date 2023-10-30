@@ -142,6 +142,11 @@ var (
 	if dir != "" {
 		path = path + string(filepath.Separator) + dir
 	}
+	// 创建路径中的所有必要的目录
+	err := os.MkdirAll(path, os.ModePerm)
+	if err != nil {
+		panic(err)
+	}
 	file, err := os.Create(path + string(filepath.Separator) + fileName)
 	if err != nil {
 		panic(err)
@@ -254,6 +259,11 @@ const(
 	tm := template.New("apiStruct")
 	tp, _ := tm.Parse(tpl)
 	fileName := strings.ToLower(moduleName) + "_" + autoGenerateFileNameSuffix + ".go"
+	// 创建路径中的所有必要的目录
+	err := os.MkdirAll(autoGenerateAPICodePath, os.ModePerm)
+	if err != nil {
+		panic(err)
+	}
 	file, err := os.Create(autoGenerateAPICodePath + string(filepath.Separator) + fileName)
 	if err != nil {
 		panic(err)
@@ -289,6 +299,10 @@ namespace %v
 		tmCS := template.New("apiCSStruct")
 		tpCS, _ := tmCS.Parse(tplCS)
 		fileCSName := "ServerApi.cs"
+		err := os.MkdirAll(autoGenerateAPICodePath, os.ModePerm)
+		if err != nil {
+			panic(err)
+		}
 		fileCS, errCS := os.Create(autoGenerateAPICSCodePath + string(filepath.Separator) + fileCSName)
 		if errCS != nil {
 			panic(errCS)
