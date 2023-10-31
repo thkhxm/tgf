@@ -4,6 +4,7 @@ import (
 	"bufio"
 	"bytes"
 	"encoding/binary"
+	"github.com/cornelk/hashmap"
 	"github.com/golang/protobuf/proto"
 	"github.com/gorilla/websocket"
 	util2 "github.com/smallnest/rpcx/util"
@@ -26,8 +27,9 @@ import (
 //***************************************************
 
 type tcp struct {
-	buf    *bufio.Reader
-	client *net.TCPConn
+	callback *hashmap.Map[string, CallbackLogic]
+	buf      *bufio.Reader
+	client   *net.TCPConn
 }
 
 func (t *tcp) Connect(address string) IRobot {
@@ -40,7 +42,7 @@ func (t *tcp) Connect(address string) IRobot {
 	t.buf = bufio.NewReader(t.client)
 	//心跳
 	util.Go(func() {
-		for true {
+		for {
 			heartbeat := make([]byte, 0, 2)
 			buff := bytes.NewBuffer(heartbeat)
 			buff.WriteByte(250)
@@ -95,6 +97,9 @@ func (t *tcp) Connect(address string) IRobot {
 			}
 			message := util.ConvertStringByByteSlice(data[8 : 8+requestSize])
 			res := util.ConvertStringByByteSlice(data[8+requestSize:])
+			if f, has := t.callback.Get(message); has {
+				f(t, data[8+requestSize:])
+			}
 			log.InfoTag("robot", "收到服务器的响应数据 messageType:%v 数据:%v", message, res)
 		}
 	})
@@ -103,8 +108,8 @@ func (t *tcp) Connect(address string) IRobot {
 }
 
 func (t *tcp) RegisterCallbackMessage(messageType string, f CallbackLogic) IRobot {
-	//TODO implement me
-	panic("implement me")
+	t.callback.Insert(messageType, f)
+	return t
 }
 
 func (t *tcp) Send(messageType string, v1 proto.Message) {
@@ -136,6 +141,7 @@ type ws struct {
 	conn          *websocket.Conn
 	heartbeatData []byte
 	closeChan     chan struct{}
+	callback      *hashmap.Map[string, CallbackLogic]
 }
 
 func (w *ws) Connect(address string) IRobot {
@@ -146,7 +152,6 @@ func (w *ws) Connect(address string) IRobot {
 	if err != nil {
 		log.Info("连接失败:%v", err)
 	}
-
 	w.heartbeatData = []byte{byte(1)}
 	w.closeChan = make(chan struct{})
 	w.conn = conn
@@ -158,7 +163,7 @@ func (w *ws) Connect(address string) IRobot {
 
 	w.conn.SetPongHandler(func(appData string) error {
 		//	收到服务器的pong响应
-		//log.DebugTag("tcp", "收到服务器的pong响应 data=%v", appData)
+		log.DebugTag("tcp", "收到服务器的pong响应 data=%v", appData)
 		return nil
 	})
 
@@ -172,6 +177,12 @@ func (w *ws) Connect(address string) IRobot {
 				return
 			}
 			log.Info("收到消息: %s", message)
+			message = message[1:]
+			res := &rpc.WSResponse{}
+			proto.Unmarshal(message, res)
+			if f, has := w.callback.Get(res.MessageType); has {
+				f(w, res.GetData())
+			}
 		}
 	})
 
@@ -194,8 +205,8 @@ func (w *ws) Connect(address string) IRobot {
 }
 
 func (w *ws) RegisterCallbackMessage(messageType string, f CallbackLogic) IRobot {
-	//TODO implement me
-	panic("implement me")
+	w.callback.Insert(messageType, f)
+	return w
 }
 
 func (w *ws) Send(messageType string, v1 proto.Message) {
@@ -220,6 +231,7 @@ func (w *ws) SendMessage(module, serviceName string, v1 proto.Message) {
 
 func NewRobotTcp() IRobot {
 	t := &tcp{}
+	t.callback = hashmap.New[string, CallbackLogic]()
 	return t
 }
 
@@ -229,5 +241,6 @@ func NewRobotWs(path string) IRobot {
 		path = "/" + path
 	}
 	t.path = path
+	t.callback = hashmap.New[string, CallbackLogic]()
 	return t
 }

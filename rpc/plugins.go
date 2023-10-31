@@ -191,8 +191,14 @@ func (this *CustomSelector) initStruct(moduleName string) {
 type RPCXClientHandler struct {
 }
 
+func (this *RPCXClientHandler) PreCall(ctx context2.Context, serviceName, methodName string, args interface{}) (interface{}, error) {
+	log.DebugTag("trace-rpc", "发送 %v-%v 请求 , 参数 %v", serviceName, methodName, args)
+	return args, nil
+}
+
 func (this *RPCXClientHandler) PostCall(ctx context2.Context, servicePath, serviceMethod string, args interface{}, reply interface{}, err error) error {
-	return nil
+	log.DebugTag("trace-rpc", "执行 %v-%v 完毕 , 返回结果 %v ", servicePath, serviceMethod, reply)
+	return err
 }
 
 type ILoginCheck interface {

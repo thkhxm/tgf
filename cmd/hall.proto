@@ -1,6 +1,0 @@
-syntax = "proto3"; //指定版本信息
-option go_package="./../service/api/hall/pb;hallpb";
-
-message HallSayRequest{
-  string msg = 1;
-}
