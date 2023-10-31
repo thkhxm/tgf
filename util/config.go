@@ -93,6 +93,11 @@ type {{.StructName}}Conf struct {
 {{end}}`, time.Now().String(), goPackage)
 	t := template.New("ConfigStruct")
 	tp, _ := t.Parse(tpl)
+	// 创建路径中的所有必要的目录
+	err := os.MkdirAll(excelToGoPath, os.ModePerm)
+	if err != nil {
+		panic(err)
+	}
 	file, err := os.Create(excelToGoPath + string(filepath.Separator) + "conf_struct.go")
 	if err != nil {
 		panic(err)
@@ -305,6 +310,11 @@ const(
 	t := template.New("KeyValueStruct")
 	tp, _ := t.Parse(tpl)
 	s, _ := filepath.Abs(outPath)
+	// 创建路径中的所有必要的目录
+	err := os.MkdirAll(s, os.ModePerm)
+	if err != nil {
+		panic(err)
+	}
 	file, err := os.Create(s + string(filepath.Separator) + fileName + ".go")
 	if err != nil {
 		panic(err)
