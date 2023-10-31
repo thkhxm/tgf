@@ -13,9 +13,7 @@ import (
 //2023/4/26
 //***************************************************
 
-type CallbackLogic interface {
-	Callback(data []byte)
-}
+type CallbackLogic func(IRobot, []byte)
 
 type IRobot interface {
 	Connect(address string) IRobot
