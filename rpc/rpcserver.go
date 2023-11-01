@@ -579,12 +579,14 @@ func NewCacheUserContext(userId string) context.Context {
 	reqMetaCacheData, suc := db.GetMap[string, string](reqMetaDataKey)
 	ct := share.NewContext(context.Background())
 	if suc {
+		reqMetaCacheData[tgf.ContextKeyUserId] = userId
 		ct.SetValue(share.ReqMetaDataKey, reqMetaCacheData)
 	} else {
 		initData := make(map[string]string)
 		initData[tgf.ContextKeyUserId] = userId
 		ct.SetValue(share.ReqMetaDataKey, initData)
 	}
+	ct.SetValue(share.ServerTimeout, 5)
 	return ct
 }
 
@@ -624,7 +626,6 @@ func NewBindRPCContext(userId ...string) context.Context {
 	initData[tgf.ContextKeyNodeId] = tgf.NodeId
 	ids := strings.Join(userId, ",")
 	initData[tgf.ContextKeyBroadcastUserIds] = ids
-	initData[tgf.ContextKeyBroadcastUserIds] = tgf.NodeId
 	ct.SetValue(share.ReqMetaDataKey, initData)
 	ct.SetValue(share.ServerTimeout, 5)
 	return ct

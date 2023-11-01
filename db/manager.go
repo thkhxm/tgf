@@ -235,7 +235,7 @@ func (this *autoCacheManager[Key, Val]) toLongevity() {
 		//util.Go(func() {
 		this.sb.updateOrCreate(valueStr, count)
 		//})
-		log.DebugTag("orm", "execute longevity logic , longevity size=%v", count)
+		log.DebugTag("orm:trace", "execute longevity logic , longevity size=%v", count)
 	}
 }
 
