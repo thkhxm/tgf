@@ -2,7 +2,7 @@
 
 ## 项目介绍
 
-​	tgf框架是使用golang开发的一套游戏分布式框架,支持全球一服.项目采用了rpcx做为底层rpc的通讯,consul提供服务注册发现.定义了一整套的模块开发规范.
+​	tgf框架是使用golang开发的一套游戏分布式框架,支持全球一服.项目采用了rpcx做为底层rpc的通讯,consul提供服务注册发现.定义了一整套的模块开发规范.[开发文档](https://github.com/thkhxm/tgf/tree/develop/doc)
 
 ## 技术选型
 

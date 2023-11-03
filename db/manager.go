@@ -536,8 +536,8 @@ func (a *autoCacheManager[Key, Val]) InitStruct() {
 
 	//开启自动清除过期数据
 	if a.builder.autoClear {
-		//a.clearTimer = time.NewTicker(time.Minute * 10)
-		a.clearTimer = time.NewTicker(time.Second)
+		a.clearTimer = time.NewTicker(time.Minute * 10)
+		//a.clearTimer = time.NewTicker(time.Second)
 		util.Go(func() {
 			counter := 0
 			for {
