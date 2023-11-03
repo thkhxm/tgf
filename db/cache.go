@@ -41,6 +41,25 @@ type IAutoCacheService[Key cacheKey, Val any] interface {
 	Reset() IAutoCacheService[Key, Val]
 }
 
+type IAutoCacheClearPlugin interface {
+	PreClear(key string)
+	PostClear(key string)
+}
+
+type IHashCacheService[Val any] interface {
+	IAutoCacheService[string, Val]
+	GetAll(key ...string) (val []Val, err error)
+}
+
+type IHashModel interface {
+	//主键key
+	HashCachePkKey(key ...string) string
+
+	//单项Key,调用Get,Set等操作函数的时候,需要保证这里的值有跟主键一起传进来
+	HashCacheFieldByVal() string
+	HashCacheFieldByKeys(key ...string) string
+}
+
 // Get [Res any]
 // @Description: 通过二级缓存获取数据
 // @param key
@@ -152,51 +171,92 @@ type AutoCacheBuilder[Key cacheKey, Val any] struct {
 	autoClear        bool
 	cacheTimeOut     time.Duration
 	memTimeOutSecond int64
+
+	plugins []IAutoCacheClearPlugin
 }
 
-func (this *AutoCacheBuilder[Key, Val]) New() IAutoCacheService[Key, Val] {
+type HashAutoCacheBuilder[Val IHashModel] struct {
+	AutoCacheBuilder[string, Val]
+	image Val
+}
+
+func (h *HashAutoCacheBuilder[Val]) New() IHashCacheService[Val] {
+	manager := &hashAutoCacheManager[Val]{}
+	manager.builder = &h.AutoCacheBuilder
+	manager.builder.WithCloseAutoClearCache()
+	manager.InitStruct(h.image)
+	return manager
+}
+func (h *HashAutoCacheBuilder[Val]) WithAutoCache(cacheKey string, cacheTimeOut time.Duration) *HashAutoCacheBuilder[Val] {
+	h.AutoCacheBuilder.WithAutoCache(cacheKey, cacheTimeOut)
+	return h
+}
+func (h *HashAutoCacheBuilder[Val]) WithMemCache(memTimeOutSecond uint32) *HashAutoCacheBuilder[Val] {
+	h.AutoCacheBuilder.WithMemCache(memTimeOutSecond)
+	return h
+}
+func (h *HashAutoCacheBuilder[Val]) WithLongevityCache(updateInterval time.Duration) *HashAutoCacheBuilder[Val] {
+	h.AutoCacheBuilder.WithLongevityCache(updateInterval)
+	return h
+}
+func (h *HashAutoCacheBuilder[Val]) WithCloseAutoClearCache() *HashAutoCacheBuilder[Val] {
+	h.AutoCacheBuilder.WithCloseAutoClearCache()
+	return h
+}
+func (h *HashAutoCacheBuilder[Val]) WithAutoClearPlugins(plugin IAutoCacheClearPlugin) *HashAutoCacheBuilder[Val] {
+	h.AutoCacheBuilder.WithAutoClearPlugins(plugin)
+	return h
+}
+
+func (a *AutoCacheBuilder[Key, Val]) New() IAutoCacheService[Key, Val] {
 	var ()
 	manager := &autoCacheManager[Key, Val]{}
-	manager.builder = this
+	manager.builder = a
 	manager.InitStruct()
 	return manager
 }
-
-func (this *AutoCacheBuilder[Key, Val]) WithAutoCache(cacheKey string, cacheTimeOut time.Duration) *AutoCacheBuilder[Key, Val] {
+func (a *AutoCacheBuilder[Key, Val]) WithAutoCache(cacheKey string, cacheTimeOut time.Duration) *AutoCacheBuilder[Key, Val] {
 	var ()
-	this.cache = true
-	this.keyFun = cacheKey
+	a.cache = true
+	a.keyFun = cacheKey
 
 	if cacheTimeOut > 0 {
-		this.autoClear = true
-		this.cacheTimeOut = cacheTimeOut
+		a.cacheTimeOut = cacheTimeOut
 	}
 
-	return this
+	return a
 }
-
-func (this *AutoCacheBuilder[Key, Val]) WithMemCache(memTimeOutSecond uint32) *AutoCacheBuilder[Key, Val] {
+func (a *AutoCacheBuilder[Key, Val]) WithCloseAutoClearCache() *AutoCacheBuilder[Key, Val] {
+	a.autoClear = false
+	return a
+}
+func (a *AutoCacheBuilder[Key, Val]) WithMemCache(memTimeOutSecond uint32) *AutoCacheBuilder[Key, Val] {
 	var ()
-	this.mem = true
+	a.mem = true
 	if memTimeOutSecond>>31 == 1 {
 		memTimeOutSecond = 0
 	}
 	if memTimeOutSecond != 0 {
-		this.autoClear = true
+		a.autoClear = true
 	}
-	this.memTimeOutSecond = int64(memTimeOutSecond)
+	a.memTimeOutSecond = int64(memTimeOutSecond)
 
-	return this
+	return a
+}
+func (a *AutoCacheBuilder[Key, Val]) WithAutoClearPlugins(plugin IAutoCacheClearPlugin) *AutoCacheBuilder[Key, Val] {
+	var ()
+	a.plugins = append(a.plugins, plugin)
+	return a
 }
 
-func (this *AutoCacheBuilder[Key, Val]) WithLongevityCache(updateInterval time.Duration) *AutoCacheBuilder[Key, Val] {
-	this.longevity = true
+func (a *AutoCacheBuilder[Key, Val]) WithLongevityCache(updateInterval time.Duration) *AutoCacheBuilder[Key, Val] {
+	a.longevity = true
 	if updateInterval < time.Second {
 		log.WarnTag("orm", "updateInterval minimum is 1 second")
 		updateInterval = time.Second
 	}
-	this.longevityInterval = updateInterval
-	return this
+	a.longevityInterval = updateInterval
+	return a
 }
 
 // NewDefaultAutoCacheManager [Key comparable, Val any]
@@ -208,6 +268,7 @@ func NewDefaultAutoCacheManager[Key cacheKey, Val any](cacheKey string) IAutoCac
 	builder := &AutoCacheBuilder[Key, Val]{}
 	builder.keyFun = cacheKey
 	builder.mem = true
+	builder.plugins = make([]IAutoCacheClearPlugin, 0)
 	builder.autoClear = true
 	builder.cache = true
 	builder.cacheTimeOut = time.Hour * 24 * 3
@@ -226,6 +287,7 @@ func NewLongevityAutoCacheManager[Key cacheKey, Val IModel](cacheKey string) IAu
 	builder := &AutoCacheBuilder[Key, Val]{}
 	builder.keyFun = cacheKey
 	builder.mem = true
+	builder.plugins = make([]IAutoCacheClearPlugin, 0)
 	builder.autoClear = true
 	builder.cache = true
 	builder.cacheTimeOut = time.Hour * 24 * 3
@@ -238,6 +300,7 @@ func NewLongevityAutoCacheManager[Key cacheKey, Val IModel](cacheKey string) IAu
 // @Description: 创建一个持久化的自动化数据管理，包含本地缓存，不包含持久化数据落地(mysql)，cache缓存(redis)
 func NewAutoCacheManager[Key cacheKey, Val any](memTimeOutSecond int64) IAutoCacheService[Key, Val] {
 	builder := &AutoCacheBuilder[Key, Val]{}
+	builder.plugins = make([]IAutoCacheClearPlugin, 0)
 	builder.keyFun = ""
 	builder.mem = true
 	builder.cache = false
@@ -248,6 +311,15 @@ func NewAutoCacheManager[Key cacheKey, Val any](memTimeOutSecond int64) IAutoCac
 
 func NewAutoCacheBuilder[Key cacheKey, Val any]() *AutoCacheBuilder[Key, Val] {
 	builder := &AutoCacheBuilder[Key, Val]{}
+	builder.plugins = make([]IAutoCacheClearPlugin, 0)
+	builder.mem = true
+	builder.memTimeOutSecond = 60 * 60 * 3
+	return builder
+}
+
+func NewHashAutoCacheBuilder[Val IHashModel]() *HashAutoCacheBuilder[Val] {
+	builder := &HashAutoCacheBuilder[Val]{}
+	builder.plugins = make([]IAutoCacheClearPlugin, 0)
 	builder.mem = true
 	builder.memTimeOutSecond = 60 * 60 * 3
 	return builder

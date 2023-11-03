@@ -8,6 +8,7 @@ import (
 	"strings"
 	"sync"
 	"testing"
+	"time"
 )
 
 //***************************************************
@@ -101,4 +102,173 @@ func Test_convertCamelToSnake(t *testing.T) {
 			}
 		})
 	}
+}
+
+type Item struct {
+	UserId string `orm:"pk"`
+	PropId string `orm:"pk"`
+	Amount uint64
+}
+
+func (i *Item) GetTableName() string {
+	return "game_prop"
+}
+
+func (i *Item) HashCachePkKey(key ...string) string {
+	return key[0]
+}
+
+func (i *Item) HashCacheFieldByVal() string {
+	return i.PropId
+}
+
+func (i *Item) HashCacheFieldByKeys(key ...string) string {
+	return key[1]
+}
+
+func NewTestHashCacheManager() db.IHashCacheService[*Item] {
+	db.Run()
+	builder := db.NewHashAutoCacheBuilder[*Item]()
+	return builder.WithLongevityCache(time.Second*5).
+		WithAutoCache("test:item", time.Hour*24).
+		WithMemCache(5).
+		New()
+}
+
+func Test_hashAutoCacheManager_Get(t *testing.T) {
+	type args struct {
+		key []string
+	}
+	type testCase[Val db.IHashModel] struct {
+		name    string
+		h       db.IHashCacheService[Val]
+		args    args
+		wantVal db.IHashModel
+		wantErr bool
+	}
+	tests := []testCase[*Item]{
+		{name: "example1", h: NewTestHashCacheManager(),
+			args:    args{key: []string{"123", "1"}},
+			wantVal: &Item{UserId: "123", PropId: "1", Amount: 1},
+			wantErr: false,
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			gotVal, err := tt.h.Get(tt.args.key...)
+			if (err != nil) != tt.wantErr {
+				t.Errorf("Get() error = %v, wantErr %v", err, tt.wantErr)
+				return
+			}
+			if !reflect.DeepEqual(gotVal, tt.wantVal) {
+				t.Errorf("Get() gotVal = %v, want %v", gotVal, tt.wantVal)
+			}
+		})
+	}
+}
+
+func Test_hashAutoCacheManager_GetAll(t *testing.T) {
+	type args struct {
+		key []string
+	}
+	type testCase[Val db.IHashModel] struct {
+		name    string
+		h       db.IHashCacheService[Val]
+		args    args
+		wantVal []db.IHashModel
+		wantErr bool
+	}
+	tests := []testCase[*Item]{
+		{name: "example1", h: NewTestHashCacheManager(), args: args{key: []string{"123"}}, wantVal: []db.IHashModel{&Item{
+			UserId: "123",
+			PropId: "1",
+			Amount: 1,
+		}, &Item{
+			UserId: "123",
+			PropId: "2",
+			Amount: 1,
+		}},
+			wantErr: false},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			gotVal, err := tt.h.GetAll(tt.args.key...)
+			if (err != nil) != tt.wantErr {
+				t.Errorf("GetAll() error = %v, wantErr %v", err, tt.wantErr)
+				return
+			}
+			if !reflect.DeepEqual(gotVal, tt.wantVal) {
+				t.Errorf("GetAll() gotVal = %v, want %v", gotVal, tt.wantVal)
+			}
+		})
+	}
+}
+
+func Test_hashAutoCacheManager_Push(t *testing.T) {
+	type args struct {
+		key []string
+	}
+	type testCase[Val db.IHashModel] struct {
+		name string
+		h    db.IHashCacheService[Val]
+		args args
+	}
+	tests := []testCase[*Item]{
+		// TODO: Add test cases.
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			tt.h.Push(tt.args.key...)
+		})
+	}
+}
+
+func Test_hashAutoCacheManager_Remove(t *testing.T) {
+	type args struct {
+		key []string
+	}
+	type testCase[Val db.IHashModel] struct {
+		name        string
+		h           db.IHashCacheService[Val]
+		args        args
+		wantSuccess bool
+	}
+	tests := []testCase[*Item]{
+		// TODO: Add test cases.
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if gotSuccess := tt.h.Remove(tt.args.key...); gotSuccess != tt.wantSuccess {
+				t.Errorf("Remove() = %v, want %v", gotSuccess, tt.wantSuccess)
+			}
+		})
+	}
+}
+
+func Test_hashAutoCacheManager_Set(t *testing.T) {
+	type args[Val db.IHashModel] struct {
+		val Val
+		key []string
+	}
+	type testCase[Val db.IHashModel] struct {
+		name        string
+		h           db.IHashCacheService[Val]
+		args        args[Val]
+		wantSuccess bool
+	}
+	tests := []testCase[*Item]{
+		{name: "add item", h: NewTestHashCacheManager(), args: args[*Item]{val: &Item{
+			UserId: "123",
+			PropId: "2",
+			Amount: 1,
+		}, key: []string{"123", "2"}}, wantSuccess: true},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if gotSuccess := tt.h.Set(tt.args.val, tt.args.key...); gotSuccess != tt.wantSuccess {
+				t.Errorf("Set() = %v, want %v", gotSuccess, tt.wantSuccess)
+			}
+		})
+	}
+	select {}
 }

@@ -114,3 +114,22 @@ func AnyToStr(a interface{}) (string, error) {
 func ConvertStringByByteSlice(bytes []byte) string {
 	return *(*string)(unsafe.Pointer(&bytes))
 }
+
+func RemoveOneKey(s []string, r string) []string {
+	for i, v := range s {
+		if v == r {
+			return append(s[:i], s[i+1:]...)
+		}
+	}
+	return s
+}
+
+func RemoveAllKey(s []string, r string) []string {
+	res := []string{}
+	for _, v := range s {
+		if v != r {
+			res = append(res, v)
+		}
+	}
+	return res
+}
