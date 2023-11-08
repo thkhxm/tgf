@@ -29,21 +29,25 @@ var cacheDataManager db.IAutoCacheService[string, *hashmap.Map[string, interface
 
 var newLock = &sync.Mutex{}
 
-func GetGameConf[Val any](id string) (res Val) {
+func GetGameConf[Val any](id string) (res Val, h bool) {
 	t := util.ReflectType[Val]()
 	key := t.Name()
 	data := getCacheGameConfData[Val](key)
-	tmp, _ := data.Get(id)
-	res = tmp.([]Val)[0]
+	if tmp, x := data.Get(id); x {
+		res = tmp.([]Val)[0]
+		h = true
+	}
 	return
 }
 
-func GetGameConfBySlice[Val any](id string) (res []Val) {
+func GetGameConfBySlice[Val any](id string, h bool) (res []Val) {
 	t := util.ReflectType[Val]()
 	key := t.Name()
 	data := getCacheGameConfData[Val](key)
-	tmp, _ := data.Get(id)
-	res = tmp.([]Val)
+	if tmp, x := data.Get(id); x {
+		res = tmp.([]Val)
+		h = true
+	}
 	return
 }
 
