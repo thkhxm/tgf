@@ -21,6 +21,7 @@ import (
 var (
 	pk     = "pk"
 	ignore = "ignore"
+	list   = "pkList"
 )
 
 var dbService *mysqlService

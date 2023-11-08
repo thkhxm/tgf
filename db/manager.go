@@ -473,9 +473,10 @@ func (a *autoCacheManager[Key, Val]) cacheTimeOut() time.Duration {
 	return a.builder.cacheTimeOut
 }
 
-func (a *autoCacheManager[Key, Val]) initField(rf reflect.Type, pkFields, fieldName, tableFieldNum []string) (newPkFields, newFieldName, newTableFieldNum []string) {
+func (a *autoCacheManager[Key, Val]) initField(rf reflect.Type, pkFields, pkListFields, fieldName, tableFieldNum []string) (newPkFields, newPkListFields, newFieldName, newTableFieldNum []string) {
 	// 使用参数初始化新的切片
 	newPkFields = append([]string{}, pkFields...)
+	newPkListFields = append([]string{}, pkListFields...)
 	newFieldName = append([]string{}, fieldName...)
 	newTableFieldNum = append([]string{}, tableFieldNum...)
 
@@ -485,8 +486,9 @@ func (a *autoCacheManager[Key, Val]) initField(rf reflect.Type, pkFields, fieldN
 			continue
 		}
 		if field.Anonymous {
-			p, f, t := a.initField(field.Type, newPkFields, newFieldName, newTableFieldNum)
+			p, pl, f, t := a.initField(field.Type, newPkFields, newPkListFields, newFieldName, newTableFieldNum)
 			newPkFields = append(newPkFields, p...)
+			newPkListFields = append(newPkListFields, pl...)
 			newFieldName = append(newFieldName, f...)
 			newTableFieldNum = append(newTableFieldNum, t...)
 			continue
@@ -503,6 +505,8 @@ func (a *autoCacheManager[Key, Val]) initField(rf reflect.Type, pkFields, fieldN
 					isTableField = false
 				case pk:
 					newPkFields = append(newPkFields, name+" = ?")
+				case list:
+					newPkListFields = append(newPkListFields, name+" = ?")
 				}
 			}
 		}
@@ -565,10 +569,12 @@ func (a *autoCacheManager[Key, Val]) InitStruct() {
 			return
 		}
 		pkFields := make([]string, 0)
+		pkListFields := make([]string, 0)
 		fieldName := make([]string, 0)
 		tableFieldNum := make([]string, 0)
-		pkFields, fieldName, tableFieldNum = a.initField(rf, pkFields, fieldName, tableFieldNum)
+		pkFields, pkListFields, fieldName, tableFieldNum = a.initField(rf, pkFields, pkListFields, fieldName, tableFieldNum)
 		pkSql := strings.Join(pkFields, " and ")
+		pkListSql := strings.Join(pkListFields, " and ")
 		queryListSql := strings.Join(fieldName, ",")
 
 		res := getTableNameValue.Call(make([]reflect.Value, 0))
@@ -576,6 +582,7 @@ func (a *autoCacheManager[Key, Val]) InitStruct() {
 		a.sb.tableField = queryListSql
 		a.sb.tableFieldName = fieldName
 		a.sb.pkSql = pkSql
+		a.sb.pkListSql = pkListSql
 		a.sb.modelFieldName = tableFieldNum
 		a.sb.initStruct()
 
@@ -619,7 +626,9 @@ type sqlBuilder[Val any] struct {
 	tableFieldName []string
 	//sql
 	pkSql              string
+	pkListSql          string
 	querySql           string
+	queryListSql       string
 	updateStartSql     string
 	updateEndSql       string
 	updateValueBaseSql string
@@ -631,7 +640,12 @@ type sqlBuilder[Val any] struct {
 func (s *sqlBuilder[Val]) initStruct() {
 	var ()
 	s.querySql = "select " + s.tableField + " from " + s.tableName + " where " + s.pkSql
+	s.queryListSql = "select " + s.tableField + " from " + s.tableName + " where " + s.pkListSql
+
 	log.DebugTag("omr", "table=%v query sql=%v", s.tableName, s.querySql)
+	if s.pkListSql != "" {
+		log.DebugTag("omr", "table=%v query list sql=%v", s.tableName, s.queryListSql)
+	}
 	//
 	s.updateStartSql = "INSERT INTO " + s.tableName + "(" + s.tableField + ")  VALUES "
 	appendSql := make([]string, len(s.tableFieldName), len(s.tableFieldName))
@@ -760,13 +774,13 @@ func (s *sqlBuilder[Val]) queryList(args ...any) (values []Val, err error) {
 		start = time.Now()
 	)
 
-	if s.querySql == "" {
+	if s.queryListSql == "" {
 		log.WarnTag("orm", "query script is empty")
 		return
 	}
-	stmt, err := dbService.getConnection().PrepareContext(context.Background(), s.querySql)
+	stmt, err := dbService.getConnection().PrepareContext(context.Background(), s.queryListSql)
 	if err != nil {
-		log.WarnTag("orm", "query script=%v error=%v", s.querySql, err)
+		log.WarnTag("orm", "query script=%v error=%v", s.queryListSql, err)
 		return
 	}
 	defer stmt.Close()
@@ -777,7 +791,7 @@ func (s *sqlBuilder[Val]) queryList(args ...any) (values []Val, err error) {
 	}
 	defer rows.Close()
 	ex := time.Since(start)
-	log.DebugTag("orm", "query=%v params=%v time=%v/ms", s.querySql, args, ex)
+	log.DebugTag("orm", "query=%v params=%v time=%v/ms", s.queryListSql, args, ex)
 	var val Val
 	values = make([]Val, 0)
 	for rows.Next() {
