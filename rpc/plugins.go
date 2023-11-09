@@ -75,7 +75,7 @@ func (this *CustomSelector) Select(ctx context.Context, servicePath, serviceMeth
 					//先判断携带节点信息是否存活
 					if this.checkServerAlive(selected) {
 						if bindNode {
-							goto cs2
+							this.processNode(ctx, uid, selected, reqMetaData, servicePath)
 						}
 						continue
 					}
@@ -87,45 +87,26 @@ func (this *CustomSelector) Select(ctx context.Context, servicePath, serviceMeth
 					}
 					//如果上面的用户节点获取，没有命中，那么取当前请求模式
 					//如果是rpc推送请求，
-					if rpcTip == tgf.RPCTip {
-						//从数据缓存中获取用户的节点数据
-						reqMetaDataKey := fmt.Sprintf(tgf.RedisKeyUserNodeMeta, uid)
-						reqMetaCacheData, suc := db.GetMap[string, string](reqMetaDataKey)
-						if !suc {
-							reqMetaCacheData = make(map[string]string)
-						}
-						selected = reqMetaCacheData[servicePath]
-						if this.checkServerAlive(selected) {
-							//将节点数据，放入本地缓存
-							if reqMetaData[tgf.ContextKeyCloseLocalCache] == "" {
-								this.cacheManager.Set(uid, selected)
-							}
-							continue
-						}
-					}
-					//通过一致性hash的方式,命中一个活跃的业务节点
-					key = client2.HashString(uid)
-					selected, _ = this.h.Get(key).(string)
-					reqMetaData[servicePath] = selected
-				cs2:
-					//将节点信息放入数据缓存中
+					//if rpcTip == tgf.RPCTip {
+					//从数据缓存中获取用户的节点数据
 					reqMetaDataKey := fmt.Sprintf(tgf.RedisKeyUserNodeMeta, uid)
-					db.PutMap(reqMetaDataKey, servicePath, selected, reqMetaDataTimeout)
-					//将节点数据，放入本地缓存
-					if reqMetaData[tgf.ContextKeyCloseLocalCache] == "" {
-						this.cacheManager.Set(uid, selected)
+					reqMetaCacheData, suc := db.GetMap[string, string](reqMetaDataKey)
+					if !suc {
+						reqMetaCacheData = make(map[string]string)
 					}
-					if UploadUserNodeInfo.ModuleName != servicePath {
-						//推送协议通知用户网关
-						util.Go(func() {
-							if _, err := SendRPCMessage(ctx, UploadUserNodeInfo.New(&UploadUserNodeInfoReq{
-								UserId:      uid,
-								NodeId:      selected,
-								ServicePath: servicePath,
-							}, &UploadUserNodeInfoRes{ErrorCode: 0})); err != nil {
-								log.Warn("[rpc] 节点更新异常 %v", err)
-							}
-						})
+					selected = reqMetaCacheData[servicePath]
+					if this.checkServerAlive(selected) {
+						//将节点数据，放入本地缓存
+						if reqMetaData[tgf.ContextKeyCloseLocalCache] == "" {
+							this.cacheManager.Set(uid, selected)
+						}
+						continue
+					} else {
+						//通过一致性hash的方式,命中一个活跃的业务节点
+						key = client2.HashString(uid)
+						selected, _ = this.h.Get(key).(string)
+						reqMetaData[servicePath] = selected
+						this.processNode(ctx, uid, selected, reqMetaData, servicePath)
 					}
 				}
 			} else {
@@ -143,6 +124,25 @@ func (this *CustomSelector) Select(ctx context.Context, servicePath, serviceMeth
 
 	return ""
 }
+func (this *CustomSelector) processNode(ctx context.Context, uid string, selected string, reqMetaData map[string]string, servicePath string) {
+	reqMetaDataKeyTemp := fmt.Sprintf(tgf.RedisKeyUserNodeMeta, uid)
+	db.PutMap(reqMetaDataKeyTemp, servicePath, selected, reqMetaDataTimeout)
+	if reqMetaData[tgf.ContextKeyCloseLocalCache] == "" {
+		this.cacheManager.Set(uid, selected)
+	}
+	if UploadUserNodeInfo.ModuleName != servicePath {
+		util.Go(func() {
+			if _, err := SendRPCMessage(ctx, UploadUserNodeInfo.New(&UploadUserNodeInfoReq{
+				UserId:      uid,
+				NodeId:      selected,
+				ServicePath: servicePath,
+			}, &UploadUserNodeInfoRes{ErrorCode: 0})); err != nil {
+				log.Warn("[rpc] 节点更新异常 %v", err)
+			}
+		})
+	}
+}
+
 func (this *CustomSelector) UpdateServer(servers map[string]string) {
 	// TODO: 新增虚拟节点，优化hash的命中分布
 	clearUserCache := false
