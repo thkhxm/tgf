@@ -527,6 +527,22 @@ func BorderRPCMessage[Req any, Res any](ct context.Context, api *ServiceAPI[Req,
 	xclient.Broadcast(context.Background(), api.Name, api.args, api.reply)
 }
 
+func BorderAllServiceRPCMessageByContext[Req any, Res any](ct context.Context, api *ServiceAPI[Req, Res]) {
+	var (
+		rc = getRPCClient()
+		//xclient = rc.getClient(api.ModuleName)
+	)
+	nodeMap := ct.Value(share.ReqMetaDataKey)
+	if m, h := nodeMap.(map[string]string); h {
+		rc.clients.Range(func(s string, xClient client.XClient) bool {
+			if m[s] != "" {
+				xClient.Go(ct, api.Name, api.args, api.reply, nil)
+			}
+			return true
+		})
+	}
+}
+
 // SendToGate
 // @Description: 发送消息到用户所在的网关
 // @param ct
@@ -553,7 +569,7 @@ func SendToGate(ct context.Context, messageType string, pbMessage proto.Message)
 // @return error
 func SendToGateByUserId(userId, messageType string, pbMessage proto.Message) error {
 	data, err := proto.Marshal(pbMessage)
-	ct := NewUserContext(userId)
+	ct := NewCacheUserContext(userId)
 	req := &ToUserReq{
 		Data:        data,
 		UserId:      GetUserId(ct),
@@ -566,7 +582,7 @@ func SendToGateByUserId(userId, messageType string, pbMessage proto.Message) err
 	return err
 }
 
-func NewUserContext(userId string) context.Context {
+func newUserContext(userId string) context.Context {
 	ct := share.NewContext(context.Background())
 	initData := make(map[string]string)
 	initData[tgf.ContextKeyUserId] = userId
@@ -580,10 +596,12 @@ func NewCacheUserContext(userId string) context.Context {
 	ct := share.NewContext(context.Background())
 	if suc {
 		reqMetaCacheData[tgf.ContextKeyUserId] = userId
+		reqMetaCacheData[tgf.ContextKeyRPCType] = tgf.RPCTip
 		ct.SetValue(share.ReqMetaDataKey, reqMetaCacheData)
 	} else {
 		initData := make(map[string]string)
 		initData[tgf.ContextKeyUserId] = userId
+		reqMetaCacheData[tgf.ContextKeyRPCType] = tgf.RPCTip
 		ct.SetValue(share.ReqMetaDataKey, initData)
 	}
 	ct.SetValue(share.ServerTimeout, 5)
