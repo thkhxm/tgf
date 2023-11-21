@@ -104,10 +104,7 @@ func (this *Server) WithRandomServicePort(minPort, maxPort int32) *Server {
 
 func (this *Server) WithCache(module tgf.CacheModule) *Server {
 	var ()
-	switch module {
-	case tgf.CacheModuleRedis:
-		db.WithCacheModule(module)
-	}
+	db.WithCacheModule(module)
 	return this
 }
 

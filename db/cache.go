@@ -1,6 +1,7 @@
 package db
 
 import (
+	"errors"
 	"github.com/bytedance/sonic"
 	"github.com/thkhxm/tgf"
 	"github.com/thkhxm/tgf/log"
@@ -65,6 +66,9 @@ type IHashModel interface {
 // @param key
 // @return res
 func Get[Res any](key string) (res Res, success bool) {
+	if cache == nil {
+		return
+	}
 	val := cache.Get(key)
 	if val != "" {
 		res, _ = util.StrToAny[Res](val)
@@ -74,6 +78,9 @@ func Get[Res any](key string) (res Res, success bool) {
 }
 
 func Set(key string, val any, timeout time.Duration) {
+	if cache == nil {
+		return
+	}
 	switch val.(type) {
 	case interface{}:
 		data, _ := sonic.Marshal(val)
@@ -84,6 +91,9 @@ func Set(key string, val any, timeout time.Duration) {
 }
 
 func GetMap[Key cacheKey, Val any](key string) (res map[Key]Val, success bool) {
+	if cache == nil {
+		return
+	}
 	data := cache.GetMap(key)
 	if data != nil && len(data) > 0 {
 		res = make(map[Key]Val, len(data))
@@ -98,12 +108,18 @@ func GetMap[Key cacheKey, Val any](key string) (res map[Key]Val, success bool) {
 }
 
 func PutMap[Key cacheKey, Val any](key string, field Key, val Val, timeout time.Duration) {
+	if cache == nil {
+		return
+	}
 	f, _ := util.AnyToStr(field)
 	v, _ := util.AnyToStr(val)
 	cache.PutMap(key, f, v, timeout)
 }
 
 func GetList[Res any](key string) []Res {
+	if cache == nil {
+		return nil
+	}
 	if res, err := cache.GetList(key, 0, -1); err == nil {
 		data := make([]Res, len(res))
 		for i, r := range res {
@@ -115,6 +131,9 @@ func GetList[Res any](key string) []Res {
 }
 
 func GetListLimit[Res any](key string, start, end int64) []Res {
+	if cache == nil {
+		return nil
+	}
 	if res, err := cache.GetList(key, start, end); err == nil {
 		data := make([]Res, len(res))
 		for i, r := range res {
@@ -126,6 +145,9 @@ func GetListLimit[Res any](key string, start, end int64) []Res {
 }
 
 func AddListItem[Val any](key string, timeout time.Duration, val ...Val) (err error) {
+	if cache == nil {
+		return errors.New("cache is nil")
+	}
 	data := make([]interface{}, len(val))
 	for i, v := range val {
 		a, e := util.AnyToStr(v)
@@ -140,10 +162,16 @@ func AddListItem[Val any](key string, timeout time.Duration, val ...Val) (err er
 }
 
 func Del(key string) {
+	if cache == nil {
+		return
+	}
 	cache.Del(key)
 }
 
 func DelNow(key string) {
+	if cache == nil {
+		return
+	}
 	cache.DelNow(key)
 }
 
