@@ -163,7 +163,7 @@ func (w *ws) Connect(address string) IRobot {
 
 	w.conn.SetPongHandler(func(appData string) error {
 		//	收到服务器的pong响应
-		log.DebugTag("tcp", "收到服务器的pong响应 data=%v", appData)
+		//log.DebugTag("tcp", "收到服务器的pong响应 data=%v", appData)
 		return nil
 	})
 
@@ -176,10 +176,10 @@ func (w *ws) Connect(address string) IRobot {
 				log.Info("读取消息失败:%v", err)
 				return
 			}
-			log.Info("收到消息: %s", message)
 			message = message[1:]
 			res := &rpc.WSResponse{}
 			proto.Unmarshal(message, res)
+			log.Info("收到消息: %s", res.MessageType)
 			if f, has := w.callback.Get(res.MessageType); has {
 				f(w, res.GetData())
 			}
