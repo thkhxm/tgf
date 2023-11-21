@@ -58,6 +58,8 @@ type Server struct {
 	minPort int32
 	maxPort int32
 
+	enableProfile bool
+
 	customServiceAddress bool
 
 	//
@@ -180,6 +182,11 @@ func (this *Server) WithGatewayWS(port, path string) *Server {
 	return this
 }
 
+func (this *Server) WithProfileDebug() *Server {
+	this.enableProfile = true
+	return this
+}
+
 func (this *Server) Run() chan bool {
 	var (
 		serviceName    string
@@ -199,7 +206,7 @@ func (this *Server) Run() chan bool {
 	/**启动逻辑链*/
 	//注册rpcx服务
 	this.rpcServer = server.NewServer(server.WithPool(this.maxWorkers, this.maxCapacity))
-
+	this.rpcServer.EnableProfile = this.enableProfile
 	port := tgf.GetStrConfig[string](tgf.EnvironmentServicePort)
 	if this.minPort > 0 && this.maxPort > this.minPort {
 		port = fmt.Sprintf("%v", rand.Int31n(this.maxPort-this.minPort)+this.minPort)

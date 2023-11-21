@@ -40,7 +40,7 @@ func GetGameConf[Val any](id string) (res Val, h bool) {
 	return
 }
 
-func GetGameConfBySlice[Val any](id string, h bool) (res []Val) {
+func GetGameConfBySlice[Val any](id string) (res []Val, h bool) {
 	t := util.ReflectType[Val]()
 	key := t.Name()
 	data := getCacheGameConfData[Val](key)
