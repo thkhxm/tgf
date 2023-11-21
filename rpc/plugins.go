@@ -69,7 +69,7 @@ func (this *CustomSelector) Select(ctx context.Context, servicePath, serviceMeth
 				}
 				bindNode = true
 			}
-			if len(broadcasts) > 0 {
+			if len(broadcasts) > 0 && broadcasts[0] != "" {
 				for _, uid := range broadcasts {
 					var key uint64
 					//先判断携带节点信息是否存活
