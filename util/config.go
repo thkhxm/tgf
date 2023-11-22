@@ -182,6 +182,11 @@ func parseFile(file string) []*configStruct {
 		jsonFile := fmt.Sprintf("%s.json", s)
 		if len(excelToJsonPath) > 0 {
 			for _, p := range excelToJsonPath {
+				// 创建路径中的所有必要的目录
+				err := os.MkdirAll(p, os.ModePerm)
+				if err != nil {
+					panic(err)
+				}
 				err = output(p, jsonFile, toJson(dataList, metaList))
 				if err != nil {
 					fmt.Println(err)
