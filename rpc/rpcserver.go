@@ -605,7 +605,7 @@ func NewCacheUserContext(userId string) context.Context {
 	} else {
 		initData := make(map[string]string)
 		initData[tgf.ContextKeyUserId] = userId
-		reqMetaCacheData[tgf.ContextKeyRPCType] = tgf.RPCTip
+		initData[tgf.ContextKeyRPCType] = tgf.RPCTip
 		ct.SetValue(share.ReqMetaDataKey, initData)
 	}
 	ct.SetValue(share.ServerTimeout, 5)
