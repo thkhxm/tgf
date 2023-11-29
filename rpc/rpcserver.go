@@ -214,6 +214,11 @@ func (this *Server) Run() chan bool {
 		local = tgf.GetStrConfig[string](tgf.EnvironmentServiceAddress)
 	}
 	ip = fmt.Sprintf("%v:%v", local, port)
+	if this.rpcServer.EnableProfile {
+		log.InfoTag("init", "开启性能监控:%s", ip+"debug/statsview")
+		log.InfoTag("init", "开启性能监控:%s", ip+"debug/pprof")
+	}
+
 	discovery := internal.GetDiscovery()
 	//如果加入了服务注册，那么走服务注册的流程
 	if discovery != nil {
