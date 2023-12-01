@@ -37,6 +37,10 @@ type IWeight[T any] interface {
 	// @return IWeightItem[T]
 	//
 	AllItem() []IWeightData[T]
+
+	TotalRatio() int32
+	BaseRatio() int32
+	BaseAmount() int32
 }
 
 type IWeightBuilder[T any] interface {
@@ -54,6 +58,8 @@ type weight[T any] struct {
 type weightOperation[T any] struct {
 	weights    []IWeightItem[T]
 	totalRatio int32
+	baseRatio  int32
+	baseAmount int32
 	//
 	ran *rand.Rand
 }
@@ -83,6 +89,7 @@ func (w *weight[T]) Ratio() int32 {
 func (w *weight[T]) BaseRatio() int32 {
 	return w.ratio
 }
+
 func (w *weight[T]) Hit() (IWeightItem[T], bool) {
 	//如果数量小于0,则表示该权重无限制
 	if w.amount < 0 {
@@ -105,7 +112,7 @@ func (w *weightOperation[T]) Roll() (res IWeightData[T]) {
 	for _, wei := range w.weights {
 		if r < wei.Ratio() {
 			if _, done := wei.Hit(); done {
-				w.totalRatio -= wei.Ratio()
+				w.totalRatio -= wei.BaseRatio()
 			}
 			return wei
 		}
@@ -122,6 +129,18 @@ func (w *weightOperation[T]) AllItem() []IWeightData[T] {
 	return res
 }
 
+func (w *weightOperation[T]) TotalRatio() int32 {
+	return w.totalRatio
+}
+
+func (w *weightOperation[T]) BaseRatio() int32 {
+	return w.baseRatio
+}
+
+func (w *weightOperation[T]) BaseAmount() int32 {
+	return w.baseAmount
+}
+
 func (w *weightBuilder[T]) Seed(seed uint64) IWeightBuilder[T] {
 	w.seed = seed
 	return w
@@ -131,8 +150,11 @@ func (w *weightBuilder[T]) Build() IWeight[T] {
 	operation := &weightOperation[T]{weights: w.weights}
 	for _, wei := range w.weights {
 		operation.totalRatio += wei.Ratio()
+		if wei.Amount() > 0 {
+			operation.baseAmount += wei.Amount()
+		}
 	}
-
+	operation.baseRatio = operation.totalRatio
 	if w.seed == 0 {
 		w.seed = uint64(time.Now().UnixMilli())
 	}
