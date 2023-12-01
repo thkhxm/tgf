@@ -108,6 +108,9 @@ func (w *weight[T]) Hit() (IWeightItem[T], bool) {
 }
 
 func (w *weightOperation[T]) Roll() (res IWeightData[T]) {
+	if w.totalRatio <= 0 {
+		return
+	}
 	r := w.ran.Int31n(w.totalRatio)
 	for _, wei := range w.weights {
 		if r < wei.Ratio() {
