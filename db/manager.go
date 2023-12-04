@@ -181,7 +181,7 @@ func (h *hashAutoCacheManager[Val]) Push(key ...string) {
 	localKey := h.getLocalKey(pk, fieldKey)
 	if h.cache() {
 		if val, err := h.Get(key...); err == nil {
-			PutMap(pk, fieldKey, val, h.cacheTimeOut())
+			PutMap(h.getCacheKey(pk), fieldKey, val, h.cacheTimeOut())
 		}
 	}
 
