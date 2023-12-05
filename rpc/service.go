@@ -50,6 +50,13 @@ func (this *ServiceAPI[Req, Res]) New(req Req, res Res) *ServiceAPI[Req, Res] {
 	return &ServiceAPI[Req, Res]{ModuleName: this.ModuleName, Name: this.Name, args: req, reply: res, MessageType: this.MessageType}
 }
 
+func (this *ServiceAPI[Req, Res]) NewEmpty() *ServiceAPI[Req, Res] {
+	var ()
+	var req Req
+	var res Res
+	return &ServiceAPI[Req, Res]{ModuleName: this.ModuleName, Name: this.Name, args: req, reply: res, MessageType: this.MessageType}
+}
+
 func (this *ServiceAPI[Req, Res]) GetResult() Res {
 	var ()
 	return this.reply

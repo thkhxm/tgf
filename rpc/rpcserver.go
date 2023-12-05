@@ -155,23 +155,26 @@ func (this *Server) withServiceClient() *Server {
 	return this
 }
 
-func (this *Server) WithGateway(port string) *Server {
+func (this *Server) WithGateway(port string, hook IUserHook) *Server {
 	var ()
 	this.beforeOptionals = append(this.beforeOptionals, func(server *Server) {
 		builder := newTCPBuilder()
 		builder.WithPort(port)
+		builder.SetUserHook(hook)
 		gateway := GatewayService(builder)
 		this.service = append(this.service, gateway)
 		log.InfoTag("init", "装载逻辑服务[%v@%v]", gateway.GetName(), gateway.GetVersion())
 	})
 	return this
 }
-func (this *Server) WithGatewayWS(port, path string) *Server {
+
+func (this *Server) WithGatewayWS(port, path string, hook IUserHook) *Server {
 	var ()
 	this.beforeOptionals = append(this.beforeOptionals, func(server *Server) {
 		builder := newTCPBuilder()
 		builder.WithPort(port)
 		builder.WithWSPath(path)
+		builder.SetUserHook(hook)
 		gateway := GatewayService(builder)
 		this.service = append(this.service, gateway)
 		log.InfoTag("init", "装载逻辑服务[%v@%v]", gateway.GetName(), gateway.GetVersion())
@@ -508,7 +511,7 @@ func SendAsyncRPCMessage[Req any, Res any](ct context.Context, api *ServiceAPI[R
 //	@Description: 发送无需等待返回的rpc消息
 //	@param ct
 //	@param api
-//	@param Res]
+//	@param Res
 //	@return error
 func SendNoReplyRPCMessage[Req any, Res any](ct context.Context, api *ServiceAPI[Req, Res]) error {
 	var (
@@ -518,7 +521,7 @@ func SendNoReplyRPCMessage[Req any, Res any](ct context.Context, api *ServiceAPI
 	if xclient == nil {
 		return errors.New(fmt.Sprintf("找不到对应模块的服务 moduleName=%v", api.ModuleName))
 	}
-	_, err := xclient.Go(ct, api.Name, api.args, api.reply, rc.noReplyChan)
+	err := xclient.Oneshot(ct, api.Name, api.args)
 	return err
 }
 
@@ -533,7 +536,7 @@ func BorderRPCMessage[Req any, Res any](ct context.Context, api *ServiceAPI[Req,
 		rc      = getRPCClient()
 		xclient = rc.getClient(api.ModuleName)
 	)
-	xclient.Broadcast(context.Background(), api.Name, api.args, api.reply)
+	xclient.Broadcast(ct, api.Name, api.args, api.reply)
 }
 
 func BorderAllServiceRPCMessageByContext[Req any, Res any](ct context.Context, api *ServiceAPI[Req, Res]) {
