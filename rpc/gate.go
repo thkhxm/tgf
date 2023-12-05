@@ -50,10 +50,11 @@ func (this *GateService) UploadUserNodeInfo(ctx context.Context, args *UploadUse
 func (this *GateService) Login(ctx context.Context, args *LoginReq, reply *LoginRes) error {
 	var ()
 	//踢人,重复登录的
-	if !this.tcpService.Offline(args.UserId) {
-		BorderRPCMessage(NewRPCContext(), Offline.New(&OfflineReq{UserId: args.UserId}, new(OfflineRes)))
+	if !this.tcpService.Offline(args.UserId, true) {
+		BorderRPCMessage(ctx, Offline.New(&OfflineReq{UserId: args.UserId}, new(OfflineRes)))
 	}
-	return this.tcpService.DoLogin(args.UserId, args.TemplateUserId)
+	err := this.tcpService.DoLogin(args.UserId, args.TemplateUserId)
+	return err
 }
 
 func (this *GateService) Offline(ctx context.Context, args *OfflineReq, reply *OfflineRes) error {
@@ -61,7 +62,7 @@ func (this *GateService) Offline(ctx context.Context, args *OfflineReq, reply *O
 	if GetNodeId(ctx) == tgf.NodeId {
 		return nil
 	}
-	this.tcpService.Offline(args.UserId)
+	this.tcpService.Offline(args.UserId, args.Replace)
 	return nil
 }
 
@@ -76,6 +77,43 @@ func GatewayService(tcpBuilder ITCPBuilder) IService {
 	service := &GateService{}
 	service.tcpBuilder = tcpBuilder
 	return service
+}
+
+type IUserHook interface {
+	GetLoginHooks() []*ServiceAPI[*DefaultArgs, *EmptyReply]
+	GetOfflineHooks() []*ServiceAPI[*DefaultArgs, *EmptyReply]
+	AddLoginHook(hook *ServiceAPI[*DefaultArgs, *EmptyReply]) IUserHook
+	AddOfflineHook(hook *ServiceAPI[*DefaultArgs, *EmptyReply]) IUserHook
+}
+
+type UserHook struct {
+	loginHooks   []*ServiceAPI[*DefaultArgs, *EmptyReply]
+	offlineHooks []*ServiceAPI[*DefaultArgs, *EmptyReply]
+}
+
+func (u *UserHook) AddLoginHook(hook *ServiceAPI[*DefaultArgs, *EmptyReply]) IUserHook {
+	u.loginHooks = append(u.loginHooks, hook)
+	return u
+}
+
+func (u *UserHook) AddOfflineHook(hook *ServiceAPI[*DefaultArgs, *EmptyReply]) IUserHook {
+	u.offlineHooks = append(u.offlineHooks, hook)
+	return u
+}
+
+func (u *UserHook) GetLoginHooks() []*ServiceAPI[*DefaultArgs, *EmptyReply] {
+	return u.loginHooks
+}
+
+func (u *UserHook) GetOfflineHooks() []*ServiceAPI[*DefaultArgs, *EmptyReply] {
+	return u.offlineHooks
+}
+
+func NewUserHook() IUserHook {
+	return &UserHook{
+		loginHooks:   make([]*ServiceAPI[*DefaultArgs, *EmptyReply], 0),
+		offlineHooks: make([]*ServiceAPI[*DefaultArgs, *EmptyReply], 0),
+	}
 }
 
 var Gate = &Module{Name: "Gate", Version: "1.0"}
@@ -133,8 +171,25 @@ type LoginRes struct {
 
 type OfflineReq struct {
 	UserId string
+	//是否重复登录踢人行为
+	Replace bool
 }
 
 type OfflineRes struct {
 	ErrorCode int32
+}
+
+type DefaultArgs struct {
+	C string
+}
+
+type DefaultReply struct {
+	C int32
+}
+
+type DefaultBool struct {
+	C bool
+}
+
+type EmptyReply struct {
 }

@@ -32,7 +32,7 @@ func TestStartRpcServer(t *testing.T) {
 	rpcServer.
 		WithService(service).
 		WithService(service2).
-		WithGateway("8038").
+		WithGateway("8038", nil).
 		Run()
 
 	w := sync.WaitGroup{}

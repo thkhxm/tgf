@@ -134,7 +134,7 @@ type IUserConnectData interface {
 	UpdateUserNodeId(servicePath, nodeId string)
 	GetContextData() *share.Context
 	GetChannel() chan *client.Call
-	Offline()
+	Offline(userHook IUserHook)
 	Send(data []byte)
 	IsLogin() bool
 	Login(userId string)
@@ -146,7 +146,8 @@ type ITCPService interface {
 	UpdateUserNodeInfo(userId, servicePath, nodeId string) bool
 	ToUser(userId, messageType string, data []byte)
 	DoLogin(userId, templateUserId string) (err error)
-	Offline(userId string) (exists bool)
+
+	Offline(userId string, replace bool) (exists bool)
 }
 
 type ITCPBuilder interface {
@@ -161,6 +162,8 @@ type ITCPBuilder interface {
 	ReadBufferSize() int
 	WriteBufferSize() int
 	IsWebSocket() bool
+	SetUserHook(userHook IUserHook)
+	UserHook() IUserHook
 }
 
 type TCPServer struct {
@@ -169,12 +172,11 @@ type TCPServer struct {
 
 	closeChan chan bool //关闭chan
 	users     *hashmap.Map[string, IUserConnectData]
-	optionals []optional
+
+	userHook IUserHook
 	//
 	startup *sync.Once //是否已经启动
 }
-
-type optional func(server *TCPServer)
 
 type ServerConfig struct {
 	address         string //地址
@@ -185,8 +187,17 @@ type ServerConfig struct {
 	readBufferSize  int
 	writeBufferSize int
 	netType         int
+	//
+
+	userHook IUserHook
 }
 
+func (this *ServerConfig) SetUserHook(userHook IUserHook) {
+	this.userHook = userHook
+}
+func (this *ServerConfig) UserHook() IUserHook {
+	return this.userHook
+}
 func (this *ServerConfig) Address() string {
 	return this.address
 }
@@ -303,7 +314,7 @@ func (this *TCPServer) handlerWSConn(conn *websocket.Conn) {
 			}
 		}
 		//
-		connectData.Offline()
+		connectData.Offline(this.userHook)
 	}()
 
 	conn.SetPingHandler(func(message string) error {
@@ -421,7 +432,7 @@ func (this *TCPServer) handlerConn(conn *net.TCPConn) {
 				this.users.Del(connectData.userId)
 			}
 		}
-		connectData.Offline()
+		connectData.Offline(this.userHook)
 	}()
 
 	go func() {
@@ -518,13 +529,23 @@ func (this *TCPServer) handlerConn(conn *net.TCPConn) {
 		connectData.reqCount++
 	}
 }
-func (this *TCPServer) Offline(userId string) (exists bool) {
+
+func (this *TCPServer) SetUserHook(userHook IUserHook) {
+	this.userHook = userHook
+}
+
+func (this *TCPServer) Offline(userId string, replace bool) (exists bool) {
 	oldUser, _ := this.users.Get(userId)
 	if oldUser != nil {
-		//发送重复登录消息通知
-		oldUser.Send(replaceLoginData)
+		var userHook IUserHook
+		if !replace {
+			userHook = this.userHook
+		} else {
+			//发送重复登录消息通知
+			oldUser.Send(replaceLoginData)
+		}
 		//断开已经在线的玩家上下文
-		oldUser.Offline()
+		oldUser.Offline(userHook)
 		exists = true
 		log.InfoTag("login", "重复登录,踢掉在线玩家 userId=%v", userId)
 	}
@@ -547,12 +568,18 @@ func (this *TCPServer) DoLogin(userId, templateUserId string) (err error) {
 		reqMetaData = make(map[string]string)
 	}
 	reqMetaData[tgf.ContextKeyUserId] = userId
+	reqMetaData[tgf.ContextKeyNodeId] = tgf.NodeId
 	ct.SetValue(share.ReqMetaDataKey, reqMetaData)
 	this.users.Set(userId, userData)
 	userData.Login(userId)
 	//remove key
 	this.users.Del(templateUserId)
 	log.InfoTag("tcp", "login templateUserId %v , uuid %v", templateUserId, userId)
+	if this.userHook != nil {
+		for _, hook := range this.userHook.GetLoginHooks() {
+			SendNoReplyRPCMessage(ct, hook.New(&DefaultArgs{C: userId}, &EmptyReply{}))
+		}
+	}
 	return
 }
 
@@ -662,10 +689,7 @@ func (this *TCPServer) Run() {
 	var ()
 	//保证每个tcp只会被启动一次,避免误操作
 	this.startup.Do(func() {
-		//执行optional
-		for _, optional := range this.optionals {
-			optional(this)
-		}
+		this.userHook = this.config.UserHook()
 		if this.config.IsWebSocket() {
 			util.Go(func() {
 				log.InfoTag("init", "启动ws服务 %v", this.config.Address()+":"+this.config.Port()+"/"+this.config.WsPath())
@@ -765,13 +789,19 @@ func (this *UserConnectData) GetChannel() chan *client.Call {
 	var ()
 	return this.reqChan
 }
-func (this *UserConnectData) Offline() {
+func (this *UserConnectData) Offline(userHook IUserHook) {
 	defer func() {
 		if r := recover(); r != nil {
 			log.DebugTag("tcp", "用户 userId=%v Offline: %v", this.userId, r)
 		}
 	}()
 	var ()
+	if userHook != nil {
+		for _, hook := range userHook.GetOfflineHooks() {
+			SendNoReplyRPCMessage(this.contextData, hook.New(&DefaultArgs{C: this.userId}, &EmptyReply{}))
+		}
+	}
+
 	this.contextData.Deadline()
 	ip := ""
 	if this.conn != nil {
@@ -824,7 +854,6 @@ func newTCPBuilder() ITCPBuilder {
 
 func newDefaultTCPServer(builder ITCPBuilder) *TCPServer {
 	server := &TCPServer{}
-	server.optionals = make([]optional, 0)
 	server.config = builder
 	server.conChan = make(chan *net.TCPConn, maxSynChanConn)
 	server.closeChan = make(chan bool, 1)
