@@ -548,7 +548,7 @@ func BorderAllServiceRPCMessageByContext[Req any, Res any](ct context.Context, a
 	if m, h := nodeMap.(map[string]string); h {
 		rc.clients.Range(func(s string, xClient client.XClient) bool {
 			if m[s] != "" {
-				xClient.Go(ct, api.Name, api.args, api.reply, nil)
+				xClient.Oneshot(ct, api.Name, api.args)
 			}
 			return true
 		})

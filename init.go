@@ -32,7 +32,7 @@ func init() {
 	destroyList = make([]IDestroyHandler, 0)
 	util.Go(func() {
 		c := make(chan os.Signal, 1)
-		signal.Notify(c, os.Interrupt)
+		signal.Notify(c, os.Interrupt, os.Kill)
 		<-c
 		for _, handler := range destroyList {
 			handler.Destroy()
