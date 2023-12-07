@@ -1,12 +1,22 @@
-# tgf
+# 关于 tgf
+    tgf框架是使用golang开发的一套游戏分布式框架.
 
-## 项目介绍
+    属于开箱即用的项目框架,目前适用于中小型团队,独立开发者,快速开发使用.
 
-​	tgf框架是使用golang开发的一套游戏分布式框架,支持全球一服.项目采用了rpcx做为底层rpc的通讯,consul提供服务注册发现.定义了一整套的模块开发规范.[开发文档](https://thkhxm.github.io/tgf_writerside/starter-topic.html)
+    框架提供了一整套开发工具,并且定义了模块开发规范.
+
+    开发者只需要关注业务逻辑即可,无需关心用户并发和节点状态等复杂情况.
+
+
+[项目地址](https://github.com/thkhxm/tgf)  
+[项目文档](https://thkhxm.github.io/tgf_writerside/starter-topic.html)
+
+
+## 交流群
+    QQ群:7400585
 
 ## 技术选型
-
-**go1.21.1**
+    Golang开发版本:  1.21.1
 
 | 技术       | 说明           | 仓库地址                                 |
 | ---------- | -------------- | ---------------------------------------- |
@@ -23,23 +33,11 @@
 | excelize   | Excel工具      | https://github.com/qax-os/excelize       |
 | sonic      | json高性能工具 | https://github.com/bytedance/sonic/      |
 
+
 ## 基础架构图
 
 ![image-20230228031100624](http://oss.yamigame.net/picgo/image-20230228031100624.png)
 
-#### 参与贡献
-
-1.  Fork 本仓库
-2.  新建 Feat_xxx 分支
-3.  提交代码
-4.  新建 Pull Request
-
-
-#### 特技
-
-1.  使用 Readme\_XXX.md 来支持不同的语言，例如 Readme\_en.md, Readme\_zh.md
-2.  Gitee 官方博客 [blog.gitee.com](https://blog.gitee.com)
-3.  你可以 [https://gitee.com/explore](https://gitee.com/explore) 这个地址来了解 Gitee 上的优秀开源项目
-4.  [GVP](https://gitee.com/gvp) 全称是 Gitee 最有价值开源项目，是综合评定出的优秀开源项目
-5.  Gitee 官方提供的使用手册 [https://gitee.com/help](https://gitee.com/help)
-6.  Gitee 封面人物是一档用来展示 Gitee 会员风采的栏目 [https://gitee.com/gitee-stars/](https://gitee.com/gitee-stars/)
+## 规划
+    项目后续会更新系列教程文章和视频教程,并且开源项目案例.也会不断的更新和优化项目框架.
+    欢迎大家加入qq群一起交流和探讨.
