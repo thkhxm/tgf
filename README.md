@@ -9,7 +9,10 @@
 
 
 [项目地址](https://github.com/thkhxm/tgf)  
-[项目文档](https://thkhxm.github.io/tgf_writerside/starter-topic.html)
+[项目文档](https://thkhxm.github.io/tgf_writerside/starter-topic.html)  
+[知乎博客](https://www.zhihu.com/people/tim-30-83/posts)  
+[CSDN专栏](https://blog.csdn.net/thkhxm/category_12520142.html)  
+[B站教程](https://space.bilibili.com/64497732/channel/seriesdetail?sid=3815364)
 
 
 ## 交流群
@@ -33,10 +36,8 @@
 | excelize   | Excel工具      | https://github.com/qax-os/excelize       |
 | sonic      | json高性能工具 | https://github.com/bytedance/sonic/      |
 
-
 ## 基础架构图
-
-![image-20230228031100624](http://oss.yamigame.net/picgo/image-20230228031100624.png)
+![img](jiagoutu.png)
 
 ## 规划
     项目后续会更新系列教程文章和视频教程,并且开源项目案例.也会不断的更新和优化项目框架.
