@@ -37,7 +37,7 @@
 | sonic      | json高性能工具 | https://github.com/bytedance/sonic/      |
 
 ## 基础架构图
-![img](jiagoutu.png)
+![img](http://oss.yamigame.net/picgo/image-20230228031100624.png)
 
 ## 规划
     项目后续会更新系列教程文章和视频教程,并且开源项目案例.也会不断的更新和优化项目框架.
