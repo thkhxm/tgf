@@ -82,6 +82,8 @@ func Set(key string, val any, timeout time.Duration) {
 		return
 	}
 	switch val.(type) {
+	case string:
+		cache.Set(key, val, timeout)
 	case interface{}:
 		data, _ := sonic.Marshal(val)
 		cache.Set(key, data, timeout)
