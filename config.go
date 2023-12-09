@@ -78,16 +78,16 @@ const (
 	defaultRedisDB       = "1"
 )
 
-func (this *config) initVal() *config {
+func (c *config) initVal() *config {
 	var (
-		res = os.Getenv(string(this.env))
+		res = os.Getenv(string(c.env))
 	)
 	if res != "" {
-		fmt.Sprintf("[init] 配置 env=%v 从 %v 修改为 %v", this.env, this.val, res)
+		fmt.Sprintf("[init] 配置 env=%v 从 %v 修改为 %v", c.env, c.val, res)
 		fmt.Println()
-		this.val = res
+		c.val = res
 	}
-	return this
+	return c
 }
 
 // 配置缓存

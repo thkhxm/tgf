@@ -192,60 +192,60 @@ type ServerConfig struct {
 	userHook IUserHook
 }
 
-func (this *ServerConfig) SetUserHook(userHook IUserHook) {
-	this.userHook = userHook
+func (s *ServerConfig) SetUserHook(userHook IUserHook) {
+	s.userHook = userHook
 }
-func (this *ServerConfig) UserHook() IUserHook {
-	return this.userHook
+func (s *ServerConfig) UserHook() IUserHook {
+	return s.userHook
 }
-func (this *ServerConfig) Address() string {
-	return this.address
-}
-
-func (this *ServerConfig) Port() string {
-	return this.port
-}
-func (this *ServerConfig) WsPath() string {
-	return this.wsPath
-}
-func (this *ServerConfig) MaxConnections() int32 {
-	return this.maxConnections
+func (s *ServerConfig) Address() string {
+	return s.address
 }
 
-func (this *ServerConfig) DeadLineTime() time.Duration {
-	return this.deadLineTime
+func (s *ServerConfig) Port() string {
+	return s.port
+}
+func (s *ServerConfig) WsPath() string {
+	return s.wsPath
+}
+func (s *ServerConfig) MaxConnections() int32 {
+	return s.maxConnections
 }
 
-func (this *ServerConfig) ReadBufferSize() int {
-	return this.readBufferSize
+func (s *ServerConfig) DeadLineTime() time.Duration {
+	return s.deadLineTime
 }
 
-func (this *ServerConfig) WriteBufferSize() int {
-	return this.writeBufferSize
+func (s *ServerConfig) ReadBufferSize() int {
+	return s.readBufferSize
 }
-func (this *ServerConfig) IsWebSocket() bool {
-	return this.netType == netWebsocket
+
+func (s *ServerConfig) WriteBufferSize() int {
+	return s.writeBufferSize
 }
-func (this *ServerConfig) WithPort(port string) ITCPBuilder {
+func (s *ServerConfig) IsWebSocket() bool {
+	return s.netType == netWebsocket
+}
+func (s *ServerConfig) WithPort(port string) ITCPBuilder {
 	var ()
-	this.port = port
-	this.netType = netTcp
-	return this
+	s.port = port
+	s.netType = netTcp
+	return s
 }
-func (this *ServerConfig) WithWSPath(path string) ITCPBuilder {
+func (s *ServerConfig) WithWSPath(path string) ITCPBuilder {
 	var ()
 	if path[0:1] == "/" {
 		path = path[1:]
 	}
-	this.wsPath = path
-	this.netType = netWebsocket
-	return this
+	s.wsPath = path
+	s.netType = netWebsocket
+	return s
 }
-func (this *ServerConfig) WithBuffer(readBuffer, writeBuffer int) ITCPBuilder {
+func (s *ServerConfig) WithBuffer(readBuffer, writeBuffer int) ITCPBuilder {
 	var ()
-	this.readBufferSize = readBuffer
-	this.writeBufferSize = writeBuffer
-	return this
+	s.readBufferSize = readBuffer
+	s.writeBufferSize = writeBuffer
+	return s
 }
 
 type UserConnectData struct {
@@ -268,19 +268,19 @@ type RequestData struct {
 	ReqId         int32
 }
 
-func (this *TCPServer) selectorChan() {
+func (t *TCPServer) selectorChan() {
 	for {
 		select {
-		case con := <-this.conChan:
+		case con := <-t.conChan:
 			util.Go(func() {
-				this.handlerConn(con)
+				t.handlerConn(con)
 			})
 		}
 	}
 }
 
-func (this *TCPServer) onDestroy() {
-	this.closeChan <- true
+func (t *TCPServer) onDestroy() {
+	t.closeChan <- true
 }
 
 func checkOrigin(r *http.Request) bool {
@@ -288,7 +288,7 @@ func checkOrigin(r *http.Request) bool {
 	return true
 }
 
-func (this *TCPServer) handlerWSConn(conn *websocket.Conn) {
+func (t *TCPServer) handlerWSConn(conn *websocket.Conn) {
 	var ()
 	connectData := &UserConnectData{
 		wsConn:      conn,
@@ -301,25 +301,25 @@ func (this *TCPServer) handlerWSConn(conn *websocket.Conn) {
 	reqChan := make(chan *RequestData)
 	reqMetaData[tgf.ContextKeyTemplateUserId] = util.GenerateSnowflakeId()
 	connectData.contextData.SetValue(share.ReqMetaDataKey, reqMetaData)
-	this.users.Set(reqMetaData[tgf.ContextKeyTemplateUserId], connectData)
+	t.users.Set(reqMetaData[tgf.ContextKeyTemplateUserId], connectData)
 	log.DebugTag("tcp", "接收到一条新的连接 addr=%v , templateUserId=%v", conn.RemoteAddr().String(), reqMetaData[tgf.ContextKeyTemplateUserId])
 	defer func() {
 		if err := recover(); err != nil {
 			log.DebugTag("tcp", "tcp连接异常关闭 %v", err)
 		}
 		//避免并发情况下,新登录用户数据比移除用户先执行
-		if tmpUser, ok := this.users.Get(connectData.userId); ok {
+		if tmpUser, ok := t.users.Get(connectData.userId); ok {
 			if GetTemplateUserId(tmpUser.GetContextData()) == GetTemplateUserId(connectData.GetContextData()) {
-				this.users.Del(connectData.userId)
+				t.users.Del(connectData.userId)
 			}
 		}
 		//
-		connectData.Offline(this.userHook)
+		connectData.Offline(t.userHook)
 	}()
 
 	conn.SetPingHandler(func(message string) error {
 
-		err := conn.WriteControl(websocket.PongMessage, []byte(message), time.Now().Add(this.config.DeadLineTime()))
+		err := conn.WriteControl(websocket.PongMessage, []byte(message), time.Now().Add(t.config.DeadLineTime()))
 		log.DebugTag("tcp", "收到客户端的ping请求 %v err=%v", message, err)
 		if err == websocket.ErrCloseSent {
 			return nil
@@ -331,8 +331,8 @@ func (this *TCPServer) handlerWSConn(conn *websocket.Conn) {
 	////设置pong,响应客户端的ping心跳
 	//conn.SetPongHandler(func(m string) error {
 	//	log.DebugTag("tcp", "收到客户端的ping请求 %v", m)
-	//	conn.SetReadDeadline(time.Now().Add(this.config.DeadLineTime()))
-	//	conn.SetWriteDeadline(time.Now().Add(this.config.DeadLineTime()))
+	//	conn.SetReadDeadline(time.Now().Add(t.config.DeadLineTime()))
+	//	conn.SetWriteDeadline(time.Now().Add(t.config.DeadLineTime()))
 	//	return nil
 	//})
 
@@ -347,7 +347,7 @@ func (this *TCPServer) handlerWSConn(conn *websocket.Conn) {
 		for {
 			select {
 			case req := <-reqChan:
-				this.doLogic(req)
+				t.doLogic(req)
 			case <-connectData.stop:
 				close(connectData.stop)
 				close(reqChan)
@@ -398,7 +398,7 @@ func (this *TCPServer) handlerWSConn(conn *websocket.Conn) {
 
 }
 
-func (this *TCPServer) handlerConn(conn *net.TCPConn) {
+func (t *TCPServer) handlerConn(conn *net.TCPConn) {
 	var (
 		err                  error
 		head                 []byte
@@ -417,7 +417,7 @@ func (this *TCPServer) handlerConn(conn *net.TCPConn) {
 	reqMetaData := make(map[string]string)
 	reqMetaData[tgf.ContextKeyTemplateUserId] = util.GenerateSnowflakeId()
 	connectData.contextData.SetValue(share.ReqMetaDataKey, reqMetaData)
-	this.users.Set(reqMetaData[tgf.ContextKeyTemplateUserId], connectData)
+	t.users.Set(reqMetaData[tgf.ContextKeyTemplateUserId], connectData)
 	log.DebugTag("tcp", "接收到一条新的连接 addr=%v , templateUserId=%v", conn.RemoteAddr().String(), reqMetaData[tgf.ContextKeyTemplateUserId])
 	//
 
@@ -427,19 +427,19 @@ func (this *TCPServer) handlerConn(conn *net.TCPConn) {
 			log.DebugTag("tcp", "tcp连接异常关闭 %v", err)
 		}
 		//避免并发情况下,新登录用户数据比移除用户先执行
-		if tmpUser, ok := this.users.Get(connectData.userId); ok {
+		if tmpUser, ok := t.users.Get(connectData.userId); ok {
 			if GetTemplateUserId(tmpUser.GetContextData()) == GetTemplateUserId(connectData.GetContextData()) {
-				this.users.Del(connectData.userId)
+				t.users.Del(connectData.userId)
 			}
 		}
-		connectData.Offline(this.userHook)
+		connectData.Offline(t.userHook)
 	}()
 
 	go func() {
 		for {
 			select {
 			case req := <-reqChan:
-				this.doLogic(req)
+				t.doLogic(req)
 			case <-connectData.stop:
 				close(connectData.stop)
 				close(reqChan)
@@ -466,7 +466,7 @@ func (this *TCPServer) handlerConn(conn *net.TCPConn) {
 		switch messageType {
 		case byte(Heartbeat): //处理心跳逻辑
 			connectData.reader.Discard(2)
-			connectData.conn.SetDeadline(time.Now().Add(this.config.DeadLineTime()))
+			connectData.conn.SetDeadline(time.Now().Add(t.config.DeadLineTime()))
 			connectData.conn.Write(heartbeatData)
 			continue
 		case byte(Logic): //处理请求业务逻辑
@@ -530,16 +530,16 @@ func (this *TCPServer) handlerConn(conn *net.TCPConn) {
 	}
 }
 
-func (this *TCPServer) SetUserHook(userHook IUserHook) {
-	this.userHook = userHook
+func (t *TCPServer) SetUserHook(userHook IUserHook) {
+	t.userHook = userHook
 }
 
-func (this *TCPServer) Offline(userId string, replace bool) (exists bool) {
-	oldUser, _ := this.users.Get(userId)
+func (t *TCPServer) Offline(userId string, replace bool) (exists bool) {
+	oldUser, _ := t.users.Get(userId)
 	if oldUser != nil {
 		var userHook IUserHook
 		if !replace {
-			userHook = this.userHook
+			userHook = t.userHook
 		} else {
 			//发送重复登录消息通知
 			oldUser.Send(replaceLoginData)
@@ -551,11 +551,11 @@ func (this *TCPServer) Offline(userId string, replace bool) (exists bool) {
 	}
 	return
 }
-func (this *TCPServer) DoLogin(userId, templateUserId string) (err error) {
+func (t *TCPServer) DoLogin(userId, templateUserId string) (err error) {
 	var (
 		reqMetaDataKey string
 	)
-	userData, _ := this.users.Get(templateUserId)
+	userData, _ := t.users.Get(templateUserId)
 	if userData == nil {
 		return errors.New("用户不存在")
 	}
@@ -570,20 +570,20 @@ func (this *TCPServer) DoLogin(userId, templateUserId string) (err error) {
 	reqMetaData[tgf.ContextKeyUserId] = userId
 	reqMetaData[tgf.ContextKeyNodeId] = tgf.NodeId
 	ct.SetValue(share.ReqMetaDataKey, reqMetaData)
-	this.users.Set(userId, userData)
+	t.users.Set(userId, userData)
 	userData.Login(userId)
 	//remove key
-	this.users.Del(templateUserId)
+	t.users.Del(templateUserId)
 	log.InfoTag("tcp", "login templateUserId %v , uuid %v", templateUserId, userId)
-	if this.userHook != nil {
-		for _, hook := range this.userHook.GetLoginHooks() {
+	if t.userHook != nil {
+		for _, hook := range t.userHook.GetLoginHooks() {
 			SendNoReplyRPCMessage(ct, hook.New(&DefaultArgs{C: userId}, &EmptyReply{}))
 		}
 	}
 	return
 }
 
-func (this *TCPServer) doLogic(data *RequestData) {
+func (t *TCPServer) doLogic(data *RequestData) {
 	var (
 		err       error
 		startTime = time.Now().UnixMilli()
@@ -607,11 +607,11 @@ func (this *TCPServer) doLogic(data *RequestData) {
 	reply = resData.ByteData
 	consumeTime := time.Now().UnixMilli() - startTime
 	log.DebugTag("tcp", "请求耗时统计 module=%v serviceName=%v consumeTime=%v", data.Module, data.RequestMethod, consumeTime)
-	clientData := this.getSendToClientData(data.Module+"."+data.RequestMethod, data.ReqId, resData.Code, reply)
+	clientData := t.getSendToClientData(data.Module+"."+data.RequestMethod, data.ReqId, resData.Code, reply)
 	data.User.Send(clientData)
 }
 
-func (this *TCPServer) getSendToClientData(messageType string, reqId, code int32, reply []byte) (res []byte) {
+func (t *TCPServer) getSendToClientData(messageType string, reqId, code int32, reply []byte) (res []byte) {
 	var (
 		compress byte = 0
 		err      error
@@ -621,7 +621,7 @@ func (this *TCPServer) getSendToClientData(messageType string, reqId, code int32
 	// message type|compress|request method name size|data size|method name|data
 	//逻辑响应
 	bp.WriteByte(byte(Logic))
-	if this.config.IsWebSocket() {
+	if t.config.IsWebSocket() {
 		data := &WSResponse{}
 		data.MessageType = messageType
 		data.Data = reply
@@ -670,7 +670,7 @@ func (this *TCPServer) getSendToClientData(messageType string, reqId, code int32
 	return
 }
 
-func (this *TCPServer) Update() {
+func (t *TCPServer) Update() {
 	var ()
 }
 
@@ -685,18 +685,18 @@ func (this *TCPServer) Update() {
 // @param err
 // @return error
 
-func (this *TCPServer) Run() {
+func (t *TCPServer) Run() {
 	var ()
 	//保证每个tcp只会被启动一次,避免误操作
-	this.startup.Do(func() {
-		this.userHook = this.config.UserHook()
-		if this.config.IsWebSocket() {
+	t.startup.Do(func() {
+		t.userHook = t.config.UserHook()
+		if t.config.IsWebSocket() {
 			util.Go(func() {
-				log.InfoTag("init", "启动ws服务 %v", this.config.Address()+":"+this.config.Port()+"/"+this.config.WsPath())
+				log.InfoTag("init", "启动ws服务 %v", t.config.Address()+":"+t.config.Port()+"/"+t.config.WsPath())
 				// 定义 WebSocket 路由
-				http.HandleFunc("/"+this.config.WsPath(), this.wsHandler)
+				http.HandleFunc("/"+t.config.WsPath(), t.wsHandler)
 				// 启动服务器
-				err := http.ListenAndServe(this.config.Address()+":"+this.config.Port(), nil)
+				err := http.ListenAndServe(t.config.Address()+":"+t.config.Port(), nil)
 				if err != nil {
 					log.Info("服务器启动失败：%v", err)
 					return
@@ -704,7 +704,7 @@ func (this *TCPServer) Run() {
 			})
 		} else {
 			//
-			add, _ := net.ResolveTCPAddr("tcp", fmt.Sprintf("%v:%v", this.config.Address(), this.config.Port()))
+			add, _ := net.ResolveTCPAddr("tcp", fmt.Sprintf("%v:%v", t.config.Address(), t.config.Port()))
 			listen, err := net.ListenTCP("tcp", add)
 			if err != nil {
 				log.DebugTag("init", "tcp服务 启动异常 %v", err)
@@ -715,19 +715,19 @@ func (this *TCPServer) Run() {
 			//启动selector线程，等待连接接入
 			util.Go(func() {
 				log.InfoTag("init", "tcp selector 启动成功")
-				this.selectorChan()
+				t.selectorChan()
 			})
 
 			util.Go(func() {
 				log.InfoTag("init", "tcp 开始监听连接")
 				for {
 					tcp, _ := listen.AcceptTCP()
-					tcp.SetNoDelay(true)                              //无延迟
-					tcp.SetKeepAlive(true)                            //保持激活
-					tcp.SetReadBuffer(this.config.ReadBufferSize())   //设置读缓冲区大小
-					tcp.SetWriteBuffer(this.config.WriteBufferSize()) //设置写缓冲区大小
-					tcp.SetDeadline(time.Now().Add(this.config.DeadLineTime()))
-					this.conChan <- tcp //将链接放入管道中
+					tcp.SetNoDelay(true)                           //无延迟
+					tcp.SetKeepAlive(true)                         //保持激活
+					tcp.SetReadBuffer(t.config.ReadBufferSize())   //设置读缓冲区大小
+					tcp.SetWriteBuffer(t.config.WriteBufferSize()) //设置写缓冲区大小
+					tcp.SetDeadline(time.Now().Add(t.config.DeadLineTime()))
+					t.conChan <- tcp //将链接放入管道中
 				}
 			})
 		}
@@ -735,7 +735,7 @@ func (this *TCPServer) Run() {
 	})
 }
 
-func (this *TCPServer) wsHandler(w http.ResponseWriter, r *http.Request) {
+func (t *TCPServer) wsHandler(w http.ResponseWriter, r *http.Request) {
 	var ()
 	// 将 HTTP 连接升级为 WebSocket 连接
 	conn, err := upGrader.Upgrade(w, r, nil)
@@ -744,100 +744,100 @@ func (this *TCPServer) wsHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	util.Go(func() {
-		this.handlerWSConn(conn)
+		t.handlerWSConn(conn)
 	})
 }
 
-func (this *TCPServer) UpdateUserNodeInfo(userId, servicePath, nodeId string) bool {
+func (t *TCPServer) UpdateUserNodeInfo(userId, servicePath, nodeId string) bool {
 	var (
 		res = false
 	)
-	if connectData, ok := this.users.Get(userId); ok {
+	if connectData, ok := t.users.Get(userId); ok {
 		connectData.UpdateUserNodeId(servicePath, nodeId)
 		res = true
 	}
 	return res
 }
 
-func (this *TCPServer) ToUser(userId, messageType string, data []byte) {
+func (t *TCPServer) ToUser(userId, messageType string, data []byte) {
 	var ()
-	if connectData, ok := this.users.Get(userId); ok {
-		res := this.getSendToClientData(messageType, 0, 0, data)
+	if connectData, ok := t.users.Get(userId); ok {
+		res := t.getSendToClientData(messageType, 0, 0, data)
 		connectData.Send(res)
 	} else {
 		log.DebugTag("tcp", "userid=%v user connection not found", userId)
 	}
 }
 
-func (this *UserConnectData) UpdateUserNodeId(servicePath, nodeId string) {
+func (u *UserConnectData) UpdateUserNodeId(servicePath, nodeId string) {
 	var ()
-	metaData := this.contextData.Value(share.ReqMetaDataKey)
+	metaData := u.contextData.Value(share.ReqMetaDataKey)
 	if metaData != nil {
 		metaData.(map[string]string)[servicePath] = nodeId
 	}
 }
-func (this *UserConnectData) IsLogin() bool {
+func (u *UserConnectData) IsLogin() bool {
 	var ()
-	return this.userId != ""
+	return u.userId != ""
 }
 
-func (this *UserConnectData) GetContextData() *share.Context {
+func (u *UserConnectData) GetContextData() *share.Context {
 	var ()
-	return this.contextData
+	return u.contextData
 }
-func (this *UserConnectData) GetChannel() chan *client.Call {
+func (u *UserConnectData) GetChannel() chan *client.Call {
 	var ()
-	return this.reqChan
+	return u.reqChan
 }
-func (this *UserConnectData) Offline(userHook IUserHook) {
+func (u *UserConnectData) Offline(userHook IUserHook) {
 	defer func() {
 		if r := recover(); r != nil {
-			log.DebugTag("tcp", "用户 userId=%v Offline: %v", this.userId, r)
+			log.DebugTag("tcp", "用户 userId=%v Offline: %v", u.userId, r)
 		}
 	}()
 	var ()
 	if userHook != nil {
 		for _, hook := range userHook.GetOfflineHooks() {
-			SendNoReplyRPCMessage(this.contextData, hook.New(&DefaultArgs{C: this.userId}, &EmptyReply{}))
+			SendNoReplyRPCMessage(u.contextData, hook.New(&DefaultArgs{C: u.userId}, &EmptyReply{}))
 		}
 	}
 
-	this.contextData.Deadline()
+	u.contextData.Deadline()
 	ip := ""
-	if this.conn != nil {
-		this.conn.Close()
-		ip = this.conn.RemoteAddr().String()
+	if u.conn != nil {
+		u.conn.Close()
+		ip = u.conn.RemoteAddr().String()
 	}
-	if this.wsConn != nil {
-		this.wsConn.Close()
-		ip = this.wsConn.RemoteAddr().String()
+	if u.wsConn != nil {
+		u.wsConn.Close()
+		ip = u.wsConn.RemoteAddr().String()
 	}
-	log.DebugTag("tcp", "用户 userId=%v 离线 ip=%v", this.userId, ip)
-	this.stop <- struct{}{}
+	log.DebugTag("tcp", "用户 userId=%v 离线 ip=%v", u.userId, ip)
+	u.stop <- struct{}{}
 }
 
-func (this *UserConnectData) Stop() {
+func (u *UserConnectData) Stop() {
 	var ()
-	this.stop <- struct{}{}
+	u.stop <- struct{}{}
 }
-func (this *UserConnectData) Login(userId string) {
+func (u *UserConnectData) Login(userId string) {
 	var ()
-	this.userId = userId
+	u.userId = userId
 }
-func (this *UserConnectData) Send(data []byte) {
+func (u *UserConnectData) Send(data []byte) {
 	var ()
 	defer func() {
 		if e := recover(); e != nil {
 			log.WarnTag("tcp", "发送请求异常")
 		}
 	}()
-	if this.conn != nil {
-		this.conn.Write(data)
+	if u.conn != nil {
+		u.conn.Write(data)
 
-	} else if this.wsConn != nil {
-		this.wsConn.WriteMessage(websocket.BinaryMessage, data)
+	} else if u.wsConn != nil {
+		u.wsConn.WriteMessage(websocket.BinaryMessage, data)
 	} else {
-		log.DebugTag("tcp", "用户没有可用的连接数据 %v", this.userId)
+		log.DebugTag("tcp", "用户没有可用的连接数据 %v", u.userId)
 	}
 }
 func newTCPBuilder() ITCPBuilder {

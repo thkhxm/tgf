@@ -25,70 +25,70 @@ type redisService struct {
 	client redis.UniversalClient
 }
 
-func (this *redisService) Get(key string) (res string) {
+func (r *redisService) Get(key string) (res string) {
 	var (
 		err error
 	)
-	if res, err = this.client.Get(context.Background(), key).Result(); err == nil || err == redis.Nil {
+	if res, err = r.client.Get(context.Background(), key).Result(); err == nil || err == redis.Nil {
 		return
 	}
 	log.Error("[redis] 获取缓存数据异常 key=%v,err=%v", key, err)
 	return
 }
 
-func (this *redisService) Set(key string, val interface{}, timeout time.Duration) {
-	this.client.Set(context.Background(), key, val, timeout)
+func (r *redisService) Set(key string, val interface{}, timeout time.Duration) {
+	r.client.Set(context.Background(), key, val, timeout)
 }
 
-func (this *redisService) GetMap(key string) map[string]string {
-	res, _ := this.client.HGetAll(context.Background(), key).Result()
+func (r *redisService) GetMap(key string) map[string]string {
+	res, _ := r.client.HGetAll(context.Background(), key).Result()
 	return res
 }
 
-func (this *redisService) PutMap(key, filed, val string, timeout time.Duration) {
+func (r *redisService) PutMap(key, filed, val string, timeout time.Duration) {
 	var ()
-	this.client.HSet(context.Background(), key, filed, val)
+	r.client.HSet(context.Background(), key, filed, val)
 	if timeout > 0 {
-		this.client.Expire(context.Background(), key, timeout)
+		r.client.Expire(context.Background(), key, timeout)
 	}
 }
 
-func (this *redisService) Del(key string) {
+func (r *redisService) Del(key string) {
 	var ()
-	this.client.Expire(context.Background(), key, time.Minute*3)
+	r.client.Expire(context.Background(), key, time.Minute*3)
 }
 
-func (this *redisService) DelNow(key string) {
+func (r *redisService) DelNow(key string) {
 	var ()
-	this.client.Del(context.Background(), key)
+	r.client.Del(context.Background(), key)
 }
 
-func (this *redisService) GetList(key string, start, end int64) (res []string, err error) {
+func (r *redisService) GetList(key string, start, end int64) (res []string, err error) {
 	var ()
-	res, err = this.client.LRange(context.Background(), key, start, end).Result()
+	res, err = r.client.LRange(context.Background(), key, start, end).Result()
 	return
 }
 
-func (this *redisService) SetList(key string, l []interface{}, timeout time.Duration) {
+func (r *redisService) SetList(key string, l []interface{}, timeout time.Duration) {
 	var ()
-	this.client.RPush(context.Background(), key, l...)
+	r.client.RPush(context.Background(), key, l...)
 	if timeout > 0 {
-		this.client.Expire(context.Background(), key, timeout)
+		r.client.Expire(context.Background(), key, timeout)
 	}
 }
 
-func (this *redisService) AddListItem(key string, val string) {
+func (r *redisService) AddListItem(key string, val string) {
 	var ()
-	this.client.LPush(context.Background(), key, val)
+	r.client.LPush(context.Background(), key, val)
 }
 
-func (this *redisService) TryLock(key string) (*redislock.Lock, error) {
+func (r *redisService) TryLock(key string) (*redislock.Lock, error) {
 	var ()
 	lock := redislock.New(service.client)
 	return lock.Obtain(context.Background(), key, time.Second*5, nil)
 }
 
-func (this *redisService) TryUnLock(l *redislock.Lock, ctx context.Context) {
+func (r *redisService) TryUnLock(l *redislock.Lock, ctx context.Context) {
 	var ()
 	l.Release(ctx)
 }

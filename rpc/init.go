@@ -8,8 +8,6 @@ import (
 	"github.com/thkhxm/tgf"
 	"github.com/thkhxm/tgf/log"
 	"github.com/thkhxm/tgf/util"
-	"math/rand"
-	"time"
 )
 
 //***************************************************
@@ -22,7 +20,6 @@ import (
 //***************************************************
 
 func init() {
-	rand.Seed(time.Now().UnixMilli())
 	tgf.NodeId = util.GenerateSnowflakeId()
 	log.InfoTag("init", "node id %v", tgf.NodeId)
 }

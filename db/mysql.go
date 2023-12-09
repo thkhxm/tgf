@@ -51,22 +51,22 @@ type mysqlService struct {
 	executeChan chan string
 }
 
-func (this *mysqlService) isRunning() bool {
+func (m *mysqlService) isRunning() bool {
 	var ()
-	return this.running
+	return m.running
 }
-func (this *mysqlService) getConnection() *sql.Conn {
+func (m *mysqlService) getConnection() *sql.Conn {
 	var ()
-	if !this.isRunning() {
+	if !m.isRunning() {
 		return nil
 	}
-	if conn, err := this.db.Conn(context.Background()); err == nil {
+	if conn, err := m.db.Conn(context.Background()); err == nil {
 		return conn
 	}
 	return nil
 }
 
-func (this *mysqlService) AsyncExecuteUpdateOrCreate(sqlScript string) {
+func (m *mysqlService) AsyncExecuteUpdateOrCreate(sqlScript string) {
 	var ()
 	dbService.executeChan <- sqlScript
 }

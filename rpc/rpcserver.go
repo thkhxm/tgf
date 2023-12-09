@@ -70,79 +70,79 @@ type Server struct {
 
 type Optional func(*Server)
 
-func (this *Server) withConsulDiscovery() *Server {
+func (s *Server) withConsulDiscovery() *Server {
 	var ()
-	this.beforeOptionals = append(this.beforeOptionals, func(server *Server) {
+	s.beforeOptionals = append(s.beforeOptionals, func(server *Server) {
 		internal.UseConsulDiscovery()
 	})
-	return this
+	return s
 }
 
-func (this *Server) WithServerPool(maxWorkers, maxCapacity int) *Server {
-	this.beforeOptionals = append(this.beforeOptionals, func(server *Server) {
+func (s *Server) WithServerPool(maxWorkers, maxCapacity int) *Server {
+	s.beforeOptionals = append(s.beforeOptionals, func(server *Server) {
 		server.maxWorkers = maxWorkers
 		server.maxCapacity = maxCapacity
 		log.InfoTag("init", "修改rpcx协程池大小 maxWorkers=%v maxCapacity=%v", maxWorkers, maxCapacity)
 	})
-	return this
+	return s
 }
 
-func (this *Server) WithService(service IService) *Server {
-	this.beforeOptionals = append(this.beforeOptionals, func(server *Server) {
-		this.service = append(this.service, service)
+func (s *Server) WithService(service IService) *Server {
+	s.beforeOptionals = append(s.beforeOptionals, func(server *Server) {
+		s.service = append(s.service, service)
 		log.InfoTag("init", "装载逻辑服务[%v@%v]", service.GetName(), service.GetVersion())
 	})
-	return this
+	return s
 }
 
-func (this *Server) WithRandomServicePort(minPort, maxPort int32) *Server {
+func (s *Server) WithRandomServicePort(minPort, maxPort int32) *Server {
 	var ()
-	this.minPort = minPort
-	this.maxPort = maxPort
-	return this
+	s.minPort = minPort
+	s.maxPort = maxPort
+	return s
 }
 
-func (this *Server) WithCache(module tgf.CacheModule) *Server {
+func (s *Server) WithCache(module tgf.CacheModule) *Server {
 	var ()
 	db.WithCacheModule(module)
-	return this
+	return s
 }
 
-func (this *Server) WithWhiteService(serviceName string) *Server {
+func (s *Server) WithWhiteService(serviceName string) *Server {
 	var ()
-	this.whiteServiceList = append(this.whiteServiceList, serviceName)
-	if len(this.whiteServiceList) == 1 {
-		this.afterOptionals = append(this.afterOptionals, func(s *Server) {
+	s.whiteServiceList = append(s.whiteServiceList, serviceName)
+	if len(s.whiteServiceList) == 1 {
+		s.afterOptionals = append(s.afterOptionals, func(s *Server) {
 
 		})
 	}
-	return this
+	return s
 }
 
-func (this *Server) WithGameConfig(path string) *Server {
-	this.beforeOptionals = append(this.beforeOptionals, func(server *Server) {
+func (s *Server) WithGameConfig(path string) *Server {
+	s.beforeOptionals = append(s.beforeOptionals, func(server *Server) {
 		component.WithConfPath(path)
 		component.InitGameConfToMem()
 		log.InfoTag("init", "装载游戏配置,读取[%v@%v]路径下的json文件", path)
 	})
-	return this
+	return s
 }
 
 // WithCustomServiceAddress
 // @Description: 开启自定义地址注册，通过常量ServiceAddress注册绑定的ip
 // @receiver this
-func (this *Server) WithCustomServiceAddress() {
-	this.customServiceAddress = true
+func (s *Server) WithCustomServiceAddress() {
+	s.customServiceAddress = true
 }
 
 // withServiceClient
 //
 //	@Description: 注册rpcx的客户端程序
 //	@receiver this
-func (this *Server) withServiceClient() *Server {
+func (s *Server) withServiceClient() *Server {
 	var ()
 	//
-	this.afterOptionals = append(this.afterOptionals, func(server *Server) {
+	s.afterOptionals = append(s.afterOptionals, func(server *Server) {
 		c := newRPCClient().startup()
 		log.InfoTag("init", "装载RPCClient服务")
 		if len(server.whiteServiceList) > 0 {
@@ -152,42 +152,42 @@ func (this *Server) withServiceClient() *Server {
 			}
 		}
 	})
-	return this
+	return s
 }
 
-func (this *Server) WithGateway(port string, hook IUserHook) *Server {
+func (s *Server) WithGateway(port string, hook IUserHook) *Server {
 	var ()
-	this.beforeOptionals = append(this.beforeOptionals, func(server *Server) {
+	s.beforeOptionals = append(s.beforeOptionals, func(server *Server) {
 		builder := newTCPBuilder()
 		builder.WithPort(port)
 		builder.SetUserHook(hook)
 		gateway := GatewayService(builder)
-		this.service = append(this.service, gateway)
+		s.service = append(s.service, gateway)
 		log.InfoTag("init", "装载逻辑服务[%v@%v]", gateway.GetName(), gateway.GetVersion())
 	})
-	return this
+	return s
 }
 
-func (this *Server) WithGatewayWS(port, path string, hook IUserHook) *Server {
+func (s *Server) WithGatewayWS(port, path string, hook IUserHook) *Server {
 	var ()
-	this.beforeOptionals = append(this.beforeOptionals, func(server *Server) {
+	s.beforeOptionals = append(s.beforeOptionals, func(server *Server) {
 		builder := newTCPBuilder()
 		builder.WithPort(port)
 		builder.WithWSPath(path)
 		builder.SetUserHook(hook)
 		gateway := GatewayService(builder)
-		this.service = append(this.service, gateway)
+		s.service = append(s.service, gateway)
 		log.InfoTag("init", "装载逻辑服务[%v@%v]", gateway.GetName(), gateway.GetVersion())
 	})
-	return this
+	return s
 }
 
-func (this *Server) WithProfileDebug() *Server {
-	this.enableProfile = true
-	return this
+func (s *Server) WithProfileDebug() *Server {
+	s.enableProfile = true
+	return s
 }
 
-func (this *Server) Run() chan bool {
+func (s *Server) Run() chan bool {
 	var (
 		serviceName    string
 		ip             string
@@ -200,24 +200,24 @@ func (this *Server) Run() chan bool {
 	//开启服务器模式
 	tgf.ServerModule = true
 	// TODO 如果有需要，可以对Optional进行优先级的控制，控制加载顺序
-	for _, beforeOptional := range this.beforeOptionals {
-		beforeOptional(this)
+	for _, beforeOptional := range s.beforeOptionals {
+		beforeOptional(s)
 	}
 	/**启动逻辑链*/
 	//注册rpcx服务
-	this.rpcServer = server.NewServer(server.WithPool(this.maxWorkers, this.maxCapacity))
-	this.rpcServer.EnableProfile = this.enableProfile
+	s.rpcServer = server.NewServer(server.WithPool(s.maxWorkers, s.maxCapacity))
+	s.rpcServer.EnableProfile = s.enableProfile
 	port := tgf.GetStrConfig[string](tgf.EnvironmentServicePort)
-	if this.minPort > 0 && this.maxPort > this.minPort {
-		port = fmt.Sprintf("%v", rand.Int31n(this.maxPort-this.minPort)+this.minPort)
+	if s.minPort > 0 && s.maxPort > s.minPort {
+		port = fmt.Sprintf("%v", rand.Int31n(s.maxPort-s.minPort)+s.minPort)
 	}
 	//rpcx加入服务发现组件
 	local := util.GetLocalHost()
-	if this.customServiceAddress {
+	if s.customServiceAddress {
 		local = tgf.GetStrConfig[string](tgf.EnvironmentServiceAddress)
 	}
 	ip = fmt.Sprintf("%v:%v", local, port)
-	if this.rpcServer.EnableProfile {
+	if s.rpcServer.EnableProfile {
 		log.InfoTag("init", "开启性能监控:%s", ip+"debug/statsview")
 		log.InfoTag("init", "开启性能监控:%s", ip+"debug/pprof")
 	}
@@ -225,12 +225,12 @@ func (this *Server) Run() chan bool {
 	discovery := internal.GetDiscovery()
 	//如果加入了服务注册，那么走服务注册的流程
 	if discovery != nil {
-		this.rpcServer.Plugins.Add(discovery.RegisterServer(ip))
+		s.rpcServer.Plugins.Add(discovery.RegisterServer(ip))
 		//注册服务到服务发现上,允许多个服务，注册到一个节点
-		for _, service := range this.service {
+		for _, service := range s.service {
 			serviceName = fmt.Sprintf("%v", service.GetName())
 			metaData := fmt.Sprintf("version=%v", service.GetVersion())
-			err := this.rpcServer.RegisterName(serviceName, service, metaData)
+			err := s.rpcServer.RegisterName(serviceName, service, metaData)
 			if err != nil {
 				log.Error("[init] 注册服务发现失败 serviceName=%v metaDat=%v error=%v", serviceName, metaData, err)
 				continue
@@ -246,7 +246,7 @@ func (this *Server) Run() chan bool {
 	}
 
 	util.Go(func() {
-		if err := this.rpcServer.Serve("tcp", ip); err != nil {
+		if err := s.rpcServer.Serve("tcp", ip); err != nil {
 			log.Error("[init] rpcx务启动异常 serviceName=%v addr=%v err=%v", serviceName, ip, err)
 			os.Exit(0)
 			return
@@ -254,17 +254,17 @@ func (this *Server) Run() chan bool {
 	})
 
 	//启动后执行的业务
-	for _, afterOptional := range this.afterOptionals {
-		afterOptional(this)
+	for _, afterOptional := range s.afterOptionals {
+		afterOptional(s)
 	}
 
 	//启用服务,使用tcp
 	log.InfoTag("init", "rpcx服务启动成功 addr=%v service=[%v] ", _logServiceMsg, ip)
-	return this.closeChan
+	return s.closeChan
 }
 
-func (this *Server) Destroy() {
-	for _, service := range this.service {
+func (s *Server) Destroy() {
+	for _, service := range s.service {
 		service.Destroy(service)
 	}
 }
@@ -303,7 +303,7 @@ func newRPCClient() *ClientOptional {
 // startup
 // @Description: 启动rpc客户端
 // @receiver this
-func (this *ClientOptional) startup() *Client {
+func (c *ClientOptional) startup() *Client {
 	var ()
 	//
 	rpcClient = new(Client)
@@ -333,14 +333,14 @@ func (this *ClientOptional) startup() *Client {
 	rpcClient.watchBaseDiscovery(discovery, baseDiscovery)
 	return rpcClient
 }
-func (this *Client) AddWhiteService(serviceName string) *Client {
+func (c *Client) AddWhiteService(serviceName string) *Client {
 	var ()
-	this.whiteMethod = append(this.whiteMethod, serviceName)
-	return this
+	c.whiteMethod = append(c.whiteMethod, serviceName)
+	return c
 }
-func (this *Client) CheckWhiteList(serviceName string) bool {
+func (c *Client) CheckWhiteList(serviceName string) bool {
 	var ()
-	for _, s := range this.whiteMethod {
+	for _, s := range c.whiteMethod {
 		if s == serviceName {
 			return true
 		}
@@ -348,7 +348,7 @@ func (this *Client) CheckWhiteList(serviceName string) bool {
 	return false
 }
 
-func (this *Client) watchBaseDiscovery(d internal.IRPCDiscovery, discovery *client2.ConsulDiscovery) {
+func (c *Client) watchBaseDiscovery(d internal.IRPCDiscovery, discovery *client2.ConsulDiscovery) {
 	var ()
 	util.Go(func() {
 		for {
@@ -361,7 +361,7 @@ func (this *Client) watchBaseDiscovery(d internal.IRPCDiscovery, discovery *clie
 							continue
 						}
 						log.DebugTag("discovery", "base discovery service %v,%v", v.Key, v.Value)
-						this.registerClient(d, moduleName)
+						c.registerClient(d, moduleName)
 					}
 				}
 			}
@@ -369,7 +369,7 @@ func (this *Client) watchBaseDiscovery(d internal.IRPCDiscovery, discovery *clie
 	})
 }
 
-func (this *Client) registerClient(d internal.IRPCDiscovery, moduleName string) (xclient client.XClient) {
+func (c *Client) registerClient(d internal.IRPCDiscovery, moduleName string) (xclient client.XClient) {
 	var ()
 	discovery := d.RegisterDiscovery(moduleName)
 	option := client.DefaultOption
@@ -382,13 +382,13 @@ func (this *Client) registerClient(d internal.IRPCDiscovery, moduleName string) 
 	xclient.SetSelector(NewCustomSelector(moduleName))
 	//自定义响应handler
 	xclient.GetPlugins().Add(NewRPCXClientHandler())
-	this.clients.Set(moduleName, xclient)
+	c.clients.Set(moduleName, xclient)
 	log.InfoTag("init", "注册rpcx client 服务 module=%v ", moduleName)
 	return
 }
 
-func (this *Client) getClient(moduleName string) (xclient client.XClient) {
-	if val, ok := this.clients.Get(moduleName); ok {
+func (c *Client) getClient(moduleName string) (xclient client.XClient) {
+	if val, ok := c.clients.Get(moduleName); ok {
 		xclient = val
 	}
 	return

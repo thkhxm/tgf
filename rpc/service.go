@@ -31,7 +31,7 @@ type Module struct {
 	Version string
 }
 
-func (this *Module) Destroy(sub IService) {
+func (m *Module) Destroy(sub IService) {
 	var ()
 	log.InfoTag("system", "destroy module=%v version=%v", sub.GetName(), sub.GetVersion())
 }
@@ -45,21 +45,21 @@ type ServiceAPI[Req, Res any] struct {
 	reply       Res
 }
 
-func (this *ServiceAPI[Req, Res]) New(req Req, res Res) *ServiceAPI[Req, Res] {
+func (s *ServiceAPI[Req, Res]) New(req Req, res Res) *ServiceAPI[Req, Res] {
 	var ()
-	return &ServiceAPI[Req, Res]{ModuleName: this.ModuleName, Name: this.Name, args: req, reply: res, MessageType: this.MessageType}
+	return &ServiceAPI[Req, Res]{ModuleName: s.ModuleName, Name: s.Name, args: req, reply: res, MessageType: s.MessageType}
 }
 
-func (this *ServiceAPI[Req, Res]) NewEmpty() *ServiceAPI[Req, Res] {
+func (s *ServiceAPI[Req, Res]) NewEmpty() *ServiceAPI[Req, Res] {
 	var ()
 	var req Req
 	var res Res
-	return &ServiceAPI[Req, Res]{ModuleName: this.ModuleName, Name: this.Name, args: req, reply: res, MessageType: this.MessageType}
+	return &ServiceAPI[Req, Res]{ModuleName: s.ModuleName, Name: s.Name, args: req, reply: res, MessageType: s.MessageType}
 }
 
-func (this *ServiceAPI[Req, Res]) GetResult() Res {
+func (s *ServiceAPI[Req, Res]) GetResult() Res {
 	var ()
-	return this.reply
+	return s.reply
 }
 
 func GetUserId(ctx context.Context) string {

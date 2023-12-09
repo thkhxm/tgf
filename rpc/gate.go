@@ -23,52 +23,52 @@ type GateService struct {
 	tcpService ITCPService
 }
 
-func (this *GateService) GetName() string {
+func (g *GateService) GetName() string {
 	return tgf.GatewayServiceModuleName
 }
 
-func (this *GateService) GetVersion() string {
+func (g *GateService) GetVersion() string {
 	return "1.0"
 }
 
-func (this *GateService) Startup() (bool, error) {
+func (g *GateService) Startup() (bool, error) {
 	var ()
-	this.tcpService = newDefaultTCPServer(this.tcpBuilder)
-	this.tcpService.Run()
+	g.tcpService = newDefaultTCPServer(g.tcpBuilder)
+	g.tcpService.Run()
 	return true, nil
 }
 
-func (this *GateService) UploadUserNodeInfo(ctx context.Context, args *UploadUserNodeInfoReq, reply *UploadUserNodeInfoRes) error {
+func (g *GateService) UploadUserNodeInfo(ctx context.Context, args *UploadUserNodeInfoReq, reply *UploadUserNodeInfoRes) error {
 	var ()
-	if ok := this.tcpService.UpdateUserNodeInfo(args.UserId, args.ServicePath, args.NodeId); !ok {
+	if ok := g.tcpService.UpdateUserNodeInfo(args.UserId, args.ServicePath, args.NodeId); !ok {
 		reply.ErrorCode = -1
 	}
 	log.DebugTag("gate", "修改用户节点信息 userId=%v servicePath=%v nodeId=%v res=%v", args.UserId, args.ServicePath, args.NodeId, reply)
 	return nil
 }
 
-func (this *GateService) Login(ctx context.Context, args *LoginReq, reply *LoginRes) error {
+func (g *GateService) Login(ctx context.Context, args *LoginReq, reply *LoginRes) error {
 	var ()
 	//踢人,重复登录的
-	if !this.tcpService.Offline(args.UserId, true) {
+	if !g.tcpService.Offline(args.UserId, true) {
 		BorderRPCMessage(ctx, Offline.New(&OfflineReq{UserId: args.UserId}, new(OfflineRes)))
 	}
-	err := this.tcpService.DoLogin(args.UserId, args.TemplateUserId)
+	err := g.tcpService.DoLogin(args.UserId, args.TemplateUserId)
 	return err
 }
 
-func (this *GateService) Offline(ctx context.Context, args *OfflineReq, reply *OfflineRes) error {
+func (g *GateService) Offline(ctx context.Context, args *OfflineReq, reply *OfflineRes) error {
 	var ()
 	if GetNodeId(ctx) == tgf.NodeId {
 		return nil
 	}
-	this.tcpService.Offline(args.UserId, args.Replace)
+	g.tcpService.Offline(args.UserId, args.Replace)
 	return nil
 }
 
-func (this *GateService) ToUser(ctx context.Context, args *ToUserReq, reply *ToUserRes) error {
+func (g *GateService) ToUser(ctx context.Context, args *ToUserReq, reply *ToUserRes) error {
 	var ()
-	this.tcpService.ToUser(args.UserId, args.MessageType, args.Data)
+	g.tcpService.ToUser(args.UserId, args.MessageType, args.Data)
 	log.DebugTag("gate", "主动推送 userId=%v msgLen=%v", args.UserId, args.UserId, len(args.Data))
 	return nil
 }

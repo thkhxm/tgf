@@ -28,12 +28,12 @@ type ConsulDiscovery struct {
 	discoveryMap *hashmap.Map[string, *client.ConsulDiscovery]
 }
 
-func (this *ConsulDiscovery) initStruct() {
+func (c *ConsulDiscovery) initStruct() {
 	var ()
-	this.discoveryMap = hashmap.New[string, *client.ConsulDiscovery]()
+	c.discoveryMap = hashmap.New[string, *client.ConsulDiscovery]()
 }
 
-func (this *ConsulDiscovery) RegisterServer(ip string) server.Plugin {
+func (c *ConsulDiscovery) RegisterServer(ip string) server.Plugin {
 	var (
 		address        = tgf.GetStrListConfig(tgf.EnvironmentConsulAddress)
 		serviceAddress = fmt.Sprintf("tcp@%v", ip)
@@ -60,7 +60,7 @@ func (this *ConsulDiscovery) RegisterServer(ip string) server.Plugin {
 	return r
 }
 
-func (this *ConsulDiscovery) RegisterDiscovery(moduleName string) *client.ConsulDiscovery {
+func (c *ConsulDiscovery) RegisterDiscovery(moduleName string) *client.ConsulDiscovery {
 	var ()
 	var (
 		address  = tgf.GetStrListConfig(tgf.EnvironmentConsulAddress)
@@ -81,15 +81,15 @@ func (this *ConsulDiscovery) RegisterDiscovery(moduleName string) *client.Consul
 	d, _ := client.NewConsulDiscovery(basePath, moduleName, address, conf)
 
 	//if moduleName != "" {
-	this.discoveryMap.Set(moduleName, d)
+	c.discoveryMap.Set(moduleName, d)
 	log.InfoTag("init", "注册rpcx discovery moduleName=%v", moduleName)
 	//}
 
 	return d
 }
 
-func (this *ConsulDiscovery) GetDiscovery(moduleName string) *client.ConsulDiscovery {
-	if val, ok := this.discoveryMap.Get(moduleName); ok {
+func (c *ConsulDiscovery) GetDiscovery(moduleName string) *client.ConsulDiscovery {
+	if val, ok := c.discoveryMap.Get(moduleName); ok {
 		return val
 	}
 	return nil
