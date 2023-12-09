@@ -65,13 +65,13 @@ func (this *redisService) DelNow(key string) {
 
 func (this *redisService) GetList(key string, start, end int64) (res []string, err error) {
 	var ()
-	l := this.client.LRange(context.Background(), key, start, end)
-	return l.Result()
+	res, err = this.client.LRange(context.Background(), key, start, end).Result()
+	return
 }
 
 func (this *redisService) SetList(key string, l []interface{}, timeout time.Duration) {
 	var ()
-	this.client.LPush(context.Background(), key, l...)
+	this.client.RPush(context.Background(), key, l...)
 	if timeout > 0 {
 		this.client.Expire(context.Background(), key, timeout)
 	}
