@@ -594,6 +594,13 @@ func SendToGateByUserId(userId, messageType string, pbMessage proto.Message) err
 	return err
 }
 
+func UserLogin(ctx context.Context, userId string) (*LoginRes, error) {
+	return SendRPCMessage(ctx, Login.New(&LoginReq{
+		UserId:         userId,
+		TemplateUserId: GetTemplateUserId(ctx),
+	}, &LoginRes{}))
+}
+
 func newUserContext(userId string) context.Context {
 	ct := share.NewContext(context.Background())
 	initData := make(map[string]string)
