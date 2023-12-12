@@ -123,7 +123,7 @@ func (s *Server) WithGameConfig(path string) *Server {
 	s.beforeOptionals = append(s.beforeOptionals, func(server *Server) {
 		component.WithConfPath(path)
 		component.InitGameConfToMem()
-		log.InfoTag("init", "装载游戏配置,读取[%v@%v]路径下的json文件", path)
+		log.InfoTag("init", "装载游戏配置,读取[%v]路径下的json文件", path)
 	})
 	return s
 }
@@ -141,7 +141,7 @@ func (s *Server) WithCustomServiceAddress() {
 //	@receiver this
 func (s *Server) withServiceClient() *Server {
 	var ()
-	//
+	//_
 	s.afterOptionals = append(s.afterOptionals, func(server *Server) {
 		c := newRPCClient().startup()
 		log.InfoTag("init", "装载RPCClient服务")

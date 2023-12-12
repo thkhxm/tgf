@@ -40,6 +40,7 @@ type IAutoCacheService[Key cacheKey, Val any] interface {
 	Push(key ...Key)
 	Remove(key ...Key) (success bool)
 	Reset() IAutoCacheService[Key, Val]
+	Range(f func(Key, Val) bool)
 }
 
 type IAutoCacheClearPlugin interface {

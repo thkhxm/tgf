@@ -26,7 +26,7 @@ import (
 //***************************************************
 
 var (
-	reqMetaDataTimeout          = time.Hour * 24 * 3
+	reqMetaDataTimeout          = time.Hour * 24 * 7
 	localNodeCacheTimeout int64 = 60 * 5
 )
 

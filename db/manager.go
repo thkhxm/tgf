@@ -301,6 +301,13 @@ func (a *autoCacheManager[Key, Val]) Set(val Val, key ...Key) (success bool) {
 	return
 }
 
+func (a *autoCacheManager[Key, Val]) Range(f func(Key, Val) bool) {
+	a.cacheMap.Range(func(key string, value *cacheData[Val]) bool {
+		k, _ := util.StrToAny[Key](key)
+		return f(k, value.data)
+	})
+}
+
 // Push
 //
 //	@Description: 数据变更后,可以调用该接口进行数据的更新,cache缓存会实时更新,longevity缓存会异步更新
