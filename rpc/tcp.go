@@ -620,16 +620,15 @@ func (t *TCPServer) getSendToClientData(messageType string, reqId, code int32, r
 	// [1][1][2][4][n][n]
 	// message type|compress|request method name size|data size|method name|data
 	//逻辑响应
-	bp.WriteByte(byte(Logic))
 	if t.config.IsWebSocket() {
 		data := &WSResponse{}
 		data.MessageType = messageType
 		data.Data = reply
 		data.ReqId = reqId
 		data.Code = code
-		b, _ := proto.Marshal(data)
-		bp.Write(b)
-		res = bp.Bytes()
+		//b, _ := proto.Marshal(data)
+		//bp.Write(b)
+		res, _ = proto.Marshal(data)
 		return
 	}
 
@@ -738,7 +737,7 @@ func (t *TCPServer) Run() {
 func (t *TCPServer) wsHandler(w http.ResponseWriter, r *http.Request) {
 	var ()
 	// 将 HTTP 连接升级为 WebSocket 连接
-	conn, err := upGrader.Upgrade(w, r, nil)
+	conn, err := wsUpGrader.Upgrade(w, r, nil)
 	if err != nil {
 		log.Info("%v", err)
 		return

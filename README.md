@@ -1,3 +1,5 @@
+[![Go Report Card](https://goreportcard.com/badge/github.com/thkhxm/tgf)](https://goreportcard.com/report/github.com/thkhxm/tgf)
+
 # 关于 tgf
     tgf框架是使用golang开发的一套游戏分布式框架.
 
