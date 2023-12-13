@@ -257,6 +257,7 @@ type UserConnectData struct {
 	contextData *share.Context
 	reqChan     chan *client.Call
 	stop        chan struct{}
+	writeChan   chan []byte
 }
 
 type RequestData struct {
@@ -296,6 +297,7 @@ func (t *TCPServer) handlerWSConn(conn *websocket.Conn) {
 		contextData: share.NewContext(context.Background()),
 		reqChan:     make(chan *client.Call, 1), // 限制用户的请求处于并行状态
 		stop:        make(chan struct{}),
+		writeChan:   make(chan []byte, 20),
 	}
 	reqMetaData := make(map[string]string)
 	reqChan := make(chan *RequestData)
@@ -351,10 +353,13 @@ func (t *TCPServer) handlerWSConn(conn *websocket.Conn) {
 			case <-connectData.stop:
 				close(connectData.stop)
 				close(reqChan)
+				close(connectData.writeChan)
 				return
 			}
 		}
 	}()
+
+	go connectData.writeMessage()
 
 	for {
 		// 读取客户端发送的消息
@@ -413,6 +418,7 @@ func (t *TCPServer) handlerConn(conn *net.TCPConn) {
 		contextData: share.NewContext(context.Background()),
 		reqChan:     make(chan *client.Call, 1), // 限制用户的请求处于并行状态
 		stop:        make(chan struct{}),
+		writeChan:   make(chan []byte, 20),
 	}
 	reqMetaData := make(map[string]string)
 	reqMetaData[tgf.ContextKeyTemplateUserId] = util.GenerateSnowflakeId()
@@ -438,11 +444,15 @@ func (t *TCPServer) handlerConn(conn *net.TCPConn) {
 	go func() {
 		for {
 			select {
-			case req := <-reqChan:
-				t.doLogic(req)
-			case <-connectData.stop:
+			case req, close := <-reqChan:
+				if !close {
+					t.doLogic(req)
+				}
+			case _, _ = <-connectData.stop:
 				close(connectData.stop)
 				close(reqChan)
+				close(connectData.writeChan)
+
 				return
 			}
 		}
@@ -551,6 +561,7 @@ func (t *TCPServer) Offline(userId string, replace bool) (exists bool) {
 	}
 	return
 }
+
 func (t *TCPServer) DoLogin(userId, templateUserId string) (err error) {
 	var (
 		reqMetaDataKey string
@@ -825,20 +836,38 @@ func (u *UserConnectData) Login(userId string) {
 }
 func (u *UserConnectData) Send(data []byte) {
 	var ()
+	select {
+	case u.writeChan <- data:
+	case <-time.After(time.Second * 3):
+		log.WarnTag("tcp", "用户 %s 发送请求超时", u.userId)
+		return
+	}
+}
+
+func (u *UserConnectData) writeMessage() {
 	defer func() {
 		if e := recover(); e != nil {
 			log.WarnTag("tcp", "发送请求异常")
 		}
 	}()
-	if u.conn != nil {
-		u.conn.Write(data)
-
-	} else if u.wsConn != nil {
-		u.wsConn.WriteMessage(websocket.BinaryMessage, data)
-	} else {
-		log.DebugTag("tcp", "用户没有可用的连接数据 %v", u.userId)
+	for {
+		select {
+		case d, open := <-u.writeChan:
+			if !open {
+				return
+			}
+			if u.conn != nil {
+				u.conn.Write(d)
+			} else if u.wsConn != nil {
+				u.wsConn.WriteMessage(websocket.BinaryMessage, d)
+			} else {
+				log.DebugTag("tcp", "用户没有可用的连接数据 %v", u.userId)
+				return
+			}
+		}
 	}
 }
+
 func newTCPBuilder() ITCPBuilder {
 	serverConfig := &ServerConfig{
 		address:         defaultIp,
