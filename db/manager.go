@@ -34,6 +34,8 @@ type cacheData[Val any] struct {
 
 var defaultUpdateGroupSize = 500
 
+const StateName = "state"
+
 type autoCacheManager[Key cacheKey, Val any] struct {
 	builder *AutoCacheBuilder[Key, Val]
 	//
@@ -642,12 +644,19 @@ type sqlBuilder[Val any] struct {
 	updateAsSql        string
 	//chan
 	updateChan chan Val
+	//
+	hasState bool
 }
 
 func (s *sqlBuilder[Val]) initStruct() {
 	var ()
 	s.querySql = "select " + s.tableField + " from " + s.tableName + " where " + s.pkSql
 	s.queryListSql = "select " + s.tableField + " from " + s.tableName + " where " + s.pkListSql
+
+	if s.hasState {
+		s.querySql += " and state = 1"
+		s.queryListSql += " and state = 1"
+	}
 
 	log.DebugTag("omr", "table=%v query sql=%v", s.tableName, s.querySql)
 	if s.pkListSql != "" {
@@ -721,10 +730,12 @@ func (s *sqlBuilder[Val]) initField(rf reflect.Type, pkFields, fieldName []strin
 		if isTableField {
 			newFieldName = append(newFieldName, name)
 			newTableFieldNum = append(newTableFieldNum, i)
+			if name == StateName {
+				s.hasState = true
+			}
 		}
 		log.DebugTag("omr", "结构化日志打印 structName=%v field=%v tag=%v", rf.Name(), field.Name, orm)
 	}
-
 	return
 }
 
