@@ -167,6 +167,9 @@ func (w *weightBuilder[T]) Build() IWeight[T] {
 	return operation
 }
 func (w *weightBuilder[T]) AddWeight(weightRatio, amount int32, data T) IWeightBuilder[T] {
+	if weightRatio <= 0 {
+		return w
+	}
 	w.weights = append(w.weights, &weight[T]{ratio: weightRatio, amount: amount, data: data})
 	return w
 }
