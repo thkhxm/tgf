@@ -41,6 +41,7 @@ type IWeight[T any] interface {
 	TotalRatio() int32
 	BaseRatio() int32
 	BaseAmount() int32
+	Len() int
 }
 
 type IWeightBuilder[T any] interface {
@@ -132,6 +133,9 @@ func (w *weightOperation[T]) AllItem() []IWeightData[T] {
 	return res
 }
 
+func (w *weightOperation[T]) Len() int {
+	return len(w.weights)
+}
 func (w *weightOperation[T]) TotalRatio() int32 {
 	return w.totalRatio
 }
