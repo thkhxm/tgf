@@ -105,6 +105,7 @@ func Test_convertCamelToSnake(t *testing.T) {
 }
 
 type Item struct {
+	db.Model
 	UserId string `orm:"pk"`
 	PropId string `orm:"pk"`
 	Amount uint64
@@ -168,6 +169,7 @@ func Test_hashAutoCacheManager_Get(t *testing.T) {
 }
 
 func Test_hashAutoCacheManager_GetAll(t *testing.T) {
+
 	type args struct {
 		key []string
 	}

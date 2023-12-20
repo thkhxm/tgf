@@ -27,18 +27,18 @@ var (
 var dbService *mysqlService
 
 type Model struct {
-	State uint8
+	State uint8 //数据状态,0为删除,1为正常
 }
 
 func NewModel() Model {
 	res := Model{
-		State: 0,
+		State: 1,
 	}
 	return res
 }
 
 func (m *Model) Remove() {
-	m.State = 1
+	m.State = 0
 }
 
 type IModel interface {

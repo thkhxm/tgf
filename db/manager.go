@@ -522,6 +522,9 @@ func (a *autoCacheManager[Key, Val]) initField(rf reflect.Type, pkFields, pkList
 		if isTableField {
 			newFieldName = append(newFieldName, name)
 			newTableFieldNum = append(newTableFieldNum, field.Name)
+			if name == StateName {
+				a.sb.hasState = true
+			}
 		}
 		log.DebugTag("omr", "结构化日志打印 structName=%v field=%v tag=%v", rf.Name(), field.Name, orm)
 	}
