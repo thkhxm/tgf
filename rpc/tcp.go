@@ -94,7 +94,7 @@ var (
 	// 协议魔法值,避免恶意请求
 	requestMagicNumber byte = 250
 	//最低压缩大小
-	compressMinSize = 1024 * 4
+	compressMinSize = 1024 * 2
 
 	loginTokenTimeOut = time.Hour * 12
 
@@ -634,7 +634,12 @@ func (t *TCPServer) getSendToClientData(messageType string, reqId, code int32, r
 	if t.config.IsWebSocket() {
 		data := &WSResponse{}
 		data.MessageType = messageType
-		data.Data = reply
+		if len(reply) > compressMinSize {
+			reply, err = util2.Zip(reply)
+			data.Zip = true
+		} else {
+			data.Data = reply
+		}
 		data.ReqId = reqId
 		data.Code = code
 		//b, _ := proto.Marshal(data)
