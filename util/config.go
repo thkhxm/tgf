@@ -6,6 +6,7 @@ import (
 	"github.com/xuri/excelize/v2"
 	"os"
 	"path/filepath"
+	"regexp"
 	"strings"
 	"text/template"
 	"time"
@@ -290,6 +291,8 @@ const (
 	fileType_arrayString = "[]string"
 )
 
+var intRegex, _ = regexp.Compile(".*\\[.*\\].*int.*")
+
 func toJson(datarows []rowdata, metalist []*meta) string {
 	ret := "["
 	for _, row := range datarows {
@@ -305,12 +308,6 @@ func toJson(datarows []rowdata, metalist []*meta) string {
 				} else {
 					ret += fmt.Sprintf("\"%s\"", row[idx])
 				}
-			case fileType_arrayInt32:
-				if row[idx] == nil || row[idx] == "" {
-					ret += "[]"
-				} else {
-					ret += fmt.Sprintf("%s", row[idx])
-				}
 			case fileType_arrayString:
 				if row[idx] == nil || row[idx] == "" {
 					ret += "[]"
@@ -318,6 +315,14 @@ func toJson(datarows []rowdata, metalist []*meta) string {
 					ret += fmt.Sprintf("%s", convertToStringSlice(row[idx].(string)))
 				}
 			default:
+				if intRegex.MatchString(meta.Typ) {
+					if row[idx] == nil || row[idx] == "" {
+						ret += "[]"
+					} else {
+						ret += fmt.Sprintf("[%s]", row[idx])
+					}
+					break
+				}
 				if row[idx] == nil || row[idx] == "" {
 					ret += "0"
 				} else {
