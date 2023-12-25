@@ -637,9 +637,9 @@ func (t *TCPServer) getSendToClientData(messageType string, reqId, code int32, r
 		if len(reply) > compressMinSize {
 			reply, err = util2.Zip(reply)
 			data.Zip = true
-		} else {
-			data.Data = reply
 		}
+
+		data.Data = reply
 		data.ReqId = reqId
 		data.Code = code
 		//b, _ := proto.Marshal(data)
