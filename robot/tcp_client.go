@@ -141,7 +141,13 @@ type ws struct {
 	conn          *websocket.Conn
 	heartbeatData []byte
 	closeChan     chan struct{}
+	sendChan      chan message
 	callback      *hashmap.Map[string, CallbackLogic]
+}
+
+type message struct {
+	messageType int
+	data        []byte
 }
 
 func (w *ws) Connect(address string) IRobot {
@@ -154,6 +160,7 @@ func (w *ws) Connect(address string) IRobot {
 	}
 	w.heartbeatData = []byte{byte(1)}
 	w.closeChan = make(chan struct{})
+	w.sendChan = make(chan message, 100)
 	w.conn = conn
 	//监听关闭事件
 	w.conn.SetCloseHandler(func(code int, text string) error {
@@ -200,10 +207,19 @@ func (w *ws) Connect(address string) IRobot {
 				log.InfoTag("tcp", "连接断开,停止心跳发送")
 				return
 			default:
-				w.conn.WriteMessage(websocket.PingMessage, w.heartbeatData)
+				w.sendChan <- message{websocket.PingMessage, w.heartbeatData}
 				//log.InfoTag("tcp", "心跳发送")
 			}
 			time.Sleep(time.Second * 5)
+		}
+	})
+
+	util.Go(func() {
+		for {
+			select {
+			case send := <-w.sendChan:
+				w.conn.WriteMessage(send.messageType, send.data)
+			}
 		}
 	})
 	return w
@@ -227,11 +243,12 @@ func (w *ws) SendMessage(module, serviceName string, v1 proto.Message) {
 		Data:        data,
 	}
 	md, _ := proto.Marshal(m)
-	err := w.conn.WriteMessage(websocket.BinaryMessage, md)
-	if err != nil {
-		log.Info("发送消息失败:%v", err)
-		return
-	}
+	w.sendChan <- message{websocket.BinaryMessage, md}
+	//err := w.conn.WriteMessage(websocket.BinaryMessage, md)
+	//if err != nil {
+	//	log.Info("发送消息失败:%v", err)
+	//	return
+	//}
 }
 
 func NewRobotTcp() IRobot {
