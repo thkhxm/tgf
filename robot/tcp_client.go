@@ -180,7 +180,13 @@ func (w *ws) Connect(address string) IRobot {
 			proto.Unmarshal(message, res)
 			log.Info("收到消息: %s", res.MessageType)
 			if f, has := w.callback.Get(res.MessageType); has {
-				f(w, res.GetData())
+				data := res.GetData()
+				if res.Zip {
+					if data, err = util2.Unzip(res.GetData()); err != nil {
+						log.Info("解压数据失败:%v", err)
+					}
+				}
+				f(w, data)
 			}
 		}
 	})
