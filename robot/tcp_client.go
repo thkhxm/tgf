@@ -176,7 +176,6 @@ func (w *ws) Connect(address string) IRobot {
 				log.Info("读取消息失败:%v", err)
 				return
 			}
-			message = message[1:]
 			res := &rpc.WSResponse{}
 			proto.Unmarshal(message, res)
 			log.Info("收到消息: %s", res.MessageType)
@@ -188,7 +187,7 @@ func (w *ws) Connect(address string) IRobot {
 
 	//启动心跳
 	util.Go(func() {
-		for true {
+		for {
 			select {
 			//监听关闭信号
 			case <-w.closeChan:
