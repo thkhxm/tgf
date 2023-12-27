@@ -269,7 +269,7 @@ func parseFile(file string) []*configStruct {
 
 func convertToUnityFieldType(t string) string {
 	switch t {
-	case "int32", "uint32":
+	case "int32", "uint32", "int8", "uint8":
 		return "int"
 	case "[]int32":
 		return "List<int>"
