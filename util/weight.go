@@ -42,6 +42,9 @@ type IWeight[T any] interface {
 	BaseRatio() int32
 	BaseAmount() int32
 	Len() int
+
+	OnlyRoll() (res IWeightData[T])
+	UpdateItemStock(data IWeightData[T])
 }
 
 type IWeightBuilder[T any] interface {
@@ -109,20 +112,39 @@ func (w *weight[T]) Hit() (IWeightItem[T], bool) {
 }
 
 func (w *weightOperation[T]) Roll() (res IWeightData[T]) {
+	res = w.OnlyRoll()
+	w.UpdateItemStock(res)
+	return
+}
+
+// OnlyRoll
+// @Description: 只命中，但是不对数量和权重做变更
+// @receiver w
+// @return res
+func (w *weightOperation[T]) OnlyRoll() (res IWeightData[T]) {
 	if w.totalRatio <= 0 {
 		return
 	}
 	r := w.ran.Int31n(w.totalRatio)
 	for _, wei := range w.weights {
 		if r < wei.Ratio() {
-			if _, done := wei.Hit(); done {
-				w.totalRatio -= wei.BaseRatio()
-			}
 			return wei
 		}
 		r -= wei.Ratio()
 	}
 	return
+
+}
+
+// UpdateItemStock
+// @Description: 变更权重和数量
+// @receiver w
+// @param data
+func (w *weightOperation[T]) UpdateItemStock(data IWeightData[T]) {
+	item := data.(IWeightItem[T])
+	if _, done := item.Hit(); done {
+		w.totalRatio -= item.BaseRatio()
+	}
 }
 
 func (w *weightOperation[T]) AllItem() []IWeightData[T] {
