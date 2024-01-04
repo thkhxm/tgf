@@ -2,6 +2,8 @@ package util
 
 import (
 	"fmt"
+	"golang.org/x/text/cases"
+	"golang.org/x/text/language"
 	"os"
 	"path/filepath"
 	"reflect"
@@ -158,10 +160,11 @@ var (
 type CSStruct struct {
 	PackageImports []string
 	Apis           []struct {
-		Args       string
-		Reply      string
-		MethodName string
-		ModuleName string
+		Args            string
+		Reply           string
+		MethodName      string
+		ModuleName      string
+		ModuleNameUpper string
 	}
 	PushServices []string
 }
@@ -192,11 +195,12 @@ func GeneratorAPI[T any](moduleName, version, packageName string, pushServices .
 			}
 		}
 		d := struct {
-			Args       string
-			Reply      string
-			MethodName string
-			ModuleName string
-		}{Args: m.Type.In(1).String(), Reply: m.Type.In(2).String(), MethodName: m.Name, ModuleName: moduleName}
+			Args            string
+			Reply           string
+			MethodName      string
+			ModuleName      string
+			ModuleNameUpper string
+		}{Args: m.Type.In(1).String(), Reply: m.Type.In(2).String(), MethodName: m.Name, ModuleName: moduleName, ModuleNameUpper: cases.Title(language.English).String(moduleName)}
 
 		var r = regexp.MustCompile("[A-Za-z0-9_]+\\.[A-Za-z0-9_]+\\[(.*)\\]")
 		match := r.FindStringSubmatch(d.Args)
@@ -242,7 +246,7 @@ var %vService = &rpc.Module{Name: "%v", Version: "%v"}
 
 var (
 	{{range .Apis}}
-	{{.MethodName}} = rpc.ServiceAPI[{{.Args}}, {{.Reply}}]{
+	{{.ModuleNameUpper}}_{{.MethodName}} = rpc.ServiceAPI[{{.Args}}, {{.Reply}}]{
 		ModuleName: %vService.Name,
 		Name:       "{{.MethodName}}",
 		MessageType: %vService.Name+"."+"{{.MethodName}}",
@@ -287,7 +291,7 @@ namespace %v
     public struct ServerApi
     {
 	{{range .Apis}}
- 		public static readonly Api {{.MethodName}} = new("{{.ModuleName}}","{{.MethodName}}");
+ 		public static readonly Api {{.ModuleNameUpper}}_{{.MethodName}} = new("{{.ModuleName}}","{{.MethodName}}");
 	{{end}}
 	{{range .PushServices}}
 		public static readonly string {{.}} = "{{.}}"; 
