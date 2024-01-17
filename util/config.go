@@ -22,13 +22,14 @@ import (
 //***************************************************
 
 var (
-	excelToJsonPath  = make([]string, 0)
-	excelToGoPath    = ""
-	excelToUnityPath = ""
-	excelPath        = ""
-	goPackage        = "conf"
-	unityPackage     = "HotFix.Config"
-	fileExt          = ".xlsx"
+	excelToJsonPath       = make([]string, 0)
+	excelToClientJsonPath = make([]string, 0)
+	excelToGoPath         = ""
+	excelToUnityPath      = ""
+	excelPath             = ""
+	goPackage             = "conf"
+	unityPackage          = "HotFix.Config"
+	fileExt               = ".xlsx"
 )
 
 // ExcelExport
@@ -67,6 +68,15 @@ func SetExcelToJsonPath(path string) {
 	p, _ := filepath.Abs(path)
 	excelToJsonPath = append(excelToJsonPath, p)
 	fmt.Println("set excel to json path", excelToJsonPath)
+}
+
+// SetExcelToClientJsonPath
+// @Description: 设置Excel导出客户端Json地址,可以追加多个输出地址
+// @param path
+func SetExcelToClientJsonPath(path string) {
+	p, _ := filepath.Abs(path)
+	excelToClientJsonPath = append(excelToClientJsonPath, p)
+	fmt.Println("set excel to json path", excelToClientJsonPath)
 }
 
 // SetExcelToGoPath
@@ -109,14 +119,17 @@ func toGolang(metalist []*configStruct) {
 package %v
 		{{range .}}
 type {{.StructName}}Conf struct {
-		{{range .Fields}}
+		{{range .Fields}}{{if contains .Region "s"}}
 		//{{.Des}}
-		{{.Key}}	{{.Typ}}
-        {{end}}
+		{{.Key}}	{{.Typ}}{{end}}
+		{{end}}
 }
 {{end}}`, time.Now().String(), goPackage)
-	t := template.New("ConfigStruct")
-	tp, _ := t.Parse(tpl)
+	t := template.New("ConfigStruct").Funcs(template.FuncMap{"contains": strings.Contains})
+	tp, e := t.Parse(tpl)
+	if e != nil {
+		panic(e)
+	}
 	// 创建路径中的所有必要的目录
 	err := os.MkdirAll(excelToGoPath, os.ModePerm)
 	if err != nil {
@@ -136,7 +149,6 @@ func toUnity(metalist []*configStruct) {
 //created at %v
 
 using System.Collections.Generic;
-using Unity.Plastic.Newtonsoft.Json;
 
 namespace %v
 {
@@ -144,16 +156,15 @@ namespace %v
 
 {{range .}}
 	public class {{.StructName}}Conf {
-		{{range .Fields}}
+		{{range .Fields}}{{if contains .Region "c"}}
 		//{{.Des}}
-		[JsonProperty("{{.Key}}")]
-		public {{.UnityTyp}} {{.Key}} { get; set; }
-        {{end}}
+		public {{.UnityTyp}} {{.Key}} { get; set; }{{end}}
+		{{end}}
 	}
 {{end}}
 }
 `, time.Now().String(), unityPackage)
-	t := template.New("UnityConfigStruct")
+	t := template.New("UnityConfigStruct").Funcs(template.FuncMap{"contains": strings.Contains})
 	tp, _ := t.Parse(tpl)
 	// 创建路径中的所有必要的目录
 	err := os.MkdirAll(excelToUnityPath, os.ModePerm)
@@ -182,9 +193,12 @@ type meta struct {
 	Typ      string
 	UnityTyp string
 	Des      string
+	Region   string
 }
 
 type rowdata []interface{}
+
+var C, S = "c", "s"
 
 func parseFile(file string) []*configStruct {
 	// Ignoring temporary Excel files
@@ -229,11 +243,16 @@ func parseFile(file string) []*configStruct {
 					metaList[idx].Typ = typ
 					metaList[idx].UnityTyp = convertToUnityFieldType(typ)
 				}
-			case 3: // desc
+			case 3: //Region
+				for idx, region := range row {
+					metaList[idx].Region = strings.ToLower(region)
+				}
+			case 4: // desc
 				for idx, des := range row {
 					metaList[idx].Des = des
 				}
-			default: //>= 4 row data
+
+			default: //>= 5 row data
 				data := make(rowdata, colNum)
 				for k := 0; k < colNum; k++ {
 					if k < len(row) {
@@ -251,12 +270,27 @@ func parseFile(file string) []*configStruct {
 				if err != nil {
 					panic(err)
 				}
-				err = output(p, jsonFile, toJson(dataList, metaList))
+				err = output(p, jsonFile, toJson(dataList, metaList, S))
 				if err != nil {
 					fmt.Println(err)
 				}
 			}
 		}
+
+		if len(excelToClientJsonPath) > 0 {
+			for _, p := range excelToClientJsonPath {
+				// 创建路径中的所有必要的目录
+				err := os.MkdirAll(p, os.ModePerm)
+				if err != nil {
+					panic(err)
+				}
+				err = output(p, jsonFile, toJson(dataList, metaList, C))
+				if err != nil {
+					fmt.Println(err)
+				}
+			}
+		}
+
 		result := &configStruct{}
 		result.Fields = metaList
 		result.StructName = s
@@ -293,11 +327,14 @@ const (
 
 var intRegex, _ = regexp.Compile(".*\\[.*\\].*int.*")
 
-func toJson(datarows []rowdata, metalist []*meta) string {
+func toJson(datarows []rowdata, metalist []*meta, region string) string {
 	ret := "["
 	for _, row := range datarows {
 		ret += "\n\t{"
 		for idx, meta := range metalist {
+			if strings.Index(meta.Region, region) < 0 {
+				continue
+			}
 			ret += fmt.Sprintf("\n\t\t\"%s\":", meta.Key)
 			switch meta.Typ {
 			case fileType_time:
