@@ -215,9 +215,13 @@ func parseFile(file string) []*configStruct {
 	}
 	sheets := xlsx.GetSheetList()
 
-	rs := make([]*configStruct, len(sheets))
+	rs := make([]*configStruct, 0, len(sheets))
 
-	for i, s := range sheets {
+	for _, s := range sheets {
+		//如果sheet名字以#开头则忽略
+		if strings.HasPrefix(s, "#") {
+			continue
+		}
 		rows, err := xlsx.GetRows(s)
 		if err != nil {
 			return nil
@@ -295,7 +299,7 @@ func parseFile(file string) []*configStruct {
 		result.Fields = metaList
 		result.StructName = s
 		result.Version = version
-		rs[i] = result
+		rs = append(rs, result)
 		fmt.Println("excel export : json file", jsonFile, "golang struct :", s+"Conf", "[", version, "]")
 	}
 	return rs
