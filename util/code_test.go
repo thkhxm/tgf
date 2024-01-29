@@ -18,14 +18,15 @@ import (
 //}
 
 func TestGeneratorAPI(x *testing.T) {
-	//util.SetAutoGenerateAPICodePath("./api")
-	//util.SetAutoGenerateAPICSCode("./api", "HotFix.Code")
-	//util.GeneratorAPI[IExampleService]("Hall", "1.0", "api")
-	//var t IExampleService
-	//v := reflect.ValueOf(&t)
-	//ty := v.Type().Elem()
-	//for i := 0; i < ty.NumMethod(); i++ {
-	//	m := ty.Method(i)
-	//	fmt.Sprintf("method %v,%v,%v", m.Name, m.Type, m.PkgPath)
-	//}
+	////generate client api
+	//util.SetAutoGenerateAPICodePath("./generated/user_api")
+	//util.GeneratorAPI[user.IUserService](internal.ModuleName, internal.Version, "user_api")
+	////generate rpc api
+	//util.SetAutoGenerateAPICodePath("./")
+	//util.SetGenerateFileNameSuffix("rpc")
+	//util.GeneratorRPC[user.IUserRPCService](internal.ModuleName, internal.Version, internal.ModuleName, "")
+	////generate cs api
+	//util.SetAutoGenerateAPICSCode("E:\\unity\\project\\t2\\Assets\\HotFix\\Code", "HotFix.Code")
+	//util.GenerateCSApiService()
+
 }
