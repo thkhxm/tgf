@@ -120,23 +120,27 @@ var Gate = &Module{Name: "Gate", Version: "1.0"}
 
 var (
 	UploadUserNodeInfo = &ServiceAPI[*UploadUserNodeInfoReq, *UploadUserNodeInfoRes]{
-		ModuleName: Gate.Name,
-		Name:       "UploadUserNodeInfo",
+		ModuleName:  Gate.Name,
+		Name:        "UploadUserNodeInfo",
+		MessageType: Gate.Name + "." + "UploadUserNodeInfo",
 	}
 
 	ToUser = &ServiceAPI[*ToUserReq, *ToUserRes]{
-		ModuleName: Gate.Name,
-		Name:       "ToUser",
+		ModuleName:  Gate.Name,
+		Name:        "ToUser",
+		MessageType: Gate.Name + "." + "ToUser",
 	}
 
 	Login = &ServiceAPI[*LoginReq, *LoginRes]{
-		ModuleName: Gate.Name,
-		Name:       "Login",
+		ModuleName:  Gate.Name,
+		Name:        "Login",
+		MessageType: Gate.Name + "." + "Login",
 	}
 
 	Offline = &ServiceAPI[*OfflineReq, *OfflineRes]{
-		ModuleName: Gate.Name,
-		Name:       "Offline",
+		ModuleName:  Gate.Name,
+		Name:        "Offline",
+		MessageType: Gate.Name + "." + "Offline",
 	}
 )
 

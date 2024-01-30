@@ -88,10 +88,8 @@ func (s *Server) WithServerPool(maxWorkers, maxCapacity int) *Server {
 }
 
 func (s *Server) WithService(service IService) *Server {
-	s.beforeOptionals = append(s.beforeOptionals, func(server *Server) {
-		s.service = append(s.service, service)
-		log.InfoTag("init", "装载逻辑服务[%v@%v]", service.GetName(), service.GetVersion())
-	})
+	s.service = append(s.service, service)
+	log.InfoTag("init", "装载逻辑服务[%v@%v]", service.GetName(), service.GetVersion())
 	return s
 }
 
@@ -168,13 +166,25 @@ func (s *Server) WithGateway(port string, hook IUserHook) *Server {
 	return s
 }
 
-func (s *Server) WithGatewayWS(port, path string, hook IUserHook) *Server {
+func (s *Server) WithGatewayWS(port, path string) *Server {
 	var ()
 	s.beforeOptionals = append(s.beforeOptionals, func(server *Server) {
 		builder := newTCPBuilder()
 		builder.WithPort(port)
 		builder.WithWSPath(path)
-		builder.SetUserHook(hook)
+		userHook := &UserHook{}
+		for _, service := range server.service {
+			if service.GetUserHook() == nil {
+				continue
+			}
+			for _, hook := range service.GetUserHook().GetLoginHooks() {
+				userHook.AddLoginHook(hook)
+			}
+			for _, hook := range service.GetUserHook().GetOfflineHooks() {
+				userHook.AddOfflineHook(hook)
+			}
+		}
+		builder.SetUserHook(userHook)
 		gateway := GatewayService(builder)
 		s.service = append(s.service, gateway)
 		log.InfoTag("init", "装载逻辑服务[%v@%v]", gateway.GetName(), gateway.GetVersion())

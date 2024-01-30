@@ -23,17 +23,26 @@ type IService interface {
 	GetName() string
 	GetVersion() string
 	Startup() (bool, error)
+	GetUserHook() IUserHook
 	Destroy(sub IService)
 }
 
 type Module struct {
-	Name    string
-	Version string
+	Name     string
+	Version  string
+	userHook IUserHook
 }
 
 func (m *Module) Destroy(sub IService) {
 	var ()
 	log.InfoTag("system", "destroy module=%v version=%v", sub.GetName(), sub.GetVersion())
+}
+
+func (m *Module) GetUserHook() IUserHook {
+	if m.userHook == nil {
+		m.userHook = NewUserHook()
+	}
+	return m.userHook
 }
 
 type ServiceAPI[Req, Res any] struct {
