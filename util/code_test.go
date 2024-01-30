@@ -19,14 +19,11 @@ import (
 
 func TestGeneratorAPI(x *testing.T) {
 	////generate client api
-	//util.SetAutoGenerateAPICodePath("./generated/user_api")
-	//util.GeneratorAPI[user.IUserService](internal.ModuleName, internal.Version, "user_api")
+	//util.GeneratorAPI[chat_module.IChatService](internal.ModuleName, internal.Version,
+	//	"ChatPush")
 	////generate rpc api
-	//util.SetAutoGenerateAPICodePath("./")
-	//util.SetGenerateFileNameSuffix("rpc")
-	//util.GeneratorRPC[user.IUserRPCService](internal.ModuleName, internal.Version, internal.ModuleName, "")
+	//util.GeneratorRPC[chat_module.IChatRPCService](internal.ModuleName, internal.Version)
 	////generate cs api
 	//util.SetAutoGenerateAPICSCode("E:\\unity\\project\\t2\\Assets\\HotFix\\Code", "HotFix.Code")
 	//util.GenerateCSApiService()
-
 }
