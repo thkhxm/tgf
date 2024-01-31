@@ -7,6 +7,7 @@ import (
 	"github.com/thkhxm/tgf/log"
 	"github.com/thkhxm/tgf/util"
 	"golang.org/x/net/context"
+	"golang.org/x/sync/singleflight"
 	"reflect"
 	"strings"
 	"sync"
@@ -49,6 +50,8 @@ type autoCacheManager[Key cacheKey, Val any] struct {
 	longevityLock *sync.Mutex
 
 	clearPlugins []IAutoCacheClearPlugin
+
+	sf *singleflight.Group
 }
 
 type hashAutoCacheManager[Val IHashModel] struct {
@@ -83,9 +86,16 @@ func (h *hashAutoCacheManager[Val]) loadCache(key ...string) (keys []string) {
 	//获取主键key
 	pk := h.image.HashCachePkKey(key...)
 	defer func() {
+		if err := recover(); err != nil {
+			log.ErrorTag("cache", "load cache error:%v", err)
+			return
+		}
 		if keys != nil {
 			h.groupAutoCacheManager.Set(keys, pk)
 		}
+	}()
+	defer func() {
+
 	}()
 	//从cache缓存中获取
 	if h.cache() {
@@ -104,6 +114,7 @@ func (h *hashAutoCacheManager[Val]) loadCache(key ...string) (keys []string) {
 			return
 		}
 	}
+
 	//从db获取
 	if h.longevity() {
 		d := make([]any, len(key))
@@ -126,18 +137,23 @@ func (h *hashAutoCacheManager[Val]) loadCache(key ...string) (keys []string) {
 func (h *hashAutoCacheManager[Val]) Get(key ...string) (val Val, err error) {
 	//TODO: 并发场景下可能会重复创建
 	pk := h.image.HashCachePkKey(key...)
-	//是否首次加载，如果是
-	if _, has := h.groupAutoCacheManager.Get(pk); has != nil {
-		h.loadCache(key...)
+	d, e, _ := h.sf.Do(pk, func() (interface{}, error) {
+		//是否首次加载，如果是
+		if _, has := h.groupAutoCacheManager.Get(pk); has != nil {
+			h.loadCache(key...)
+		}
+		//
+		localKey := h.getLocalKey(pk, h.image.HashCacheFieldByKeys(key...))
+		//从本地缓存获取
+		if v, has := h.get(localKey); has {
+			return v, nil
+		}
+		return nil, errors.New("not found in cache")
+	})
+	if d == nil {
+		return val, e
 	}
-	//
-	localKey := h.getLocalKey(pk, h.image.HashCacheFieldByKeys(key...))
-	//从本地缓存获取
-	var has bool
-	if val, has = h.get(localKey); has {
-		return
-	}
-	return val, errors.New("not found in cache")
+	return d.(Val), e
 }
 
 func (h *hashAutoCacheManager[Val]) Set(val Val, key ...string) (success bool) {
@@ -538,6 +554,7 @@ func (a *autoCacheManager[Key, Val]) InitStruct() {
 	a.clearPlugins = a.builder.plugins
 	a.longevityLock = &sync.Mutex{}
 	a.sb = &sqlBuilder[Val]{}
+	a.sf = &singleflight.Group{}
 	var k Val
 	v := reflect.ValueOf(k)
 	if (v.Kind() == reflect.Ptr || v.Kind() == reflect.Interface) && v.IsNil() {

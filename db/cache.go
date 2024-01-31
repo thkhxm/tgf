@@ -6,6 +6,7 @@ import (
 	"github.com/thkhxm/tgf"
 	"github.com/thkhxm/tgf/log"
 	"github.com/thkhxm/tgf/util"
+	"strings"
 	"time"
 )
 
@@ -78,6 +79,17 @@ func Get[Res any](key string) (res Res, success bool) {
 	return
 }
 
+// FormatKey
+// @Description: format redis key,拼接key.
+// @example: FormatKey("user",1001) => user:1001
+// @param args
+// @return string
+func FormatKey(args ...string) string {
+	if len(args) == 0 {
+		return ""
+	}
+	return strings.Join(args, ":")
+}
 func Set(key string, val any, timeout time.Duration) {
 	if cache == nil {
 		return

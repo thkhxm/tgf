@@ -3,10 +3,8 @@ package db_test
 import (
 	"fmt"
 	"github.com/thkhxm/tgf/db"
-	"golang.org/x/net/context"
 	"reflect"
 	"strings"
-	"sync"
 	"testing"
 	"time"
 )
@@ -20,30 +18,40 @@ import (
 //2023/3/16
 //***************************************************
 
+type Cc struct {
+	CacheExampleData
+	DD string `orm:"ignore" json:"-"`
+}
+
+func (c *Cc) GetTableName() string {
+	return "game_user"
+}
+
 func Test_autoCacheManager_Get(t *testing.T) {
-	//cacheManager := db.NewDefaultAutoCacheManager[string, *CacheExampleData]("example:cachemanager")
-	//key := "123"
-	//val := &CacheExampleData{Name: "tim"}
-	////cacheManager.Set(key, val)
+	db.Run()
+	cacheManager := db.NewLongevityAutoCacheManager[string, *Cc]("example:cachemanager")
+	key := "123"
+	val := &Cc{
+		CacheExampleData: CacheExampleData{Name: "tim"},
+		DD:               "123321",
+	}
+	cacheManager.Set(val, key)
+	select {}
 	//data, _ := cacheManager.Get(key)
-	////data.Name = "sam"
+	//data.Name = "sam"
 	//t.Log("get val ", data, reflect.DeepEqual(val, data))
-	////data2, _ := cacheManager.Get(key)
-	////t.Log("get val ", data2)
+	//data2, _ := cacheManager.Get(key)
+	//t.Log("get val ", data2)
 
-	//db.NewDefaultAutoCacheManager[string, int32]("example:cachemanager")
-	//INSERT INTO table_name (id, name, value) VALUES (1, 'John', 10), (2, 'Peter', 20), (3, 'Mary', 30)
-	//ON DUPLICATE KEY UPDATE name=VALUES(name), value=VALUES(value);
-
-	con, _ := db.GetConn().PrepareContext(context.Background(), "INSERT INTO ... ON DUPLICATE KEY UPDATE")
-	rs, err := con.Exec("1", "a1", 1, "1", "a1", 2)
-	t.Log("err -> ", err)
-	o, _ := rs.RowsAffected()
-	t.Log("ok -> ", o)
-	defer con.Close()
-	w := &sync.WaitGroup{}
-	w.Add(1)
-	w.Wait()
+	//con, _ := db.GetConn().PrepareContext(context.Background(), "INSERT INTO ... ON DUPLICATE KEY UPDATE")
+	//rs, err := con.Exec("1", "a1", 1, "1", "a1", 2)
+	//t.Log("err -> ", err)
+	//o, _ := rs.RowsAffected()
+	//t.Log("ok -> ", o)
+	//defer con.Close()
+	//w := &sync.WaitGroup{}
+	//w.Add(1)
+	//w.Wait()
 }
 
 func BenchmarkRef(b *testing.B) {
@@ -80,6 +88,7 @@ func StructToString(s interface{}) string {
 }
 
 type CacheExampleData struct {
+	db.Model
 	Name string `orm:"pk"`
 	Age  int32
 }
@@ -109,6 +118,8 @@ type Item struct {
 	UserId string `orm:"pk"`
 	PropId string `orm:"pk"`
 	Amount uint64
+	abb    string
+	Items  *Item
 }
 
 func (i *Item) GetTableName() string {
