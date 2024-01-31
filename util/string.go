@@ -31,19 +31,13 @@ func StrToAny[T any](a string) (T, error) {
 			return t, err
 		}
 		t = any(v).(T)
-	case int32:
+	case int, uint, int32, uint32:
 		v, err := strconv.ParseInt(a, 10, 32)
 		if err != nil {
 			return t, err
 		}
 		t = *(*T)(unsafe.Pointer(&v))
-	case int:
-		v, err := strconv.ParseInt(a, 10, 32)
-		if err != nil {
-			return t, err
-		}
-		t = *(*T)(unsafe.Pointer(&v))
-	case int64:
+	case int64, uint64:
 		v, err := strconv.ParseInt(a, 10, 64)
 		if err != nil {
 			return t, err
