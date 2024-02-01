@@ -321,7 +321,7 @@ func (c *ClientOptional) startup() *Client {
 	rpcClient.noReplyChan = make(chan *client.Call, 1e5)
 	rpcClient.whiteMethod = make([]string, 0)
 	util.Go(func() {
-		for true {
+		for {
 			select {
 			case <-rpcClient.noReplyChan:
 				//if ok {
@@ -439,19 +439,19 @@ func (this *Call) Done() error {
 	return cal.Error
 }
 
-func sendMessage(ct IUserConnectData, moduleName, serviceName string, args, reply interface{}) (*Call, error) {
+func sendMessage(ct IUserConnectData, moduleName, serviceName string, args, reply interface{}) error {
 	var (
 		rc      = getRPCClient()
 		xclient = rc.getClient(moduleName)
 	)
 	if xclient == nil {
-		return nil, errors.New(fmt.Sprintf("找不到对应模块的服务 moduleName=%v", moduleName))
+		return errors.New(fmt.Sprintf("找不到对应模块的服务 moduleName=%v", moduleName))
 	}
 	if ct.IsLogin() || rc.CheckWhiteList(serviceName) {
-		call, err := xclient.Go(ct.GetContextData(), serviceName, args, reply, ct.GetChannel())
-		return newCall(call), err
+		err := xclient.Call(ct.GetContextData(), serviceName, args, reply)
+		return err
 	}
-	return nil, errors.New(fmt.Sprintf("用户未登录 非白名单请求无法抵达 moduleName=%v serviceName=%v", moduleName, serviceName))
+	return errors.New(fmt.Sprintf("用户未登录 非白名单请求无法抵达 moduleName=%v serviceName=%v", moduleName, serviceName))
 }
 
 // SendRPCMessage [Req, Res any]

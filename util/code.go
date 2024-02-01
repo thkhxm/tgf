@@ -137,7 +137,9 @@ func GeneratorRPC[T any](moduleName, version string) {
 		pi = append(pi, k)
 	}
 	sort.Strings(pi)
-
+	if len(s) == 0 {
+		return
+	}
 	a.Apis = s
 	a.PackageImports = pi
 	packageName := moduleName + "_service"

@@ -300,7 +300,7 @@ func (t *TCPServer) handlerWSConn(conn *websocket.Conn) {
 		writeChan:   make(chan []byte, 20),
 	}
 	reqMetaData := make(map[string]string)
-	reqChan := make(chan *RequestData)
+	reqChan := make(chan *RequestData, 10)
 	reqMetaData[tgf.ContextKeyTemplateUserId] = util.GenerateSnowflakeId()
 	connectData.contextData.SetValue(share.ReqMetaDataKey, reqMetaData)
 	t.users.Set(reqMetaData[tgf.ContextKeyTemplateUserId], connectData)
@@ -345,7 +345,7 @@ func (t *TCPServer) handlerWSConn(conn *websocket.Conn) {
 	})
 
 	//逻辑处理
-	go func() {
+	util.Go(func() {
 		for {
 			select {
 			case req := <-reqChan:
@@ -357,9 +357,12 @@ func (t *TCPServer) handlerWSConn(conn *websocket.Conn) {
 				return
 			}
 		}
-	}()
+	})
 
-	go connectData.writeMessage()
+	//发送消息
+	util.Go(func() {
+		connectData.writeMessage()
+	})
 
 	for {
 		// 读取客户端发送的消息
@@ -392,13 +395,6 @@ func (t *TCPServer) handlerWSConn(conn *websocket.Conn) {
 		default:
 			log.DebugTag("tcp", "收到不支持的消息:msType %v   ----   %s", messageType, message)
 		}
-
-		//// 将消息原样返回给客户端
-		//err = conn.WriteMessage(messageType, message)
-		//if err != nil {
-		//	log.Info("%v", err)
-		//	break
-		//}
 	}
 
 }
@@ -605,16 +601,16 @@ func (t *TCPServer) doLogic(data *RequestData) {
 	reqData.ByteData = data.Data
 
 	resData := &Reply[protoiface.MessageV1]{}
-	callback, err := sendMessage(data.User, data.Module, data.RequestMethod, reqData, resData)
+	err = sendMessage(data.User, data.Module, data.RequestMethod, reqData, resData)
 	if err != nil {
 		log.InfoTag("tcp", "请求异常 数据 [%v] [%v]", data, err)
 		return
 	}
-	callbackErr := callback.Done()
-	if callbackErr != nil {
-		log.InfoTag("tcp", "请求异常 数据 [%v] [%v]", data, callbackErr)
-		return
-	}
+	//callbackErr := callback.Done()
+	//if callbackErr != nil {
+	//	log.InfoTag("tcp", "请求异常 数据 [%v] [%v]", data, callbackErr)
+	//	return
+	//}
 	reply = resData.ByteData
 	consumeTime := time.Now().UnixMilli() - startTime
 	log.DebugTag("tcp", "请求耗时统计 module=%v serviceName=%v consumeTime=%v", data.Module, data.RequestMethod, consumeTime)
