@@ -41,6 +41,14 @@ func (m *Model) Remove() {
 	m.State = 0
 }
 
+// IsValid
+// @Description: 是否有效
+// @receiver m
+// @return bool
+func (m *Model) IsValid() bool {
+	return m.State == 1
+}
+
 type IModel interface {
 	GetTableName() string
 }

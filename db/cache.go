@@ -6,6 +6,7 @@ import (
 	"github.com/thkhxm/tgf"
 	"github.com/thkhxm/tgf/log"
 	"github.com/thkhxm/tgf/util"
+	"reflect"
 	"strings"
 	"time"
 )
@@ -227,6 +228,14 @@ func (h *HashAutoCacheBuilder[Val]) New() IHashCacheService[Val] {
 	manager := &hashAutoCacheManager[Val]{}
 	manager.builder = &h.AutoCacheBuilder
 	manager.builder.WithCloseAutoClearCache()
+
+	// Use reflection to create a new instance of Val
+	valType := reflect.TypeOf(h.image).Elem()
+	newVal := reflect.New(valType).Interface()
+
+	// Cast the newVal to the type Val
+	h.image = newVal.(Val)
+
 	manager.InitStruct(h.image)
 	return manager
 }

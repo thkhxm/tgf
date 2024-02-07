@@ -462,7 +462,12 @@ func JsonToErrorStruct(packageName, fileName, outPath string, data []TemplateKey
 
 package %v
 
-type GameError struct {
+type GameError interface {
+	Error() string
+	Code() int32
+}
+
+type generatedError struct {
 	msg  string
 	code int32
 }
@@ -471,15 +476,15 @@ var(
 	{{range .}}	{{.FieldName}} = newError("{{.Other}}", {{.Values}})
     {{end}}
 )
-func (c *GameError) Error() string {
+func (c *generatedError) Error() string {
 	return c.msg
 }
-func (c *GameError) Code() int32 {
+func (c *generatedError) Code() int32 {
 	return c.code
 }
 
-func newError(msg string, code int32) *GameError {
-	return &GameError{msg: msg, code: code}
+func newError(msg string, code int32) GameError {
+	return &generatedError{msg: msg, code: code}
 }
 `, time.Now().String(), packageName)
 	t := template.New("GameErrorStruct")

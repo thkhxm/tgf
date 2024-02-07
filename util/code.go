@@ -239,13 +239,13 @@ func {{.MethodName}}(ctx context.Context, args {{.Args}},reply {{.Reply}}, async
 type CSStruct struct {
 	PackageImports []string
 	Apis           []struct {
-		Args            string
-		Reply           string
-		MethodName      string
-		ModuleName      string
-		ModuleNameUpper string
+		Args       string
+		Reply      string
+		MethodName string
 	}
-	PushServices []string
+	ModuleName      string
+	ModuleNameUpper string
+	PushServices    []string
 }
 
 var csStructCache = &CSStruct{}
@@ -261,6 +261,10 @@ func GeneratorAPI[T any](moduleName, version string, pushServices ...string) {
 	tt := make(map[string]bool)
 	tt["github.com/thkhxm/tgf/rpc"] = true
 	goStructCache := &CSStruct{}
+	goStructCache.ModuleName = moduleName
+	goStructCache.ModuleNameUpper = cases.Title(language.English).String(moduleName)
+	csStructCache.ModuleName = moduleName
+	csStructCache.ModuleNameUpper = cases.Title(language.English).String(moduleName)
 	for i := 0; i < ty.NumMethod(); i++ {
 		m := ty.Method(i)
 		// 遍历方法的参数列表
@@ -275,13 +279,10 @@ func GeneratorAPI[T any](moduleName, version string, pushServices ...string) {
 		}
 
 		d := struct {
-			Args            string
-			Reply           string
-			MethodName      string
-			ModuleName      string
-			ModuleNameUpper string
-		}{Args: m.Type.In(1).String(), Reply: m.Type.In(2).String(), MethodName: m.Name, ModuleName: moduleName, ModuleNameUpper: cases.Title(language.English).String(moduleName)}
-
+			Args       string
+			Reply      string
+			MethodName string
+		}{Args: m.Type.In(1).String(), Reply: m.Type.In(2).String(), MethodName: m.Name}
 		var r = regexp.MustCompile("[A-Za-z0-9_]+\\.[A-Za-z0-9_]+\\[(.*)\\]")
 		match := r.FindStringSubmatch(d.Args)
 		if len(match) > 1 {
@@ -396,7 +397,7 @@ namespace %v
     public struct %sServerApi
     {
 	{{range .Apis}}
- 		public static readonly Api {{.ModuleNameUpper}}_{{.MethodName}} = new("{{.ModuleName}}","{{.MethodName}}");
+ 		public static readonly Api {{.MethodName}} = new("%s","{{.MethodName}}");
 	{{end}}
 	{{range .PushServices}}
 		public static readonly string {{.}} = "{{.}}"; 
@@ -404,10 +405,10 @@ namespace %v
 	}
 	
 }
-`, time.Now().String(), autoGenerateAPICSCodeNamespace, csStructCache.Apis[0].ModuleNameUpper)
+`, time.Now().String(), autoGenerateAPICSCodeNamespace, csStructCache.ModuleNameUpper, csStructCache.ModuleName)
 		tmCS := template.New("apiCSStruct")
 		tpCS, _ := tmCS.Parse(tplCS)
-		fileCSName := csStructCache.Apis[0].ModuleNameUpper + "ServerApi.cs"
+		fileCSName := csStructCache.ModuleNameUpper + "ServerApi.cs"
 		err := os.MkdirAll(autoGenerateAPICodePath, os.ModePerm)
 		if err != nil {
 			panic(err)
