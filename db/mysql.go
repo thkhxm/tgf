@@ -51,6 +51,7 @@ func (m *Model) IsValid() bool {
 
 type IModel interface {
 	GetTableName() string
+	Remove()
 }
 
 type mysqlService struct {
