@@ -11,6 +11,11 @@ import "errors"
 //2023/3/16
 //***************************************************
 
+type GameError interface {
+	Error() string
+	Code() int32
+}
+
 var (
 	ErrorRPCTimeOut = errors.New("rpc time out")
 )

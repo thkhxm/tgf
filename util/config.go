@@ -462,10 +462,7 @@ func JsonToErrorStruct(packageName, fileName, outPath string, data []TemplateKey
 
 package %v
 
-type GameError interface {
-	Error() string
-	Code() int32
-}
+import "github.com/thkhxm/tgf"
 
 type generatedError struct {
 	msg  string
@@ -483,7 +480,7 @@ func (c *generatedError) Code() int32 {
 	return c.code
 }
 
-func newError(msg string, code int32) GameError {
+func newError(msg string, code int32) tgf.GameError {
 	return &generatedError{msg: msg, code: code}
 }
 `, time.Now().String(), packageName)
