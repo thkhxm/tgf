@@ -1,6 +1,6 @@
 module github.com/thkhxm/tgf
 
-go 1.21.1
+go 1.22
 
 require (
 	github.com/bsm/redislock v0.9.0
