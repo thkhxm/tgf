@@ -5,7 +5,7 @@ go 1.22
 require (
 	github.com/bsm/redislock v0.9.0
 	github.com/bwmarrin/snowflake v0.3.0
-	github.com/bytedance/sonic v1.10.2
+	github.com/bytedance/sonic v1.11.0
 	github.com/cornelk/hashmap v1.0.8
 	github.com/edwingeng/doublejump v1.0.1
 	github.com/go-sql-driver/mysql v1.7.0
@@ -105,11 +105,11 @@ require (
 	github.com/xuri/nfp v0.0.0-20230919160717-d98342af3f05 // indirect
 	go.uber.org/atomic v1.10.0 // indirect
 	go.uber.org/multierr v1.9.0 // indirect
-	golang.org/x/arch v0.6.0 // indirect
+	golang.org/x/arch v0.7.0 // indirect
 	golang.org/x/crypto v0.16.0 // indirect
 	golang.org/x/mod v0.14.0 // indirect
 	golang.org/x/sync v0.5.0 // indirect
-	golang.org/x/sys v0.15.0 // indirect
+	golang.org/x/sys v0.17.0 // indirect
 	golang.org/x/text v0.14.0 // indirect
 	golang.org/x/tools v0.16.0 // indirect
 )
