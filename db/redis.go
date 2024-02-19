@@ -55,7 +55,7 @@ func (r *redisService) PutMap(key, filed, val string, timeout time.Duration) {
 
 func (r *redisService) Del(key string) {
 	var ()
-	r.client.Expire(context.Background(), key, time.Minute*3)
+	r.client.Expire(context.Background(), key, time.Second)
 }
 
 func (r *redisService) DelNow(key string) {
