@@ -64,6 +64,10 @@ func WarnTag(tag string, msg string, params ...interface{}) {
 		logger.Warn(fmt.Sprintf("["+tag+"] "+msg, params...))
 	}
 }
+
+func CheckLogTag(tag string) bool {
+	return !ignoredTags[tag]
+}
 func initLogger() {
 	var (
 		/*自定义时间格式*/
