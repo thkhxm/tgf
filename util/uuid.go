@@ -3,8 +3,6 @@ package util
 import (
 	"github.com/bwmarrin/snowflake"
 	"math/rand"
-	"strconv"
-	"strings"
 	"time"
 )
 
@@ -35,28 +33,38 @@ var codes = []string{"0", "1", "2", "3", "4", "5",
 	"J", "K", "L", "M", "N", "O", "P", "Q", "R", "S", "T", "U", "V",
 	"W", "X", "Y", "Z"}
 
-func GenerateKey(count int) []string {
-	var ()
-	mod := len(codes)
-	res := make([]string, count, count)
-	index := 0
-	for {
-		if index >= count {
-			break
-		}
-		fid := GenerateSnowflakeId()
-		fid = strings.ReplaceAll(fid, "-", "")
-		s := strings.Builder{}
-		for i := 0; i < 8; i++ {
-			subStr := fid[i*4 : i*4+4]
-			x, _ := strconv.ParseInt(subStr, 16, 32)
-			subIndex := x % int64(mod)
-			item := codes[subIndex]
-			s.WriteString(item)
-		}
-		//fmt.Println("code->", s.String())
-		res[index] = s.String()
-		index++
-	}
-	return res
-}
+//
+//func GenerateKey(count int) []string {
+//	var ()
+//	mod := len(codes)
+//	res := make([]string, count)
+//	index := 0
+//	for {
+//		if index >= count {
+//			break
+//		}
+//		fid := GenerateSnowflakeId()
+//
+//		// Check if fid length is less than 32, if so, append "0" to make it 32 characters long
+//		if len(fid) < 32 {
+//			c := 32 - len(fid)
+//			for i := 0; i < c; i++ {
+//				fid += codes[rand.Int31n(int32(len(codes)))]
+//			}
+//		}
+//
+//		//fid = strings.ReplaceAll(fid, "-", "")
+//		s := strings.Builder{}
+//		for i := 0; i < 8; i++ {
+//			subStr := fid[i*4 : i*4+4]
+//			x, _ := strconv.ParseInt(subStr, 16, 32)
+//			subIndex := x % int64(mod)
+//			item := codes[subIndex]
+//			s.WriteString(item)
+//		}
+//		//fmt.Println("code->", s.String())
+//		res[index] = s.String()
+//		index++
+//	}
+//	return res
+//}

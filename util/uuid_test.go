@@ -32,3 +32,23 @@ func TestGenerateSnowflakeId(t *testing.T) {
 	wg.Wait()
 	fmt.Println(m.Len())
 }
+
+//func TestGenerateKey(t *testing.T) {
+//	type args struct {
+//		count int
+//	}
+//	tests := []struct {
+//		name string
+//		args args
+//		want []string
+//	}{
+//		{"a", args{10}, nil},
+//	}
+//	for _, tt := range tests {
+//		t.Run(tt.name, func(t *testing.T) {
+//			if got := util.GenerateKey(tt.args.count); !reflect.DeepEqual(got, tt.want) {
+//				t.Errorf("GenerateKey() = %v, want %v", got, tt.want)
+//			}
+//		})
+//	}
+//}
