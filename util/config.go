@@ -2,8 +2,8 @@ package util
 
 import (
 	"bufio"
-	"encoding/json"
 	"fmt"
+	"github.com/bytedance/sonic"
 	"github.com/xuri/excelize/v2"
 	"io"
 	"os"
@@ -399,7 +399,7 @@ func convertToStringSlice(input string) string {
 	splitInput := strings.Split(input, ",")
 
 	// Convert the string array to json
-	jsonData, err := json.Marshal(splitInput)
+	jsonData, err := sonic.Marshal(splitInput)
 	if err != nil {
 		fmt.Sprintf("string array error %v", err)
 	}
