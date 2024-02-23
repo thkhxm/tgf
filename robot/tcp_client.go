@@ -7,7 +7,7 @@ import (
 	"github.com/cornelk/hashmap"
 	"github.com/golang/protobuf/proto"
 	"github.com/gorilla/websocket"
-	util2 "github.com/smallnest/rpcx/util"
+	util2 "github.com/thkhxm/rpcx/util"
 	"github.com/thkhxm/tgf/log"
 	"github.com/thkhxm/tgf/rpc"
 	"github.com/thkhxm/tgf/util"

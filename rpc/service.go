@@ -1,10 +1,11 @@
 package rpc
 
 import (
-	"github.com/smallnest/rpcx/share"
+	"github.com/thkhxm/rpcx/share"
 	"github.com/thkhxm/tgf"
 	"github.com/thkhxm/tgf/log"
 	"golang.org/x/net/context"
+	"reflect"
 )
 
 //***************************************************
@@ -56,6 +57,21 @@ type ServiceAPI[Req, Res any] struct {
 
 func (s *ServiceAPI[Req, Res]) New(req Req, res Res) *ServiceAPI[Req, Res] {
 	var ()
+	return &ServiceAPI[Req, Res]{ModuleName: s.ModuleName, Name: s.Name, args: req, reply: res, MessageType: s.MessageType}
+}
+
+func (s *ServiceAPI[Req, Res]) NewRPC(req Req) *ServiceAPI[Req, Res] {
+	var ()
+	var res Res
+	resType := reflect.TypeOf((*Res)(nil)).Elem() // 获取Res的类型
+	resValue := reflect.New(resType)              // 创建Res的新实例
+
+	// 如果Res是一个指针类型，我们需要通过.Elem()获取其指向的值
+	if resType.Kind() == reflect.Ptr {
+		res = resValue.Interface().(Res)
+	} else {
+		res = resValue.Elem().Interface().(Res)
+	}
 	return &ServiceAPI[Req, Res]{ModuleName: s.ModuleName, Name: s.Name, args: req, reply: res, MessageType: s.MessageType}
 }
 
