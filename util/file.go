@@ -1,6 +1,9 @@
 package util
 
 import (
+	"crypto/md5"
+	"encoding/hex"
+	"io"
 	"os"
 	"path/filepath"
 )
@@ -19,7 +22,7 @@ func GetFileList(path string, ext string) []string {
 	finfo, _ := os.ReadDir(path)
 	for _, info := range finfo {
 		if filepath.Ext(info.Name()) == ext {
-			real_path := path + "/" + info.Name()
+			real_path := path + string(filepath.Separator) + info.Name()
 			if info.IsDir() {
 				//all_file = append(all_file, getFileList(real_path)...)
 			} else {
@@ -28,4 +31,15 @@ func GetFileList(path string, ext string) []string {
 		}
 	}
 	return all_file
+}
+
+func GetFileMd5(file string) string {
+	f, err := os.OpenFile(file, os.O_RDONLY, 0o600)
+	if err != nil {
+		return ""
+	}
+	md5h := md5.New()
+	io.Copy(md5h, f)
+	f.Close()
+	return hex.EncodeToString(md5h.Sum(nil))
 }
