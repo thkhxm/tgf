@@ -164,6 +164,10 @@ type ITCPBuilder interface {
 	IsWebSocket() bool
 	SetUserHook(userHook IUserHook)
 	UserHook() IUserHook
+	WithWss(certFile, keyFile string) ITCPBuilder
+	IsWss() bool
+	WssCertFile() string
+	WssKeyFile() string
 }
 
 type TCPServer struct {
@@ -187,6 +191,10 @@ type ServerConfig struct {
 	readBufferSize  int
 	writeBufferSize int
 	netType         int
+	isWss           bool
+
+	wSSKeyPath  string
+	wSSCertPath string
 	//
 
 	userHook IUserHook
@@ -246,6 +254,26 @@ func (s *ServerConfig) WithBuffer(readBuffer, writeBuffer int) ITCPBuilder {
 	s.readBufferSize = readBuffer
 	s.writeBufferSize = writeBuffer
 	return s
+}
+
+func (s *ServerConfig) WithWss(certFile, keyFile string) ITCPBuilder {
+	var ()
+	s.isWss = true
+	s.wSSCertPath = certFile
+	s.wSSKeyPath = keyFile
+	return s
+}
+
+func (s *ServerConfig) IsWss() bool {
+	return s.isWss
+}
+
+func (s *ServerConfig) WssCertFile() string {
+	return s.wSSCertPath
+}
+
+func (s *ServerConfig) WssKeyFile() string {
+	return s.wSSKeyPath
 }
 
 type UserConnectData struct {
@@ -707,7 +735,15 @@ func (t *TCPServer) Run() {
 				// 定义 WebSocket 路由
 				http.HandleFunc("/"+t.config.WsPath(), t.wsHandler)
 				// 启动服务器
-				err := http.ListenAndServe(t.config.Address()+":"+t.config.Port(), nil)
+				var err error
+				if t.config.IsWss() {
+					log.Info("服务器启动失败：%v", "111111111111111111111111111111111111111")
+					err = http.ListenAndServeTLS(t.config.Address()+":"+t.config.Port(), t.config.WssCertFile(), t.config.WssKeyFile(), nil)
+				} else {
+					log.Info("服务器启动失败：%v", "2222222222222222222222222222222222222222222222")
+					err = http.ListenAndServe(t.config.Address()+":"+t.config.Port(), nil)
+				}
+
 				if err != nil {
 					log.Info("服务器启动失败：%v", err)
 					return

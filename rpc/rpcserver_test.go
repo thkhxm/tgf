@@ -40,6 +40,20 @@ func TestStartRpcServer(t *testing.T) {
 	w.Wait()
 }
 
+func TestWssServer(t *testing.T) {
+	rpcServer := rpc.NewRPCServer()
+	service := new(DemoService)
+
+	rpcServer.
+		WithService(service).
+		WithGatewayWSS("8038", "/wss", "cert.pem", "key.pem").
+		Run()
+
+	w := sync.WaitGroup{}
+	w.Add(1)
+	w.Wait()
+}
+
 func TestTcpClientSender(t *testing.T) {
 
 	// [1][1][2][2][n][n]
