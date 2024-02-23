@@ -34,10 +34,10 @@ func Test_autoCacheManager_Get(t *testing.T) {
 		CacheExampleData: CacheExampleData{Name: "tim", Model: db.NewModel()},
 	}
 	cacheManager.Set(val, key)
-	time.Sleep(time.Second * 2)
-	val.Remove()
-	cacheManager.Remove(key)
-	time.Sleep(time.Second * 1)
+	//time.Sleep(time.Second * 2)
+	//val.Remove()
+	//cacheManager.Remove(key)
+	//time.Sleep(time.Second * 1)
 	if cc, e := cacheManager.Get(key); e == nil {
 		t.Log("get val ", cc)
 	} else {

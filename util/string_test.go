@@ -1,7 +1,7 @@
 package util_test
 
 import (
-	"encoding/json"
+	"github.com/bytedance/sonic"
 	"github.com/thkhxm/tgf/util"
 	"reflect"
 	"testing"
@@ -27,7 +27,7 @@ func TestStrToAny(t *testing.T) {
 		wantErr bool
 	}
 	ddd := &StringDemoType{Name: "333"}
-	arg, _ := json.Marshal(ddd)
+	arg, _ := sonic.Marshal(ddd)
 	tests := []testCase[StringDemoType]{
 		{name: "1", args: args{string(arg)}, want: *ddd, wantErr: false},
 	}

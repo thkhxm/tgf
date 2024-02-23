@@ -102,43 +102,44 @@ func (h *hashAutoCacheManager[Val]) loadCache(key ...string) (keys []string) {
 			h.groupAutoCacheManager.Set(keys, pk)
 		}
 	}()
-	defer func() {
 
-	}()
-	//从cache缓存中获取
-	if h.cache() {
-		//根据主键Key组合成redis的Key,获取hash数据
-		if val, suc := GetMap[string, Val](h.getCacheKey(pk)); suc {
-			keys = make([]string, len(val))
-			i := 0
-			for _, v := range val {
-				//根据主键Key和hashKey组成唯一的cacheKey
-				lk := h.getLocalKey(pk, v.HashCacheFieldByVal())
-				h.set(lk, v)
-				//将该cacheKey放入slice中,用于管理用户的key列表
-				keys[i] = lk
-				i++
-			}
-			return
-		}
-	}
-
-	//从db获取
-	if h.longevity() {
-		d := make([]any, len(key))
-		for i, k := range key {
-			d[i] = k
-		}
-		val, err := h.sb.queryList(d...)
-		if err == nil {
-			keys = make([]string, len(val))
-			for i, v := range val {
-				lk := h.getLocalKey(pk, v.HashCacheFieldByVal())
-				h.set(lk, v)
-				keys[i] = lk
+	h.sf.Do(pk, func() (interface{}, error) {
+		//从cache缓存中获取
+		if h.cache() {
+			//根据主键Key组合成redis的Key,获取hash数据
+			if val, suc := GetMap[string, Val](h.getCacheKey(pk)); suc {
+				i := 0
+				for _, v := range val {
+					//根据主键Key和hashKey组成唯一的cacheKey
+					lk := h.getLocalKey(pk, v.HashCacheFieldByVal())
+					h.set(lk, v)
+					//将该cacheKey放入slice中,用于管理用户的key列表
+					keys[i] = lk
+					i++
+				}
+				return keys, nil
 			}
 		}
-	}
+
+		//从db获取
+		if h.longevity() {
+			d := make([]any, len(key))
+			for i, k := range key {
+				d[i] = k
+			}
+			val, err := h.sb.queryList(d...)
+			if err == nil {
+				keys = make([]string, len(val))
+				for i, v := range val {
+					lk := h.getLocalKey(pk, v.HashCacheFieldByVal())
+					h.set(lk, v)
+					keys[i] = lk
+				}
+				return keys, nil
+			}
+		}
+		return keys, errors.New("not found in cache")
+	})
 	return
 }
 
@@ -322,27 +323,31 @@ func (a *autoCacheManager[Key, Val]) Get(key ...Key) (val Val, err error) {
 			return
 		}
 	}
-	//从cache缓存中获取
-	if a.cache() {
-		if val, suc = Get[Val](a.getCacheKey(localKey)); suc {
-			a.set(localKey, val)
-			return
+	a.sf.Do(pk, func() (interface{}, error) {
+		//从cache缓存中获取
+		if a.cache() {
+			if val, suc = Get[Val](a.getCacheKey(localKey)); suc {
+				a.set(localKey, val)
+				return val, nil
+			}
 		}
-	}
 
-	//从db获取
-	if a.longevity() {
-		d := make([]any, len(key), len(key))
-		for i, k := range key {
-			d[i] = k
+		//从db获取
+		if a.longevity() {
+			d := make([]any, len(key), len(key))
+			for i, k := range key {
+				d[i] = k
+			}
+			val, err = a.sb.queryOne(d...)
+			if err == nil {
+				a.set(localKey, val)
+				Set(a.getCacheKey(localKey), val, a.cacheTimeOut())
+			}
+			return val, err
 		}
-		val, err = a.sb.queryOne(d...)
-		if err == nil {
-			a.set(localKey, val)
-			Set(a.getCacheKey(localKey), val, a.cacheTimeOut())
-		}
-		return
-	}
+		return val, errors.New("data not found in cache")
+	})
+
 	return val, errors.New("data not found in cache")
 }
 

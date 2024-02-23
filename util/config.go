@@ -1,9 +1,11 @@
 package util
 
 import (
-	"encoding/json"
+	"bufio"
 	"fmt"
+	"github.com/bytedance/sonic"
 	"github.com/xuri/excelize/v2"
+	"io"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -30,11 +32,14 @@ var (
 	goPackage             = "conf"
 	unityPackage          = "HotFix.Config"
 	fileExt               = ".xlsx"
+	md5FilePath           = "./config.md5"
+	cacheMd5File          = make(map[string]string) // key: fileName value:fileMd5
 )
 
 // ExcelExport
 // @Description: Excel导出json文件
 func ExcelExport() {
+	loadMd5File(md5FilePath)
 	fmt.Println("---------------start export------------------")
 	fmt.Println("")
 	fmt.Println("")
@@ -53,6 +58,10 @@ func ExcelExport() {
 	//
 	if excelToUnityPath != "" {
 		toUnity(structs)
+	}
+
+	if 0 < len(structs) {
+		saveMd5File(md5FilePath)
 	}
 
 	fmt.Println("")
@@ -209,6 +218,12 @@ func parseFile(file string) []*configStruct {
 
 	fmt.Println("excel file [", file, "]")
 	fileReader, err := os.OpenFile(file, os.O_RDONLY, 0666)
+	if err != nil {
+		panic(err.Error())
+	}
+	if checkMd5(file) {
+		return nil
+	}
 	xlsx, err := excelize.OpenReader(fileReader)
 	if err != nil {
 		panic(err.Error())
@@ -384,7 +399,7 @@ func convertToStringSlice(input string) string {
 	splitInput := strings.Split(input, ",")
 
 	// Convert the string array to json
-	jsonData, err := json.Marshal(splitInput)
+	jsonData, err := sonic.Marshal(splitInput)
 	if err != nil {
 		fmt.Sprintf("string array error %v", err)
 	}
@@ -499,4 +514,55 @@ func newError(msg string, code int32) tgf.GameError {
 	defer file.Close()
 	tp.Execute(file, data)
 
+}
+
+func loadMd5File(file string) {
+	f, err := os.Open(file)
+	if err != nil {
+		return
+	}
+	defer f.Close()
+
+	reader := bufio.NewReader(f)
+	for {
+		bytes, err := reader.ReadBytes('\n')
+		if err != nil && err != io.EOF {
+			fmt.Println(err)
+			continue
+		}
+		if err == io.EOF {
+			break
+		}
+		line := strings.TrimSpace(string(bytes))
+		if len(line) == 0 {
+			continue
+		}
+		split := strings.Split(line, ",")
+		cacheMd5File[split[0]] = split[1]
+		fmt.Println(split[0], split[1])
+	}
+}
+
+// return false 说明没有匹配的md5，需要生成配置
+func checkMd5(file string) bool {
+	newMd5 := GetFileMd5(file)
+	fileName := filepath.Base(file)
+	oldMd5, ok := cacheMd5File[fileName]
+	if ok && newMd5 == oldMd5 {
+		return true
+	}
+	cacheMd5File[fileName] = newMd5
+	return false
+}
+
+func saveMd5File(file string) {
+	f, err := os.OpenFile(file, os.O_WRONLY|os.O_CREATE, 0o600)
+	if err != nil {
+		fmt.Printf("open file[%v] error:%v\n", file, err)
+		return
+	}
+	for fileName, fileMd5 := range cacheMd5File {
+		f.WriteString(fmt.Sprintf("%v,%v\n", fileName, fileMd5))
+	}
+	f.Close()
 }
