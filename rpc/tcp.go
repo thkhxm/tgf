@@ -737,10 +737,8 @@ func (t *TCPServer) Run() {
 				// 启动服务器
 				var err error
 				if t.config.IsWss() {
-					log.Info("服务器启动失败：%v", "111111111111111111111111111111111111111")
 					err = http.ListenAndServeTLS(t.config.Address()+":"+t.config.Port(), t.config.WssCertFile(), t.config.WssKeyFile(), nil)
 				} else {
-					log.Info("服务器启动失败：%v", "2222222222222222222222222222222222222222222222")
 					err = http.ListenAndServe(t.config.Address()+":"+t.config.Port(), nil)
 				}
 
