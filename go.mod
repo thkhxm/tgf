@@ -9,7 +9,6 @@ require (
 	github.com/cornelk/hashmap v1.0.8
 	github.com/edwingeng/doublejump v1.0.1
 	github.com/go-sql-driver/mysql v1.7.0
-	github.com/golang/protobuf v1.5.3
 	github.com/gorilla/websocket v1.5.0
 	github.com/joho/godotenv v1.5.1
 	github.com/panjf2000/ants/v2 v2.9.0

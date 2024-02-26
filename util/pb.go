@@ -1,8 +1,8 @@
 package util
 
 import (
-	"github.com/golang/protobuf/proto"
-	"google.golang.org/protobuf/runtime/protoiface"
+	"google.golang.org/protobuf/proto"
+	"google.golang.org/protobuf/reflect/protoreflect"
 	"reflect"
 )
 
@@ -15,7 +15,7 @@ import (
 //2023/4/17
 //***************************************************
 
-func ConvertToPB[T protoiface.MessageV1](data []byte) (t T) {
+func ConvertToPB[T protoreflect.ProtoMessage](data []byte) (t T) {
 	var ()
 	v := reflect.ValueOf(t)
 	if v.IsNil() {

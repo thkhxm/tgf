@@ -6,7 +6,6 @@ import (
 	"errors"
 	"fmt"
 	"github.com/cornelk/hashmap"
-	"github.com/golang/protobuf/proto"
 	"github.com/gorilla/websocket"
 	"github.com/thkhxm/rpcx/client"
 	"github.com/thkhxm/rpcx/share"
@@ -17,7 +16,8 @@ import (
 	"github.com/thkhxm/tgf/util"
 	"github.com/valyala/bytebufferpool"
 	"golang.org/x/net/context"
-	"google.golang.org/protobuf/runtime/protoiface"
+	"google.golang.org/protobuf/proto"
+	"google.golang.org/protobuf/reflect/protoreflect"
 	"io"
 	"net"
 	"net/http"
@@ -53,7 +53,7 @@ var upGrader = websocket.Upgrader{
 	WriteBufferSize: 1024 * 8,
 }
 
-type Args[T protoiface.MessageV1] struct {
+type Args[T protoreflect.ProtoMessage] struct {
 	ByteData []byte
 }
 
@@ -66,7 +66,7 @@ func (a *Args[T]) GetData() (res T) {
 	return util.ConvertToPB[T](a.ByteData)
 }
 
-type Reply[T protoiface.MessageV1] struct {
+type Reply[T protoreflect.ProtoMessage] struct {
 	ByteData []byte
 	Code     int32
 }
@@ -625,10 +625,10 @@ func (t *TCPServer) doLogic(data *RequestData) {
 	)
 	reply := make([]byte, 0)
 
-	reqData := &Args[protoiface.MessageV1]{}
+	reqData := &Args[protoreflect.ProtoMessage]{}
 	reqData.ByteData = data.Data
 
-	resData := &Reply[protoiface.MessageV1]{}
+	resData := &Reply[protoreflect.ProtoMessage]{}
 	err = sendMessage(data.User, data.Module, data.RequestMethod, reqData, resData)
 	if err != nil {
 		log.InfoTag("tcp", "请求异常 数据 [%v] [%v]", data, err)
