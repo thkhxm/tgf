@@ -109,6 +109,7 @@ const (
 	ContextKeyNodeId           = "NodeId"
 	ContextKeyCloseLocalCache  = "CloseLocalCache"
 	ContextKeyBroadcastUserIds = "BroadcastUserIds"
+	ContextKeyTRACEID          = "TraceId"
 )
 
 const (
@@ -116,7 +117,9 @@ const (
 	RPCBroadcastTip = "rpc_broadcast_tip"
 )
 
-const GatewayServiceModuleName = "Gate"
+const GatewayServiceModuleName = "gate"
+const MonitorServiceModuleName = "monitor"
+const AdminServiceModuleName = "admin"
 
 var NodeId = ""
 var ServerModule = false

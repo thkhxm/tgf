@@ -19,5 +19,5 @@ import "github.com/thkhxm/tgf"
 
 func init() {
 	initLogger()
-	Info(tgf.Logo)
+	print(tgf.Logo)
 }

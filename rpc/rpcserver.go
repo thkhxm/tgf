@@ -250,18 +250,20 @@ func (s *Server) Run() chan bool {
 	}
 	ip = fmt.Sprintf("%v:%v", local, port)
 	if s.rpcServer.EnableProfile {
-		log.InfoTag("init", "开启性能监控:%s", ip+"debug/statsview")
-		log.InfoTag("init", "开启性能监控:%s", ip+"debug/pprof")
+		log.InfoTag("init", "开启性能监控:%s", ip+"/debug/statsview")
+		log.InfoTag("init", "开启性能监控:%s", ip+"/debug/pprof")
 	}
 
 	discovery := internal.GetDiscovery()
 	//如果加入了服务注册，那么走服务注册的流程
 	if discovery != nil {
 		s.rpcServer.Plugins.Add(discovery.RegisterServer(ip))
+		s.rpcServer.Plugins.Add(NewRPCXServerHandler())
+		s.service = append(s.service, &MonitorService{})
 		//注册服务到服务发现上,允许多个服务，注册到一个节点
 		for _, service := range s.service {
 			serviceName = fmt.Sprintf("%v", service.GetName())
-			metaData := fmt.Sprintf("version=%v", service.GetVersion())
+			metaData := fmt.Sprintf("version=%s&nodeId=%s", service.GetVersion(), tgf.NodeId)
 			err := s.rpcServer.RegisterName(serviceName, service, metaData)
 			if err != nil {
 				log.Error("[init] 注册服务发现失败 serviceName=%v metaDat=%v error=%v", serviceName, metaData, err)
@@ -321,7 +323,6 @@ var rpcClient *Client
 
 type Client struct {
 	clients     *hashmap.Map[string, client.XClient]
-	noReplyChan chan *client.Call
 	whiteMethod []string
 }
 
@@ -340,19 +341,8 @@ func (c *ClientOptional) startup() *Client {
 	//
 	rpcClient = new(Client)
 	rpcClient.clients = hashmap.New[string, client.XClient]()
-	rpcClient.noReplyChan = make(chan *client.Call, 1e5)
 	rpcClient.whiteMethod = make([]string, 0)
-	util.Go(func() {
-		for {
-			select {
-			case <-rpcClient.noReplyChan:
-				//if ok {
-				//log.DebugTag("monitor", "servicePath=%v serviceMethod=%v uid %v", call.ServicePath, call.ServiceMethod, call.Metadata[tgf.ContextKeyUserId])
-				//log.DebugTag("rpc", "no reply service path %v ", call.ServicePath)
-				//}
-			}
-		}
-	})
+
 	//注册一个basePath的路径
 	discovery := internal.GetDiscovery()
 	baseDiscovery := discovery.RegisterDiscovery("")
@@ -365,6 +355,7 @@ func (c *ClientOptional) startup() *Client {
 	rpcClient.watchBaseDiscovery(discovery, baseDiscovery)
 	return rpcClient
 }
+
 func (c *Client) AddWhiteService(serviceName string) *Client {
 	var ()
 	c.whiteMethod = append(c.whiteMethod, serviceName)
@@ -663,7 +654,6 @@ func NewRPCContext() context.Context {
 	ct := share.NewContext(context.Background())
 	initData := make(map[string]string)
 	initData[tgf.ContextKeyRPCType] = tgf.RPCTip
-	initData[tgf.ContextKeyNodeId] = tgf.NodeId
 	ct.SetValue(share.ReqMetaDataKey, initData)
 	ct.SetValue(share.ServerTimeout, 5)
 	return ct
@@ -677,7 +667,6 @@ func NewUserRPCContext(userId string) context.Context {
 	ct := share.NewContext(context.Background())
 	initData := make(map[string]string)
 	initData[tgf.ContextKeyRPCType] = tgf.RPCTip
-	initData[tgf.ContextKeyNodeId] = tgf.NodeId
 	initData[tgf.ContextKeyUserId] = userId
 	ct.SetValue(share.ReqMetaDataKey, initData)
 	ct.SetValue(share.ServerTimeout, 5)
@@ -692,7 +681,6 @@ func NewBindRPCContext(userId ...string) context.Context {
 	ct := share.NewContext(context.Background())
 	initData := make(map[string]string)
 	initData[tgf.ContextKeyRPCType] = tgf.RPCBroadcastTip
-	initData[tgf.ContextKeyNodeId] = tgf.NodeId
 	ids := strings.Join(userId, ",")
 	initData[tgf.ContextKeyBroadcastUserIds] = ids
 	ct.SetValue(share.ReqMetaDataKey, initData)

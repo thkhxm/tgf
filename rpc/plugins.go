@@ -1,17 +1,20 @@
 package rpc
 
 import (
-	context2 "context"
+	"context"
 	"fmt"
+	"github.com/bytedance/sonic"
 	"github.com/cornelk/hashmap"
 	"github.com/edwingeng/doublejump"
 	client2 "github.com/thkhxm/rpcx/client"
+	"github.com/thkhxm/rpcx/protocol"
+	"github.com/thkhxm/rpcx/server"
 	"github.com/thkhxm/rpcx/share"
 	"github.com/thkhxm/tgf"
 	"github.com/thkhxm/tgf/db"
+	"github.com/thkhxm/tgf/exp/admin"
 	"github.com/thkhxm/tgf/log"
 	"github.com/thkhxm/tgf/util"
-	"golang.org/x/net/context"
 	"strings"
 	"time"
 )
@@ -192,17 +195,63 @@ func (c *CustomSelector) initStruct(moduleName string) {
 	c.cacheManager = db.NewAutoCacheManager[string, string](localNodeCacheTimeout)
 }
 
-type RPCXClientHandler struct {
+type XClientHandler struct {
 }
 
-func (r *RPCXClientHandler) PreCall(ctx context2.Context, serviceName, methodName string, args interface{}) (interface{}, error) {
-	log.DebugTag("trace-rpc", "发送 %v-%v 请求 , 参数 %v", serviceName, methodName, args)
+func (r *XClientHandler) PreCall(ctx context.Context, serviceName, methodName string, args interface{}) error {
+	var reqMetaData map[string]string
+	if sc, ok := ctx.(*share.Context); ok {
+		reqMetaData = sc.Value(share.ReqMetaDataKey).(map[string]string)
+		reqMetaData[tgf.ContextKeyNodeId] = tgf.NodeId
+	}
+	argStr, _ := sonic.MarshalString(args)
+	log.DebugTag("trace", "[%s] 节点 [%s] 发送 [%v-%v] 请求 , 参数 [%v]", reqMetaData[tgf.ContextKeyTRACEID], tgf.NodeId, serviceName, methodName, argStr)
+	return nil
+}
+
+func (r *XClientHandler) PostCall(ctx context.Context, servicePath, serviceMethod string, args interface{}, reply interface{}, err error) error {
+	var reqMetaData map[string]string
+	if sc, ok := ctx.(*share.Context); ok {
+		reqMetaData = sc.Value(share.ReqMetaDataKey).(map[string]string)
+	}
+	replyStr, _ := sonic.MarshalString(reply)
+	log.DebugTag("trace", "[%s] client 接收 %v-%v 响应 , 返回结果 %v ", reqMetaData[tgf.ContextKeyTRACEID], servicePath, serviceMethod, replyStr)
+	return err
+}
+
+type XServerHandler struct {
+}
+
+func (r *XServerHandler) PreCall(ctx context.Context, serviceName, methodName string, args interface{}) (result interface{}, e error) {
+	var reqMetaData map[string]string
+	if sc, ok := ctx.(*share.Context); ok {
+		reqMetaData = sc.Value(share.ReqMetaDataKey).(map[string]string)
+	}
+	argStr, _ := sonic.MarshalString(args)
+	log.DebugTag("trace", "[%s] server 接收 %v-%v 请求 , 参数 %v", reqMetaData[tgf.ContextKeyTRACEID], serviceName, methodName, argStr)
 	return args, nil
 }
 
-func (r *RPCXClientHandler) PostCall(ctx context2.Context, servicePath, serviceMethod string, args interface{}, reply interface{}, err error) error {
-	log.DebugTag("trace-rpc", "执行 %v-%v 完毕 , 返回结果 %v ", servicePath, serviceMethod, reply)
-	return err
+func (r *XServerHandler) PostCall(ctx context.Context, servicePath, serviceMethod string, args interface{}, reply interface{}, err error) (result interface{}, e error) {
+	var reqMetaData map[string]string
+	if sc, ok := ctx.(*share.Context); ok {
+		reqMetaData = sc.Value(share.ReqMetaDataKey).(map[string]string)
+	}
+	replyStr, _ := sonic.MarshalString(reply)
+	log.DebugTag("trace", "[%s] server 执行 %v-%v 完毕 , 返回结果 %v ", reqMetaData[tgf.ContextKeyTRACEID], servicePath, serviceMethod, replyStr)
+	return reply, err
+}
+
+// PostReadRequest counts read
+func (r *XServerHandler) PostReadRequest(ctx context.Context, m *protocol.Message, e error) error {
+	sp := m.ServicePath
+	sm := m.ServiceMethod
+
+	if sp == "" {
+		return nil
+	}
+	admin.PointRPCRequest(sp, sm)
+	return nil
 }
 
 type ILoginCheck interface {
@@ -216,6 +265,11 @@ func NewCustomSelector(moduleName string) client2.Selector {
 }
 
 func NewRPCXClientHandler() client2.PostCallPlugin {
-	res := &RPCXClientHandler{}
+	res := &XClientHandler{}
+	return res
+}
+
+func NewRPCXServerHandler() server.PostCallPlugin {
+	res := &XServerHandler{}
 	return res
 }

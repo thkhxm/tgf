@@ -295,6 +295,7 @@ type RequestData struct {
 	Data          []byte
 	MessageType   HeaderMessageType
 	ReqId         int32
+	StartTime     time.Time
 }
 
 func (t *TCPServer) selectorChan() {
@@ -350,7 +351,7 @@ func (t *TCPServer) handlerWSConn(conn *websocket.Conn) {
 	conn.SetPingHandler(func(message string) error {
 
 		err := conn.WriteControl(websocket.PongMessage, []byte(message), time.Now().Add(t.config.DeadLineTime()))
-		log.DebugTag("tcp", "收到客户端的ping请求 %v err=%v", message, err)
+		log.DebugTag("ping", "收到客户端的ping请求 %v err=%v", GetUserId(connectData.contextData), err)
 		if err == websocket.ErrCloseSent {
 			return nil
 		} else if e, ok := err.(net.Error); ok && e.Timeout() {
@@ -603,7 +604,6 @@ func (t *TCPServer) DoLogin(userId, templateUserId string) (err error) {
 		reqMetaData = make(map[string]string)
 	}
 	reqMetaData[tgf.ContextKeyUserId] = userId
-	reqMetaData[tgf.ContextKeyNodeId] = tgf.NodeId
 	ct.SetValue(share.ReqMetaDataKey, reqMetaData)
 	t.users.Set(userId, userData)
 	userData.Login(userId)
@@ -620,8 +620,8 @@ func (t *TCPServer) DoLogin(userId, templateUserId string) (err error) {
 
 func (t *TCPServer) doLogic(data *RequestData) {
 	var (
-		err       error
-		startTime = time.Now().UnixMilli()
+		err         error
+		messageType = data.Module + "." + data.RequestMethod
 	)
 	reply := make([]byte, 0)
 
@@ -629,6 +629,17 @@ func (t *TCPServer) doLogic(data *RequestData) {
 	reqData.ByteData = data.Data
 
 	resData := &Reply[protoreflect.ProtoMessage]{}
+	data.User.StartReq()
+	defer func() {
+		consumeTime := time.Since(data.StartTime).Milliseconds()
+		if consumeTime > 100 {
+			log.WarnTag("tcp", "用户[%s] 慢请求耗时统计 module=%v serviceName=%v consumeTime=%v", data.User.userId, data.Module, data.RequestMethod, consumeTime)
+		}
+		//记录客户端请求日志
+		log.Service(data.Module, data.RequestMethod, "1.0",
+			data.User.userId, string(data.Data), string(reply),
+			consumeTime, resData.Code)
+	}()
 	err = sendMessage(data.User, data.Module, data.RequestMethod, reqData, resData)
 	if err != nil {
 		log.InfoTag("tcp", "请求异常 数据 [%v] [%v]", data, err)
@@ -640,9 +651,7 @@ func (t *TCPServer) doLogic(data *RequestData) {
 	//	return
 	//}
 	reply = resData.ByteData
-	consumeTime := time.Now().UnixMilli() - startTime
-	log.DebugTag("tcp", "请求耗时统计 module=%v serviceName=%v consumeTime=%v", data.Module, data.RequestMethod, consumeTime)
-	clientData := t.getSendToClientData(data.Module+"."+data.RequestMethod, data.ReqId, resData.Code, reply)
+	clientData := t.getSendToClientData(messageType, data.ReqId, resData.Code, reply)
 	data.User.Send(clientData)
 }
 
@@ -877,6 +886,11 @@ func (u *UserConnectData) Send(data []byte) {
 		log.WarnTag("tcp", "用户 %s 发送请求超时", u.userId)
 		return
 	}
+}
+
+func (u *UserConnectData) StartReq() {
+	reqMetaData := u.contextData.Value(share.ReqMetaDataKey).(map[string]string)
+	reqMetaData[tgf.ContextKeyTRACEID] = util.GenerateSnowflakeId()
 }
 
 func (u *UserConnectData) writeMessage() {
