@@ -6,6 +6,7 @@ import (
 	"github.com/rpcxio/libkv"
 	"github.com/rpcxio/libkv/store"
 	"github.com/rpcxio/libkv/store/consul"
+	"github.com/thkhxm/rpcx/client"
 	"github.com/thkhxm/tgf"
 	"log"
 	"net/http"
@@ -41,9 +42,10 @@ type MetaData struct {
 var consulRegistry *ConsulRegistry
 
 type ConsulRegistry struct {
-	kv          store.Store
-	baseURL     string
-	registryURL string
+	kv            store.Store
+	baseURL       string
+	registryURL   string
+	StateCallBack func(name, address string, state client.ConsulServerState)
 }
 
 func (r *ConsulRegistry) InitRegistry() {
@@ -153,12 +155,53 @@ func (r *ConsulRegistry) DeactivateService(writer http.ResponseWriter, request *
 		log.Println("etcd value parse failed. err ", err.Error())
 		return
 	}
-	v.Set("state", "inactive")
+	v.Set("state", string(client.ConsulServerStateInActive))
 	err = r.kv.Put(kv.Key, []byte(v.Encode()), &store.WriteOptions{IsDir: false})
 	if err != nil {
 		log.Println("etcd set failed, err : ", err.Error())
 	}
+	if r.StateCallBack != nil {
+		r.StateCallBack(name[1:], address, client.ConsulServerStateInActive)
+	}
+	return
+}
 
+func (r *ConsulRegistry) PauseService(writer http.ResponseWriter, request *http.Request) {
+	var name, address string
+	var kv *store.KVPair
+	var err error
+	id := request.PathValue("id")
+	did, _ := base64.StdEncoding.DecodeString(id)
+	id = string(did)
+	name = strings.Split(id, "^")[0]
+	address = strings.Split(id, "^")[1]
+	key := path.Join(r.baseURL, name, address)
+	result := "fail"
+	defer func() {
+		if err == nil {
+			result = "success"
+		}
+		writer.Write([]byte(result))
+	}()
+
+	kv, err = r.kv.Get(key)
+	if err != nil {
+		return
+	}
+
+	v, err := url.ParseQuery(string(kv.Value[:]))
+	if err != nil {
+		log.Println("etcd value parse failed. err ", err.Error())
+		return
+	}
+	v.Set("state", string(client.ConsulServerStatePause))
+	err = r.kv.Put(kv.Key, []byte(v.Encode()), &store.WriteOptions{IsDir: false})
+	if err != nil {
+		log.Println("etcd set failed, err : ", err.Error())
+	}
+	if r.StateCallBack != nil {
+		r.StateCallBack(name[1:], address, client.ConsulServerStatePause)
+	}
 	return
 }
 
@@ -187,10 +230,13 @@ func (r *ConsulRegistry) ActivateService(writer http.ResponseWriter, request *ht
 		log.Println("etcd value parse failed. err ", err.Error())
 		return
 	}
-	v.Set("state", "active")
+	v.Set("state", string(client.ConsulServerStateActive))
 	err = r.kv.Put(kv.Key, []byte(v.Encode()), &store.WriteOptions{IsDir: false})
 	if err != nil {
 		log.Println("etcdv3 put failed. err: ", err.Error())
+	}
+	if r.StateCallBack != nil {
+		r.StateCallBack(name[1:], address, client.ConsulServerStateActive)
 	}
 	return
 }

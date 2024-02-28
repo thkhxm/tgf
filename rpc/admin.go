@@ -22,12 +22,17 @@ func ServeAdmin() {
 	mux := http.NewServeMux()
 	c := &admin.ConsulRegistry{}
 	c.InitRegistry()
+	c.StateCallBack = func(name, address string, state client.ConsulServerState) {
+		s := state
+		SendNoReplyRPCMessageByAddress(name, address, "StateHandler", &s)
+	}
 	mux.HandleFunc("/consul", CorsMiddleware(c.ConsulList))
 	mux.HandleFunc("/consul/active/{id}", CorsMiddleware(c.ActivateService))
 	mux.HandleFunc("/consul/close/{id}", CorsMiddleware(c.DeactivateService))
+	mux.HandleFunc("/consul/pause/{id}", CorsMiddleware(c.PauseService))
 	//
 	mux.HandleFunc("/monitor/service", CorsMiddleware(admin.QueryMonitor))
-	r := NewRPCServer().WithService(&Admin{}).WithCache(tgf.CacheModuleClose).Run()
+	r := NewRPCServer().WithService(&Admin{Module: Module{Name: tgf.AdminServiceModuleName, Version: "1.0"}}).WithCache(tgf.CacheModuleClose).Run()
 	go func() {
 		<-r
 	}()
@@ -52,6 +57,7 @@ func CorsMiddleware(handler http.HandlerFunc) http.HandlerFunc {
 }
 
 type Admin struct {
+	Module
 	autoUpdateTicker *time.Ticker
 }
 
@@ -66,11 +72,11 @@ func (a *Admin) Destroy(sub IService) {
 }
 
 func (a *Admin) GetName() string {
-	return tgf.AdminServiceModuleName
+	return a.Name
 }
 
 func (a *Admin) GetVersion() string {
-	return "1.0"
+	return a.Version
 }
 
 func (a *Admin) Startup() (bool, error) {

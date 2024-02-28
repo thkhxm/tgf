@@ -1,6 +1,7 @@
 package rpc
 
 import (
+	"github.com/thkhxm/rpcx/client"
 	"github.com/thkhxm/rpcx/share"
 	"github.com/thkhxm/tgf"
 	"github.com/thkhxm/tgf/log"
@@ -31,6 +32,7 @@ type IService interface {
 type Module struct {
 	Name     string
 	Version  string
+	State    client.ConsulServerState
 	userHook IUserHook
 }
 
@@ -44,6 +46,12 @@ func (m *Module) GetUserHook() IUserHook {
 		m.userHook = NewUserHook()
 	}
 	return m.userHook
+}
+
+func (m *Module) StateHandler(ctx context.Context, args *client.ConsulServerState, reply *string) (err error) {
+	m.State = *args
+	log.InfoTag("system", "update module state %s to %s module=%v version=%v", m.State, args, m.Name, m.Version)
+	return
 }
 
 type ServiceAPI[Req, Res any] struct {

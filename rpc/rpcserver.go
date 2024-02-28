@@ -548,6 +548,18 @@ func SendNoReplyRPCMessage[Req any, Res any](ct context.Context, api *ServiceAPI
 	return err
 }
 
+func SendNoReplyRPCMessageByAddress(moduleName, address, serviceName string, args interface{}) error {
+	var (
+		rc      = getRPCClient()
+		xclient = rc.getClient(moduleName)
+	)
+	if xclient == nil {
+		return errors.New(fmt.Sprintf("找不到对应模块的服务 moduleName=%v", moduleName))
+	}
+	err := xclient.Oneshot(newRPCNodeContext(moduleName, address), serviceName, args)
+	return err
+}
+
 // BorderRPCMessage [Req any, Res any]
 //
 //	@Description: 推送消息到所有服务节点
@@ -654,6 +666,16 @@ func NewRPCContext() context.Context {
 	ct := share.NewContext(context.Background())
 	initData := make(map[string]string)
 	initData[tgf.ContextKeyRPCType] = tgf.RPCTip
+	ct.SetValue(share.ReqMetaDataKey, initData)
+	ct.SetValue(share.ServerTimeout, 5)
+	return ct
+}
+
+func newRPCNodeContext(moduleName, address string) context.Context {
+	ct := share.NewContext(context.Background())
+	initData := make(map[string]string)
+	initData[tgf.ContextKeyRPCType] = tgf.RPCTip
+	initData[moduleName] = address
 	ct.SetValue(share.ReqMetaDataKey, initData)
 	ct.SetValue(share.ServerTimeout, 5)
 	return ct

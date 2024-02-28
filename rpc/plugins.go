@@ -15,6 +15,7 @@ import (
 	"github.com/thkhxm/tgf/exp/admin"
 	"github.com/thkhxm/tgf/log"
 	"github.com/thkhxm/tgf/util"
+	"net/url"
 	"strings"
 	"time"
 )
@@ -33,10 +34,31 @@ var (
 	localNodeCacheTimeout int64 = 60 * 5
 )
 
+type ConsulServerInfo struct {
+	State      string
+	Version    int32
+	SubVersion int32
+	NodeId     string
+}
+
+func newConsulServerInfo(data string) *ConsulServerInfo {
+	if q, a := url.ParseQuery(data); a == nil {
+		v, _ := util.StrToAny[int32](strings.Split(q.Get("version"), ".")[0])
+		subv, _ := util.StrToAny[int32](strings.Split(q.Get("version"), ".")[1])
+		return &ConsulServerInfo{
+			State:      q.Get("state"),
+			Version:    v,
+			SubVersion: subv,
+			NodeId:     q.Get("nodeId"),
+		}
+	}
+	return nil
+}
+
 type CustomSelector struct {
 	moduleName   string
 	h            *doublejump.Hash
-	servers      *hashmap.Map[string, string]
+	servers      *hashmap.Map[string, *ConsulServerInfo]
 	cacheManager db.IAutoCacheService[string, string]
 }
 
@@ -114,8 +136,8 @@ func (c *CustomSelector) Select(ctx context.Context, servicePath, serviceMethod 
 				}
 			} else {
 				if c.checkServerAlive(selected) {
-					key := client2.HashString(fmt.Sprintf("%v", time.Now().Unix()))
-					selected, _ = c.h.Get(key).(string)
+					//key := client2.HashString(fmt.Sprintf("%v", time.Now().Unix()))
+					//selected, _ = c.h.Get(key).(string)
 					return
 				}
 				key := client2.HashString(fmt.Sprintf("%v", time.Now().UnixNano()))
@@ -151,22 +173,30 @@ func (c *CustomSelector) UpdateServer(servers map[string]string) {
 	var serverInfos string
 	clearUserCache := false
 	for k, v := range servers {
+		if v == "" {
+			continue
+		}
 		if log.CheckLogTag("discovery") {
 			serverInfos += fmt.Sprintf("%v:%v,", k, v)
 		}
 		c.h.Add(k)
-		if c.servers.Insert(k, v) {
+		if c.servers.Insert(k, newConsulServerInfo(v)) {
 			clearUserCache = true
 		} else {
-			c.servers.Set(k, v)
+			c.servers.Set(k, newConsulServerInfo(v))
 		}
 	}
 
-	c.servers.Range(func(k string, v string) bool {
+	c.servers.Range(func(k string, v *ConsulServerInfo) bool {
 		if servers[k] == "" { // remove
 			c.h.Remove(k)
 			c.servers.Del(k)
 			clearUserCache = true
+			log.DebugTag("discovery", "remove server %v", v)
+		}
+		if v.State == string(client2.ConsulServerStatePause) {
+			c.h.Remove(k)
+			log.DebugTag("discovery", "server %v state is %v", v, v.State)
 		}
 		return true
 	})
@@ -189,7 +219,7 @@ func (c *CustomSelector) checkServerAlive(server string) (h bool) {
 }
 
 func (c *CustomSelector) initStruct(moduleName string) {
-	c.servers = hashmap.New[string, string]()
+	c.servers = hashmap.New[string, *ConsulServerInfo]()
 	c.h = doublejump.NewHash()
 	c.moduleName = moduleName
 	c.cacheManager = db.NewAutoCacheManager[string, string](localNodeCacheTimeout)
