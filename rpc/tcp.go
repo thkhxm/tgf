@@ -623,6 +623,7 @@ func (t *TCPServer) doLogic(data *RequestData) {
 		err         error
 		messageType = data.Module + "." + data.RequestMethod
 	)
+	data.StartTime = time.Now()
 	reply := make([]byte, 0)
 
 	reqData := &Args[protoreflect.ProtoMessage]{}

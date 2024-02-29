@@ -116,7 +116,7 @@ func NewUserHook() IUserHook {
 	}
 }
 
-var Gate = &Module{Name: "Gate", Version: "1.0"}
+var Gate = &Module{Name: "gate", Version: "1.0"}
 
 var (
 	UploadUserNodeInfo = &ServiceAPI[*UploadUserNodeInfoReq, *UploadUserNodeInfoRes]{
