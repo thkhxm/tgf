@@ -9,7 +9,7 @@
     
     开发者只需要关注业务逻辑即可,无需关心用户并发和节点状态等复杂情况.
 
-
+[API](https://pkg.go.dev/github.com/thkhxm/tgf)
 [项目地址](https://github.com/thkhxm/tgf)  
 [项目文档](https://thkhxm.github.io/tgf_writerside/starter-topic.html)  
 [国内项目文档](http://tgf.yamigame.net:8080/)  
@@ -23,7 +23,7 @@
     QQ群:7400585
 
 ## 技术选型
-    Golang开发版本:  1.21.1
+    Golang开发版本:  1.22
 
 | 技术       | 说明           | 仓库地址                                 |
 | ---------- | -------------- | ---------------------------------------- |
@@ -39,24 +39,6 @@
 | lumberjack | 日志切割工具   | https://gopkg.in/natefinch/lumberjack.v2 |
 | excelize   | Excel工具      | https://github.com/qax-os/excelize       |
 | sonic      | json高性能工具 | https://github.com/bytedance/sonic/      |
-
-## 基础架构图
-![img](http://oss.yamigame.net/picgo/image-20230228031100624.png)
-
-## 未引入功能
-- [ ] mysql异步优化
-- [ ] 配置文件修改为toml文件
-- [ ] db操作中push接口改为异步处理
-- [ ] db中的mysql移除操作
-- [ ] 游戏配置优化
-- [ ] rpc链路追踪
-- [ ] 内置http监听服务
-- [ ] 日志上报汇总
-- [ ] 服务器管理工具
-- [ ] 元数据负载分配
-- [ ] db缓存击穿优化
-- [ ] 游戏配置导出优化
-- [ ] 
 
 ## 规划
     项目后续会更新系列教程文章和视频教程,并且开源项目案例.也会不断的更新和优化项目框架.
