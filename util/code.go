@@ -119,6 +119,9 @@ func GeneratorRPC[T any](moduleName, version string) {
 			pk := match[1][1:pointIndex]
 			l := strings.LastIndex(pk, "/")
 			d.Args = "*" + pk[l+1:] + match[1][pointIndex:]
+			if pk == "" {
+				continue
+			}
 			tt[pk] = true
 		}
 
@@ -128,6 +131,9 @@ func GeneratorRPC[T any](moduleName, version string) {
 			pk := match[1][1:pointIndex]
 			l := strings.LastIndex(pk, "/")
 			d.Reply = "*" + pk[l+1:] + match[1][pointIndex:]
+			if pk == "" {
+				continue
+			}
 			tt[pk] = true
 		}
 		s = append(s, d)
