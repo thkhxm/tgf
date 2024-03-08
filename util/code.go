@@ -310,7 +310,11 @@ func GeneratorAPI[T any](moduleName, version string, pushServices ...string) {
 			d.Reply = "*" + pk[l+1:] + match[1][pointIndex:]
 			tt[pk] = true
 		}
-		csStructCache.Apis = append(csStructCache.Apis, d)
+		csStructCache.Apis = append(csStructCache.Apis, struct {
+			Args       string
+			Reply      string
+			MethodName string
+		}{Args: d.Args, Reply: strings.Split(d.Reply, ".")[1], MethodName: d.MethodName})
 		goStructCache.Apis = append(goStructCache.Apis, d)
 	}
 	pi := make([]string, 0)
@@ -406,7 +410,7 @@ namespace %v
     public struct %sServerApi
     {
 	{{range .Apis}}
- 		public static readonly Api {{.MethodName}} = new("%s","{{.MethodName}}");
+ 		public static readonly Api<{{.Reply}}> {{.MethodName}} = new("%s","{{.MethodName}}", false, {{.Reply}}.Parser.ParseFrom);
 	{{end}}
 	{{range .PushServices}}
 		public static readonly string {{.}} = "{{.}}"; 
