@@ -15,7 +15,7 @@ require (
 	github.com/rcrowley/go-metrics v0.0.0-20201227073835-cf1acfcdf475
 	github.com/redis/go-redis/v9 v9.0.1
 	github.com/rpcxio/libkv v0.5.1
-	github.com/thkhxm/rpcx v1.0.0
+	github.com/thkhxm/rpcx v1.0.1
 	github.com/thkhxm/rpcx-consul v1.0.0
 	github.com/valyala/bytebufferpool v1.0.0
 	github.com/xuri/excelize/v2 v2.8.1
