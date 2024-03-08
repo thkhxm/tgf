@@ -181,7 +181,8 @@ func initLogger() {
 	//在原有日志基础上增加一层
 	level, _ := zapcore.ParseLevel(logLevel)
 	//
-	zapCoreGame := newCore(logPath, level, zapLoggerEncoderConfig, true)
+	st := newCore(logPath, level, zapLoggerEncoderConfig, true)
+	zapCoreGame := newCore(logPath, level, zapLoggerEncoderConfig, false)
 	zapCoreService := newCore(fmt.Sprintf("%s%s..%sservice%sservice.log", logPath, string(filepath.Separator), string(filepath.Separator), string(filepath.Separator)), level, zapLoggerEncoderConfig, false)
 	zapCoreDB := newCore(fmt.Sprintf("%s%s..%sdb%sdb.log", logPath, string(filepath.Separator), string(filepath.Separator), string(filepath.Separator)), level, zapLoggerEncoderConfig, false)
 	//zapCore := zapcore.NewCore(zapcore.NewConsoleEncoder(zapLoggerEncoderConfig), syncWriter, level)
@@ -191,7 +192,7 @@ func initLogger() {
 		GAMETAG:    &TaggedCore{Core: zapCoreGame, Tag: ""},
 		SERVICETAG: &TaggedCore{Core: zapCoreService, Tag: SERVICETAG},
 	}
-	logger = zap.New(zapcore.NewTee(taggedCores[DBTAG], taggedCores[GAMETAG], taggedCores[SERVICETAG]), zap.AddCaller(), zap.AddCallerSkip(1))
+	logger = zap.New(zapcore.NewTee(taggedCores[DBTAG], taggedCores[GAMETAG], taggedCores[SERVICETAG], st), zap.AddCaller(), zap.AddCallerSkip(1))
 	slogger = logger.Sugar()
 	defer logger.Sync()
 	InfoTag("init", "日志初始化完成日志文件:%s 日志级别:%v", logPath, logLevel)
@@ -200,6 +201,11 @@ func initLogger() {
 // 为每个日志类型（game, system, all）创建一个专门的Core实例
 func newCore(logPath string, level zapcore.Level, zapLoggerEncoderConfig zapcore.EncoderConfig, stdout bool) zapcore.Core {
 	wys := make([]zapcore.WriteSyncer, 0, 2)
+	if stdout {
+		wys = append(wys, zapcore.AddSync(os.Stdout))
+		syncWriter := zapcore.NewMultiWriteSyncer(wys...)
+		return zapcore.NewCore(zapcore.NewConsoleEncoder(zapLoggerEncoderConfig), syncWriter, level)
+	}
 	wy := zapcore.AddSync(&lumberjack.Logger{
 		Filename:   logPath,           // ⽇志⽂件路径
 		MaxBackups: defaultMaxBackups, // 单位为MB,默认为512MB
@@ -209,9 +215,6 @@ func newCore(logPath string, level zapcore.Level, zapLoggerEncoderConfig zapcore
 		Compress:   false,             // 是否压缩日志
 	})
 	wys = append(wys, wy)
-	if stdout {
-		wys = append(wys, zapcore.AddSync(os.Stdout))
-	}
 	syncWriter := zapcore.NewMultiWriteSyncer(wys...)
 	return zapcore.NewCore(zapcore.NewJSONEncoder(zapLoggerEncoderConfig), syncWriter, level)
 }
