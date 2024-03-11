@@ -20,11 +20,10 @@ import (
 
 type Cc struct {
 	CacheExampleData
-	DD string `orm:"ignore" json:"-"`
 }
 
 func (c *Cc) GetTableName() string {
-	return "game_user"
+	return "user"
 }
 
 func Test_autoCacheManager_Get(t *testing.T) {
@@ -32,10 +31,18 @@ func Test_autoCacheManager_Get(t *testing.T) {
 	cacheManager := db.NewLongevityAutoCacheManager[string, *Cc]("example:cachemanager")
 	key := "123"
 	val := &Cc{
-		CacheExampleData: CacheExampleData{Name: "tim"},
-		DD:               "123321",
+		CacheExampleData: CacheExampleData{Name: "tim", Model: db.NewModel()},
 	}
 	cacheManager.Set(val, key)
+	//time.Sleep(time.Second * 2)
+	//val.Remove()
+	//cacheManager.Remove(key)
+	//time.Sleep(time.Second * 1)
+	if cc, e := cacheManager.Get(key); e == nil {
+		t.Log("get val ", cc)
+	} else {
+		t.Log("get val err ", e)
+	}
 	select {}
 	//data, _ := cacheManager.Get(key)
 	//data.Name = "sam"
@@ -62,7 +69,7 @@ func BenchmarkRef(b *testing.B) {
 
 func BenchmarkComm(b *testing.B) {
 	for i := 0; i < b.N; i++ {
-		v := CacheExampleData{Age: int32(i), Name: "a"}
+		v := CacheExampleData{Name: "a"}
 		StructToString(v)
 	}
 }
@@ -89,8 +96,8 @@ func StructToString(s interface{}) string {
 
 type CacheExampleData struct {
 	db.Model
-	Name string `orm:"pk"`
-	Age  int32
+	Uid  string `orm:"pk"`
+	Name string
 }
 
 func Test_convertCamelToSnake(t *testing.T) {

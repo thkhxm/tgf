@@ -27,10 +27,18 @@ type cacheKey interface {
 	~int | ~int8 | ~int16 | ~int32 | ~int64 | ~uint | ~uint8 | ~uint16 | ~uint32 | ~uint64 | ~uintptr | ~float32 | ~float64 | ~string
 }
 
+type cacheDataState uint8
+
+const (
+	data_default = 0
+	data_del     = 1 << 1
+	data_update  = 1 << 2
+)
+
 type cacheData[Val any] struct {
 	data      Val
 	clearTime int64
-	update    bool
+	state     uint8
 }
 
 var defaultUpdateGroupSize = 500
@@ -94,43 +102,44 @@ func (h *hashAutoCacheManager[Val]) loadCache(key ...string) (keys []string) {
 			h.groupAutoCacheManager.Set(keys, pk)
 		}
 	}()
-	defer func() {
 
-	}()
-	//从cache缓存中获取
-	if h.cache() {
-		//根据主键Key组合成redis的Key,获取hash数据
-		if val, suc := GetMap[string, Val](h.getCacheKey(pk)); suc {
-			keys = make([]string, len(val))
-			i := 0
-			for _, v := range val {
-				//根据主键Key和hashKey组成唯一的cacheKey
-				lk := h.getLocalKey(pk, v.HashCacheFieldByVal())
-				h.set(lk, v)
-				//将该cacheKey放入slice中,用于管理用户的key列表
-				keys[i] = lk
-				i++
-			}
-			return
-		}
-	}
-
-	//从db获取
-	if h.longevity() {
-		d := make([]any, len(key))
-		for i, k := range key {
-			d[i] = k
-		}
-		val, err := h.sb.queryList(d...)
-		if err == nil {
-			keys = make([]string, len(val))
-			for i, v := range val {
-				lk := h.getLocalKey(pk, v.HashCacheFieldByVal())
-				h.set(lk, v)
-				keys[i] = lk
+	h.sf.Do(pk, func() (interface{}, error) {
+		//从cache缓存中获取
+		if h.cache() {
+			//根据主键Key组合成redis的Key,获取hash数据
+			if val, suc := GetMap[string, Val](h.getCacheKey(pk)); suc {
+				i := 0
+				for _, v := range val {
+					//根据主键Key和hashKey组成唯一的cacheKey
+					lk := h.getLocalKey(pk, v.HashCacheFieldByVal())
+					h.set(lk, v)
+					//将该cacheKey放入slice中,用于管理用户的key列表
+					keys[i] = lk
+					i++
+				}
+				return keys, nil
 			}
 		}
-	}
+
+		//从db获取
+		if h.longevity() {
+			d := make([]any, len(key))
+			for i, k := range key {
+				d[i] = k
+			}
+			val, err := h.sb.queryList(d...)
+			if err == nil {
+				keys = make([]string, len(val))
+				for i, v := range val {
+					lk := h.getLocalKey(pk, v.HashCacheFieldByVal())
+					h.set(lk, v)
+					keys[i] = lk
+				}
+				return keys, nil
+			}
+		}
+		return keys, errors.New("not found in cache")
+	})
 	return
 }
 
@@ -145,7 +154,7 @@ func (h *hashAutoCacheManager[Val]) Get(key ...string) (val Val, err error) {
 		//
 		localKey := h.getLocalKey(pk, h.image.HashCacheFieldByKeys(key...))
 		//从本地缓存获取
-		if v, has := h.get(localKey); has {
+		if v, has, cd := h.get(localKey); has && !cd.checkState(data_del) {
 			return v, nil
 		}
 		return nil, errors.New("not found in cache")
@@ -187,7 +196,7 @@ func (h *hashAutoCacheManager[Val]) Set(val Val, key ...string) (success bool) {
 
 	//写入db
 	if h.longevity() {
-		cd.update = true
+		cd.update()
 	}
 
 	return true
@@ -197,15 +206,14 @@ func (h *hashAutoCacheManager[Val]) Push(key ...string) {
 	pk := h.image.HashCachePkKey(key...)
 	fieldKey := h.image.HashCacheFieldByKeys(key...)
 	localKey := h.getLocalKey(pk, fieldKey)
-	if h.cache() {
-		if val, err := h.Get(key...); err == nil {
-			PutMap(h.getCacheKey(pk), fieldKey, val, h.cacheTimeOut())
-		}
-	}
 
-	if h.longevity() {
-		if localCacheData, ok := h.cacheMap.Get(localKey); ok {
-			localCacheData.update = true
+	if localCacheData, ok := h.cacheMap.Get(localKey); ok {
+		localCacheData.removeState(data_del)
+		if h.cache() {
+			PutMap(h.getCacheKey(pk), fieldKey, localCacheData.data, h.cacheTimeOut())
+		}
+		if h.longevity() {
+			localCacheData.update()
 		}
 	}
 }
@@ -222,10 +230,19 @@ func (h *hashAutoCacheManager[Val]) Remove(key ...string) (success bool) {
 	}
 	keys = util.RemoveOneKey(keys, localKey)
 
-	h.cacheMap.Del(localKey)
+	//h.cacheMap.Del(localKey)
 	//设置过期时间，不直接删除
 	if h.cache() {
 		Del(h.getCacheKey(localKey))
+	}
+
+	if h.longevity() {
+		if localCacheData, ok := h.cacheMap.Get(localKey); ok {
+			h.del(localKey)
+			localCacheData.update()
+		}
+	} else {
+		h.cacheMap.Del(localKey)
 	}
 	success = true
 	h.groupAutoCacheManager.Set(keys, pk)
@@ -244,9 +261,11 @@ func (h *hashAutoCacheManager[Val]) GetAll(key ...string) (val []Val, err error)
 		keys = h.loadCache(key...)
 	}
 	//
-	val = make([]Val, len(keys))
-	for i, k := range keys {
-		val[i], _ = h.get(k)
+	val = make([]Val, 0, len(keys))
+	for _, k := range keys {
+		if v, ok, cd := h.get(k); ok && !cd.checkState(data_del) {
+			val = append(val, v)
+		}
 	}
 	return
 }
@@ -265,6 +284,24 @@ func (c *cacheData[Val]) checkTimeOut(now int64) bool {
 	return c.clearTime != 0 && now > c.clearTime
 }
 
+func (c *cacheData[Val]) del(second int64) {
+	c.clearTime = time.Now().Unix() + second
+	c.state = c.state | data_del
+	c.update()
+}
+
+func (c *cacheData[Val]) update() {
+	c.state = c.state | data_update
+}
+
+func (c *cacheData[Val]) checkState(state uint8) bool {
+	return c.state&state == state
+}
+
+func (c *cacheData[Val]) removeState(state uint8) {
+	c.state = c.state ^ state
+}
+
 func (c *cacheData[Val]) getData(second int64) Val {
 	var ()
 	if second > 0 {
@@ -275,34 +312,42 @@ func (c *cacheData[Val]) getData(second int64) Val {
 
 func (a *autoCacheManager[Key, Val]) Get(key ...Key) (val Val, err error) {
 	var suc bool
+	var cd *cacheData[Val]
 	localKey := a.getLocalKey(key...)
 	//先从本地缓存获取
 	if a.mem() {
-		if val, suc = a.get(localKey); suc {
+		if val, suc, cd = a.get(localKey); suc {
+			if cd.checkState(data_del) {
+				return val, errors.New("data not found in cache")
+			}
 			return
 		}
 	}
-	//从cache缓存中获取
-	if a.cache() {
-		if val, suc = Get[Val](a.getCacheKey(localKey)); suc {
-			a.set(localKey, val)
-			return
+	a.sf.Do(pk, func() (interface{}, error) {
+		//从cache缓存中获取
+		if a.cache() {
+			if val, suc = Get[Val](a.getCacheKey(localKey)); suc {
+				a.set(localKey, val)
+				return val, nil
+			}
 		}
-	}
 
-	//从db获取
-	if a.longevity() {
-		d := make([]any, len(key), len(key))
-		for i, k := range key {
-			d[i] = k
+		//从db获取
+		if a.longevity() {
+			d := make([]any, len(key), len(key))
+			for i, k := range key {
+				d[i] = k
+			}
+			val, err = a.sb.queryOne(d...)
+			if err == nil {
+				a.set(localKey, val)
+				Set(a.getCacheKey(localKey), val, a.cacheTimeOut())
+			}
+			return val, err
 		}
-		val, err = a.sb.queryOne(d...)
-		if err == nil {
-			a.set(localKey, val)
-			Set(a.getCacheKey(localKey), val, a.cacheTimeOut())
-		}
-		return
-	}
+		return val, errors.New("data not found in cache")
+	})
+
 	return val, errors.New("data not found in cache")
 }
 
@@ -313,7 +358,7 @@ func (a *autoCacheManager[Key, Val]) Set(val Val, key ...Key) (success bool) {
 		Set(a.getCacheKey(localKey), val, a.cacheTimeOut())
 	}
 	if a.longevity() {
-		cd.update = true
+		cd.update()
 	}
 	success = true
 	return
@@ -328,33 +373,39 @@ func (a *autoCacheManager[Key, Val]) Range(f func(Key, Val) bool) {
 
 // Push
 //
-//	@Description: 数据变更后,可以调用该接口进行数据的更新,cache缓存会实时更新,longevity缓存会异步更新
+//	@Description: 数据变更后,可以调用该接口进行数据的更新,cache缓存会实时更新,longevity缓存会异步更新,如果调用了remove，就不能嗲用push，因为push会重置remove的状态
 //	@receiver this
 //	@param key
 func (a *autoCacheManager[Key, Val]) Push(key ...Key) {
 	var ()
 	localKey := a.getLocalKey(key...)
-	if a.cache() {
-		if val, err := a.Get(key...); err == nil {
-			Set(a.getCacheKey(localKey), val, a.cacheTimeOut())
+	if localCacheData, ok := a.cacheMap.Get(localKey); ok {
+		localCacheData.removeState(data_del)
+		if a.cache() {
+			Set(a.getCacheKey(localKey), localCacheData.data, a.cacheTimeOut())
+		}
+		if a.longevity() {
+			localCacheData.update()
 		}
 	}
-
-	if a.longevity() {
-		if localCacheData, ok := a.cacheMap.Get(localKey); ok {
-			localCacheData.update = true
-		}
-	}
-
 }
 
 func (a *autoCacheManager[Key, Val]) Remove(key ...Key) (success bool) {
 	localKey := a.getLocalKey(key...)
-	a.cacheMap.Del(localKey)
+	if a.longevity() {
+		if localCacheData, ok := a.cacheMap.Get(localKey); ok {
+			a.del(localKey)
+			localCacheData.update()
+		}
+	} else {
+		a.cacheMap.Del(localKey)
+	}
+
 	//设置过期时间，不直接删除
 	if a.cache() {
 		Del(a.getCacheKey(localKey))
 	}
+	//延迟删除本地数据
 	success = true
 	return
 }
@@ -376,7 +427,7 @@ func (a *autoCacheManager[Key, Val]) getLocalKey(key ...Key) (ck string) {
 		size = len(key)
 	)
 	if size > 1 {
-		l := make([]string, size, size)
+		l := make([]string, size)
 		for i, k := range key {
 			v, _ := util.AnyToStr(k)
 			l[i] = v
@@ -388,13 +439,12 @@ func (a *autoCacheManager[Key, Val]) getLocalKey(key ...Key) (ck string) {
 	return
 }
 
-func (a *autoCacheManager[Key, Val]) get(key string) (Val, bool) {
+func (a *autoCacheManager[Key, Val]) get(key string) (val Val, ok bool, cd *cacheData[Val]) {
 	var ()
-
 	if data, suc := a.cacheMap.Get(key); suc {
-		return data.getData(a.memTimeOutSecond()), true
+		return data.getData(a.memTimeOutSecond()), true, data
 	}
-	return *new(Val), false
+	return
 }
 
 func (a *autoCacheManager[Key, Val]) set(key string, val Val) *cacheData[Val] {
@@ -450,10 +500,10 @@ func (a *autoCacheManager[Key, Val]) toLongevity() {
 		valueStr := make([]any, 0, size*len(a.sb.modelFieldName))
 		count := 0
 		a.cacheMap.Range(func(s string, c *cacheData[Val]) bool {
-			if c.update {
+			if c.checkState(data_update) {
 				valueStr = append(valueStr, a.sb.toValueSql(c.getData(0))...)
 				count++
-				c.update = false
+				c.removeState(data_update)
 			}
 			return true
 		})
@@ -468,11 +518,17 @@ func (a *autoCacheManager[Key, Val]) longevityInterval() time.Duration {
 	var ()
 	if a.builder.longevityInterval == 0 {
 		log.DebugTag("orm", "load default timer interval 5 second")
-		return time.Second * 5
+		a.builder.longevityInterval = time.Second * 5
 	}
 	return a.builder.longevityInterval
 }
-
+func (a *autoCacheManager[Key, Val]) del(key string) bool {
+	if val, ok := a.cacheMap.Get(key); ok {
+		val.del(int64(a.longevityInterval() * 5))
+		return true
+	}
+	return false
+}
 func (a *autoCacheManager[Key, Val]) mem() bool {
 	var ()
 	return a.builder.mem
@@ -875,7 +931,7 @@ func (s *sqlBuilder[Val]) updateOrCreate(values []any, count int) {
 			endIndex = baseValueSize
 		}
 		valueSize := (endIndex - startIndex) / fieldCount
-		insertValues := make([]string, valueSize, valueSize)
+		insertValues := make([]string, valueSize)
 		for x := 0; x < valueSize; x++ {
 			insertValues[x] = s.updateValueBaseSql
 		}

@@ -145,8 +145,12 @@ func (c *CustomSelector) processNode(ctx context.Context, uid string, selected s
 
 func (c *CustomSelector) UpdateServer(servers map[string]string) {
 	// TODO: 新增虚拟节点，优化hash的命中分布
+	var serverInfos string
 	clearUserCache := false
 	for k, v := range servers {
+		if log.CheckLogTag("discovery") {
+			serverInfos += fmt.Sprintf("%v:%v,", k, v)
+		}
 		c.h.Add(k)
 		if c.servers.Insert(k, v) {
 			clearUserCache = true
@@ -168,7 +172,7 @@ func (c *CustomSelector) UpdateServer(servers map[string]string) {
 		c.clearAllUserCache()
 		log.DebugTag("discovery", "moduleName=%v 更新服务节点", c.moduleName)
 	}
-
+	log.DebugTag("discovery", "moduleName=%v 节点数据%v", c.moduleName, serverInfos)
 }
 
 func (c *CustomSelector) checkServerAlive(server string) (h bool) {

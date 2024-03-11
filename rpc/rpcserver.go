@@ -109,11 +109,6 @@ func (s *Server) WithCache(module tgf.CacheModule) *Server {
 func (s *Server) WithWhiteService(serviceName string) *Server {
 	var ()
 	s.whiteServiceList = append(s.whiteServiceList, serviceName)
-	if len(s.whiteServiceList) == 1 {
-		s.afterOptionals = append(s.afterOptionals, func(s *Server) {
-
-		})
-	}
 	return s
 }
 
@@ -144,9 +139,9 @@ func (s *Server) withServiceClient() *Server {
 		c := newRPCClient().startup()
 		log.InfoTag("init", "装载RPCClient服务")
 		if len(server.whiteServiceList) > 0 {
-			for _, s := range server.whiteServiceList {
-				c.AddWhiteService(s)
-				log.InfoTag("init", "加入请求无需登录的白名单 serviceName=%v", s)
+			for _, messageType := range server.whiteServiceList {
+				c.AddWhiteService(messageType)
+				log.InfoTag("init", "加入请求无需登录的白名单 serviceName=%v", messageType)
 			}
 		}
 	})
@@ -447,7 +442,7 @@ func sendMessage(ct IUserConnectData, moduleName, serviceName string, args, repl
 	if xclient == nil {
 		return errors.New(fmt.Sprintf("找不到对应模块的服务 moduleName=%v", moduleName))
 	}
-	if ct.IsLogin() || rc.CheckWhiteList(serviceName) {
+	if ct.IsLogin() || rc.CheckWhiteList(moduleName+"."+serviceName) {
 		err := xclient.Call(ct.GetContextData(), serviceName, args, reply)
 		return err
 	}
