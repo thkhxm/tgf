@@ -1,7 +1,9 @@
 package db
 
 import (
+	"context"
 	"errors"
+	"github.com/bsm/redislock"
 	"github.com/bytedance/sonic"
 	"github.com/thkhxm/tgf"
 	"github.com/thkhxm/tgf/log"
@@ -34,6 +36,11 @@ type iCacheService interface {
 	GetList(key string, start, end int64) (res []string, err error)
 	SetList(key string, l []interface{}, timeout time.Duration)
 	AddListItem(key string, val string)
+}
+
+type iRedisCacheService interface {
+	TryLock(key string) (*redislock.Lock, error)
+	TryUnLock(l *redislock.Lock, ctx context.Context)
 }
 
 type IAutoCacheService[Key cacheKey, Val any] interface {
@@ -189,6 +196,33 @@ func DelNow(key string) {
 		return
 	}
 	cache.DelNow(key)
+}
+
+// NewLock
+// @Description: 创建一个redis锁,用于分布式锁,需要在redis环境下使用,使用完毕后需要调用UnLock释放锁
+// @param key
+// @return *redislock.Lock
+// @return error
+func NewLock(key string) (*redislock.Lock, error) {
+	if cache == nil {
+		return nil, errors.New("cache is nil")
+	}
+	if r, ok := cache.(iRedisCacheService); ok {
+		return r.TryLock(key)
+	}
+	return nil, errors.New("cache is not redis")
+}
+
+// UnLock
+// @Description: 释放锁
+// @param l
+func UnLock(l *redislock.Lock) {
+	if cache == nil {
+		return
+	}
+	if r, ok := cache.(iRedisCacheService); ok {
+		r.TryUnLock(l, context.Background())
+	}
 }
 
 // AutoCacheBuilder [Key comparable,Val any]
