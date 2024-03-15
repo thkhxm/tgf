@@ -1,10 +1,12 @@
 package rpc
 
 import (
-	"github.com/smallnest/rpcx/share"
+	"github.com/thkhxm/rpcx/client"
+	"github.com/thkhxm/rpcx/share"
 	"github.com/thkhxm/tgf"
 	"github.com/thkhxm/tgf/log"
 	"golang.org/x/net/context"
+	"reflect"
 )
 
 //***************************************************
@@ -30,6 +32,7 @@ type IService interface {
 type Module struct {
 	Name     string
 	Version  string
+	State    client.ConsulServerState
 	userHook IUserHook
 }
 
@@ -45,6 +48,12 @@ func (m *Module) GetUserHook() IUserHook {
 	return m.userHook
 }
 
+func (m *Module) StateHandler(ctx context.Context, args *client.ConsulServerState, reply *string) (err error) {
+	m.State = *args
+	log.InfoTag("system", "update module state %s to %s module=%v version=%v", m.State, args, m.Name, m.Version)
+	return
+}
+
 type ServiceAPI[Req, Res any] struct {
 	ModuleName  string
 	Name        string
@@ -56,6 +65,21 @@ type ServiceAPI[Req, Res any] struct {
 
 func (s *ServiceAPI[Req, Res]) New(req Req, res Res) *ServiceAPI[Req, Res] {
 	var ()
+	return &ServiceAPI[Req, Res]{ModuleName: s.ModuleName, Name: s.Name, args: req, reply: res, MessageType: s.MessageType}
+}
+
+func (s *ServiceAPI[Req, Res]) NewRPC(req Req) *ServiceAPI[Req, Res] {
+	var ()
+	var res Res
+	resType := reflect.TypeOf((*Res)(nil)).Elem() // 获取Res的类型
+	resValue := reflect.New(resType)              // 创建Res的新实例
+
+	// 如果Res是一个指针类型，我们需要通过.Elem()获取其指向的值
+	if resType.Kind() == reflect.Ptr {
+		res = resValue.Interface().(Res)
+	} else {
+		res = resValue.Elem().Interface().(Res)
+	}
 	return &ServiceAPI[Req, Res]{ModuleName: s.ModuleName, Name: s.Name, args: req, reply: res, MessageType: s.MessageType}
 }
 

@@ -78,6 +78,7 @@ func GeneratorRPC[T any](moduleName, version string) {
 	s := make([]struct {
 		Args            string
 		Reply           string
+		NewReply        string
 		MethodName      string
 		LowerMethodName string
 	}, 0)
@@ -86,6 +87,7 @@ func GeneratorRPC[T any](moduleName, version string) {
 		Apis           []struct {
 			Args            string
 			Reply           string
+			NewReply        string
 			MethodName      string
 			LowerMethodName string
 		}
@@ -108,9 +110,11 @@ func GeneratorRPC[T any](moduleName, version string) {
 		d := struct {
 			Args            string
 			Reply           string
+			NewReply        string
 			MethodName      string
 			LowerMethodName string
-		}{Args: m.Type.In(1).String(), Reply: m.Type.In(2).String(), MethodName: m.Name, LowerMethodName: strings.ToLower(string(m.Name[0])) + m.Name[1:]}
+		}{Args: m.Type.In(1).String(), Reply: m.Type.In(2).String(),
+			NewReply: m.Type.In(2).String()[1:], MethodName: m.Name, LowerMethodName: strings.ToLower(string(m.Name[0])) + m.Name[1:]}
 
 		var r = regexp.MustCompile("[A-Za-z0-9_]+\\.[A-Za-z0-9_]+\\[(.*)\\]")
 		match := r.FindStringSubmatch(d.Args)
@@ -133,7 +137,11 @@ func GeneratorRPC[T any](moduleName, version string) {
 		s = append(s, d)
 	}
 	pi := make([]string, 0)
+
 	for k, _ := range tt {
+		if k == "" {
+			continue
+		}
 		pi = append(pi, k)
 	}
 	sort.Strings(pi)
@@ -205,7 +213,8 @@ import (
 )
 
 {{range .Apis}}
-func {{.MethodName}}(ctx context.Context, args {{.Args}},reply {{.Reply}}, async bool) (err error) {
+func {{.MethodName}}(ctx context.Context, args {{.Args}}, async bool) (reply {{.Reply}},err error) {
+	reply = new({{.NewReply}})
 	if async {
 		err = rpc.SendNoReplyRPCMessage(ctx, %s_service.{{.MethodName}}.New(args, reply))
 	} else {
@@ -301,7 +310,11 @@ func GeneratorAPI[T any](moduleName, version string, pushServices ...string) {
 			d.Reply = "*" + pk[l+1:] + match[1][pointIndex:]
 			tt[pk] = true
 		}
-		csStructCache.Apis = append(csStructCache.Apis, d)
+		csStructCache.Apis = append(csStructCache.Apis, struct {
+			Args       string
+			Reply      string
+			MethodName string
+		}{Args: d.Args, Reply: strings.Split(d.Reply, ".")[1], MethodName: d.MethodName})
 		goStructCache.Apis = append(goStructCache.Apis, d)
 	}
 	pi := make([]string, 0)
@@ -397,7 +410,7 @@ namespace %v
     public struct %sServerApi
     {
 	{{range .Apis}}
- 		public static readonly Api {{.MethodName}} = new("%s","{{.MethodName}}");
+ 		public static readonly Api<{{.Reply}}> {{.MethodName}} = new("%s","{{.MethodName}}", false, {{.Reply}}.Parser.ParseFrom);
 	{{end}}
 	{{range .PushServices}}
 		public static readonly string {{.}} = "{{.}}"; 

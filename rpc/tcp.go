@@ -6,18 +6,18 @@ import (
 	"errors"
 	"fmt"
 	"github.com/cornelk/hashmap"
-	"github.com/golang/protobuf/proto"
 	"github.com/gorilla/websocket"
-	"github.com/smallnest/rpcx/client"
-	"github.com/smallnest/rpcx/share"
-	util2 "github.com/smallnest/rpcx/util"
+	"github.com/thkhxm/rpcx/client"
+	"github.com/thkhxm/rpcx/share"
+	util2 "github.com/thkhxm/rpcx/util"
 	"github.com/thkhxm/tgf"
 	"github.com/thkhxm/tgf/db"
 	"github.com/thkhxm/tgf/log"
 	"github.com/thkhxm/tgf/util"
 	"github.com/valyala/bytebufferpool"
 	"golang.org/x/net/context"
-	"google.golang.org/protobuf/runtime/protoiface"
+	"google.golang.org/protobuf/proto"
+	"google.golang.org/protobuf/reflect/protoreflect"
 	"io"
 	"net"
 	"net/http"
@@ -53,7 +53,7 @@ var upGrader = websocket.Upgrader{
 	WriteBufferSize: 1024 * 8,
 }
 
-type Args[T protoiface.MessageV1] struct {
+type Args[T protoreflect.ProtoMessage] struct {
 	ByteData []byte
 }
 
@@ -66,7 +66,7 @@ func (a *Args[T]) GetData() (res T) {
 	return util.ConvertToPB[T](a.ByteData)
 }
 
-type Reply[T protoiface.MessageV1] struct {
+type Reply[T protoreflect.ProtoMessage] struct {
 	ByteData []byte
 	Code     int32
 }
@@ -164,6 +164,10 @@ type ITCPBuilder interface {
 	IsWebSocket() bool
 	SetUserHook(userHook IUserHook)
 	UserHook() IUserHook
+	WithWss(certFile, keyFile string) ITCPBuilder
+	IsWss() bool
+	WssCertFile() string
+	WssKeyFile() string
 }
 
 type TCPServer struct {
@@ -187,6 +191,10 @@ type ServerConfig struct {
 	readBufferSize  int
 	writeBufferSize int
 	netType         int
+	isWss           bool
+
+	wSSKeyPath  string
+	wSSCertPath string
 	//
 
 	userHook IUserHook
@@ -248,6 +256,26 @@ func (s *ServerConfig) WithBuffer(readBuffer, writeBuffer int) ITCPBuilder {
 	return s
 }
 
+func (s *ServerConfig) WithWss(certFile, keyFile string) ITCPBuilder {
+	var ()
+	s.isWss = true
+	s.wSSCertPath = certFile
+	s.wSSKeyPath = keyFile
+	return s
+}
+
+func (s *ServerConfig) IsWss() bool {
+	return s.isWss
+}
+
+func (s *ServerConfig) WssCertFile() string {
+	return s.wSSCertPath
+}
+
+func (s *ServerConfig) WssKeyFile() string {
+	return s.wSSKeyPath
+}
+
 type UserConnectData struct {
 	conn        *net.TCPConn
 	wsConn      *websocket.Conn
@@ -267,6 +295,7 @@ type RequestData struct {
 	Data          []byte
 	MessageType   HeaderMessageType
 	ReqId         int32
+	StartTime     time.Time
 }
 
 func (t *TCPServer) selectorChan() {
@@ -322,7 +351,7 @@ func (t *TCPServer) handlerWSConn(conn *websocket.Conn) {
 	conn.SetPingHandler(func(message string) error {
 
 		err := conn.WriteControl(websocket.PongMessage, []byte(message), time.Now().Add(t.config.DeadLineTime()))
-		log.DebugTag("tcp", "收到客户端的ping请求 %v err=%v", message, err)
+		log.DebugTag("ping", "收到客户端的ping请求 %v err=%v", GetUserId(connectData.contextData), err)
 		if err == websocket.ErrCloseSent {
 			return nil
 		} else if e, ok := err.(net.Error); ok && e.Timeout() {
@@ -575,7 +604,6 @@ func (t *TCPServer) DoLogin(userId, templateUserId string) (err error) {
 		reqMetaData = make(map[string]string)
 	}
 	reqMetaData[tgf.ContextKeyUserId] = userId
-	reqMetaData[tgf.ContextKeyNodeId] = tgf.NodeId
 	ct.SetValue(share.ReqMetaDataKey, reqMetaData)
 	t.users.Set(userId, userData)
 	userData.Login(userId)
@@ -592,15 +620,27 @@ func (t *TCPServer) DoLogin(userId, templateUserId string) (err error) {
 
 func (t *TCPServer) doLogic(data *RequestData) {
 	var (
-		err       error
-		startTime = time.Now().UnixMilli()
+		err         error
+		messageType = data.Module + "." + data.RequestMethod
 	)
+	data.StartTime = time.Now()
 	reply := make([]byte, 0)
 
-	reqData := &Args[protoiface.MessageV1]{}
+	reqData := &Args[protoreflect.ProtoMessage]{}
 	reqData.ByteData = data.Data
 
-	resData := &Reply[protoiface.MessageV1]{}
+	resData := &Reply[protoreflect.ProtoMessage]{}
+	data.User.StartReq()
+	defer func() {
+		consumeTime := time.Since(data.StartTime).Milliseconds()
+		if consumeTime > 100 {
+			log.WarnTag("tcp", "用户[%s] 慢请求耗时统计 module=%v serviceName=%v consumeTime=%v", data.User.userId, data.Module, data.RequestMethod, consumeTime)
+		}
+		//记录客户端请求日志
+		log.Service(data.Module, data.RequestMethod, "1.0",
+			data.User.userId, string(data.Data), string(reply),
+			consumeTime, resData.Code)
+	}()
 	err = sendMessage(data.User, data.Module, data.RequestMethod, reqData, resData)
 	if err != nil {
 		log.InfoTag("tcp", "请求异常 数据 [%v] [%v]", data, err)
@@ -612,9 +652,7 @@ func (t *TCPServer) doLogic(data *RequestData) {
 	//	return
 	//}
 	reply = resData.ByteData
-	consumeTime := time.Now().UnixMilli() - startTime
-	log.DebugTag("tcp", "请求耗时统计 module=%v serviceName=%v consumeTime=%v", data.Module, data.RequestMethod, consumeTime)
-	clientData := t.getSendToClientData(data.Module+"."+data.RequestMethod, data.ReqId, resData.Code, reply)
+	clientData := t.getSendToClientData(messageType, data.ReqId, resData.Code, reply)
 	data.User.Send(clientData)
 }
 
@@ -707,7 +745,13 @@ func (t *TCPServer) Run() {
 				// 定义 WebSocket 路由
 				http.HandleFunc("/"+t.config.WsPath(), t.wsHandler)
 				// 启动服务器
-				err := http.ListenAndServe(t.config.Address()+":"+t.config.Port(), nil)
+				var err error
+				if t.config.IsWss() {
+					err = http.ListenAndServeTLS(t.config.Address()+":"+t.config.Port(), t.config.WssCertFile(), t.config.WssKeyFile(), nil)
+				} else {
+					err = http.ListenAndServe(t.config.Address()+":"+t.config.Port(), nil)
+				}
+
 				if err != nil {
 					log.Info("服务器启动失败：%v", err)
 					return
@@ -843,6 +887,11 @@ func (u *UserConnectData) Send(data []byte) {
 		log.WarnTag("tcp", "用户 %s 发送请求超时", u.userId)
 		return
 	}
+}
+
+func (u *UserConnectData) StartReq() {
+	reqMetaData := u.contextData.Value(share.ReqMetaDataKey).(map[string]string)
+	reqMetaData[tgf.ContextKeyTRACEID] = util.GenerateSnowflakeId()
 }
 
 func (u *UserConnectData) writeMessage() {

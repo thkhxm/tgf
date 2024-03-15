@@ -1,17 +1,21 @@
 package rpc
 
 import (
-	context2 "context"
+	"context"
 	"fmt"
+	"github.com/bytedance/sonic"
 	"github.com/cornelk/hashmap"
 	"github.com/edwingeng/doublejump"
-	client2 "github.com/smallnest/rpcx/client"
-	"github.com/smallnest/rpcx/share"
+	client2 "github.com/thkhxm/rpcx/client"
+	"github.com/thkhxm/rpcx/protocol"
+	"github.com/thkhxm/rpcx/server"
+	"github.com/thkhxm/rpcx/share"
 	"github.com/thkhxm/tgf"
 	"github.com/thkhxm/tgf/db"
+	"github.com/thkhxm/tgf/exp/admin"
 	"github.com/thkhxm/tgf/log"
 	"github.com/thkhxm/tgf/util"
-	"golang.org/x/net/context"
+	"net/url"
 	"strings"
 	"time"
 )
@@ -30,10 +34,31 @@ var (
 	localNodeCacheTimeout int64 = 60 * 5
 )
 
+type ConsulServerInfo struct {
+	State      string
+	Version    int32
+	SubVersion int32
+	NodeId     string
+}
+
+func newConsulServerInfo(data string) *ConsulServerInfo {
+	if q, a := url.ParseQuery(data); a == nil {
+		v, _ := util.StrToAny[int32](strings.Split(q.Get("version"), ".")[0])
+		subv, _ := util.StrToAny[int32](strings.Split(q.Get("version"), ".")[1])
+		return &ConsulServerInfo{
+			State:      q.Get("state"),
+			Version:    v,
+			SubVersion: subv,
+			NodeId:     q.Get("nodeId"),
+		}
+	}
+	return nil
+}
+
 type CustomSelector struct {
 	moduleName   string
 	h            *doublejump.Hash
-	servers      *hashmap.Map[string, string]
+	servers      *hashmap.Map[string, *ConsulServerInfo]
 	cacheManager db.IAutoCacheService[string, string]
 }
 
@@ -111,8 +136,8 @@ func (c *CustomSelector) Select(ctx context.Context, servicePath, serviceMethod 
 				}
 			} else {
 				if c.checkServerAlive(selected) {
-					key := client2.HashString(fmt.Sprintf("%v", time.Now().Unix()))
-					selected, _ = c.h.Get(key).(string)
+					//key := client2.HashString(fmt.Sprintf("%v", time.Now().Unix()))
+					//selected, _ = c.h.Get(key).(string)
 					return
 				}
 				key := client2.HashString(fmt.Sprintf("%v", time.Now().UnixNano()))
@@ -148,22 +173,30 @@ func (c *CustomSelector) UpdateServer(servers map[string]string) {
 	var serverInfos string
 	clearUserCache := false
 	for k, v := range servers {
+		if v == "" {
+			continue
+		}
 		if log.CheckLogTag("discovery") {
 			serverInfos += fmt.Sprintf("%v:%v,", k, v)
 		}
 		c.h.Add(k)
-		if c.servers.Insert(k, v) {
+		if c.servers.Insert(k, newConsulServerInfo(v)) {
 			clearUserCache = true
 		} else {
-			c.servers.Set(k, v)
+			c.servers.Set(k, newConsulServerInfo(v))
 		}
 	}
 
-	c.servers.Range(func(k string, v string) bool {
+	c.servers.Range(func(k string, v *ConsulServerInfo) bool {
 		if servers[k] == "" { // remove
 			c.h.Remove(k)
 			c.servers.Del(k)
 			clearUserCache = true
+			log.DebugTag("discovery", "remove server %v", v)
+		}
+		if v.State == string(client2.ConsulServerStatePause) {
+			c.h.Remove(k)
+			log.DebugTag("discovery", "server %v state is %v", v, v.State)
 		}
 		return true
 	})
@@ -186,23 +219,69 @@ func (c *CustomSelector) checkServerAlive(server string) (h bool) {
 }
 
 func (c *CustomSelector) initStruct(moduleName string) {
-	c.servers = hashmap.New[string, string]()
+	c.servers = hashmap.New[string, *ConsulServerInfo]()
 	c.h = doublejump.NewHash()
 	c.moduleName = moduleName
 	c.cacheManager = db.NewAutoCacheManager[string, string](localNodeCacheTimeout)
 }
 
-type RPCXClientHandler struct {
+type XClientHandler struct {
 }
 
-func (r *RPCXClientHandler) PreCall(ctx context2.Context, serviceName, methodName string, args interface{}) (interface{}, error) {
-	log.DebugTag("trace-rpc", "发送 %v-%v 请求 , 参数 %v", serviceName, methodName, args)
+func (r *XClientHandler) PreCall(ctx context.Context, serviceName, methodName string, args interface{}) error {
+	var reqMetaData map[string]string
+	if sc, ok := ctx.(*share.Context); ok {
+		reqMetaData = sc.Value(share.ReqMetaDataKey).(map[string]string)
+		reqMetaData[tgf.ContextKeyNodeId] = tgf.NodeId
+	}
+	argStr, _ := sonic.MarshalString(args)
+	log.DebugTag("trace", "[%s] 节点 [%s] 发送 [%v-%v] 请求 , 参数 [%v]", reqMetaData[tgf.ContextKeyTRACEID], tgf.NodeId, serviceName, methodName, argStr)
+	return nil
+}
+
+func (r *XClientHandler) PostCall(ctx context.Context, servicePath, serviceMethod string, args interface{}, reply interface{}, err error) error {
+	var reqMetaData map[string]string
+	if sc, ok := ctx.(*share.Context); ok {
+		reqMetaData = sc.Value(share.ReqMetaDataKey).(map[string]string)
+	}
+	replyStr, _ := sonic.MarshalString(reply)
+	log.DebugTag("trace", "[%s] client 接收 %v-%v 响应 , 返回结果 %v ", reqMetaData[tgf.ContextKeyTRACEID], servicePath, serviceMethod, replyStr)
+	return err
+}
+
+type XServerHandler struct {
+}
+
+func (r *XServerHandler) PreCall(ctx context.Context, serviceName, methodName string, args interface{}) (result interface{}, e error) {
+	var reqMetaData map[string]string
+	if sc, ok := ctx.(*share.Context); ok {
+		reqMetaData = sc.Value(share.ReqMetaDataKey).(map[string]string)
+	}
+	argStr, _ := sonic.MarshalString(args)
+	log.DebugTag("trace", "[%s] server 接收 %v-%v 请求 , 参数 %v", reqMetaData[tgf.ContextKeyTRACEID], serviceName, methodName, argStr)
 	return args, nil
 }
 
-func (r *RPCXClientHandler) PostCall(ctx context2.Context, servicePath, serviceMethod string, args interface{}, reply interface{}, err error) error {
-	log.DebugTag("trace-rpc", "执行 %v-%v 完毕 , 返回结果 %v ", servicePath, serviceMethod, reply)
-	return err
+func (r *XServerHandler) PostCall(ctx context.Context, servicePath, serviceMethod string, args interface{}, reply interface{}, err error) (result interface{}, e error) {
+	var reqMetaData map[string]string
+	if sc, ok := ctx.(*share.Context); ok {
+		reqMetaData = sc.Value(share.ReqMetaDataKey).(map[string]string)
+	}
+	replyStr, _ := sonic.MarshalString(reply)
+	log.DebugTag("trace", "[%s] server 执行 %v-%v 完毕 , 返回结果 %v ", reqMetaData[tgf.ContextKeyTRACEID], servicePath, serviceMethod, replyStr)
+	return reply, err
+}
+
+// PostReadRequest counts read
+func (r *XServerHandler) PostReadRequest(ctx context.Context, m *protocol.Message, e error) error {
+	sp := m.ServicePath
+	sm := m.ServiceMethod
+
+	if sp == "" {
+		return nil
+	}
+	admin.PointRPCRequest(sp, sm)
+	return nil
 }
 
 type ILoginCheck interface {
@@ -216,6 +295,11 @@ func NewCustomSelector(moduleName string) client2.Selector {
 }
 
 func NewRPCXClientHandler() client2.PostCallPlugin {
-	res := &RPCXClientHandler{}
+	res := &XClientHandler{}
+	return res
+}
+
+func NewRPCXServerHandler() server.PostCallPlugin {
+	res := &XServerHandler{}
 	return res
 }

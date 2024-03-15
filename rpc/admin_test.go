@@ -11,33 +11,18 @@ import (
 //@QQ群 7400585
 //author tim.huang<thkhxm@gmail.com>
 //@Description
-//2023/5/23
+//2024/2/20
 //***************************************************
 
-func TestStartServer(t *testing.T) {
+func TestServeAdmin(t *testing.T) {
 	tests := []struct {
 		name string
 	}{
-		// TODO: Add test cases.
-		{"123"},
+		{"a"},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			rpc.StartServer()
-		})
-	}
-	select {}
-}
-
-func TestStartClient(t *testing.T) {
-	tests := []struct {
-		name string
-	}{
-		{"321"},
-	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			rpc.StartClient()
+			rpc.ServeAdmin()
 		})
 	}
 	select {}

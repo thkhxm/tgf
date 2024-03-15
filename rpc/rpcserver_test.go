@@ -4,8 +4,8 @@ import (
 	"bytes"
 	"encoding/binary"
 	"fmt"
-	client2 "github.com/rpcxio/rpcx-consul/client"
-	"github.com/smallnest/rpcx/client"
+	client2 "github.com/thkhxm/rpcx-consul/client"
+	"github.com/thkhxm/rpcx/client"
 	"github.com/thkhxm/tgf"
 	"github.com/thkhxm/tgf/log"
 	"github.com/thkhxm/tgf/rpc"
@@ -33,6 +33,20 @@ func TestStartRpcServer(t *testing.T) {
 		WithService(service).
 		WithService(service2).
 		WithGateway("8038", nil).
+		Run()
+
+	w := sync.WaitGroup{}
+	w.Add(1)
+	w.Wait()
+}
+
+func TestWssServer(t *testing.T) {
+	rpcServer := rpc.NewRPCServer()
+	service := new(DemoService)
+
+	rpcServer.
+		WithService(service).
+		WithGatewayWSS("8038", "/wss", "cert.pem", "key.pem").
 		Run()
 
 	w := sync.WaitGroup{}
