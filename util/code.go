@@ -196,6 +196,9 @@ var (
 	tt[modulePath] = true
 	pi = make([]string, 0)
 	for k, _ := range tt {
+		if k == "" {
+			continue
+		}
 		pi = append(pi, k)
 	}
 	sort.Strings(pi)
