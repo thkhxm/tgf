@@ -60,9 +60,7 @@ func ExcelExport() {
 		toUnity(structs)
 	}
 
-	if 0 < len(structs) {
-		saveMd5File(md5FilePath)
-	}
+	saveMd5File(md5FilePath)
 
 	fmt.Println("")
 	fmt.Println("")
@@ -221,8 +219,9 @@ func parseFile(file string) []*configStruct {
 	if err != nil {
 		panic(err.Error())
 	}
-	if checkMd5(file) {
-		return nil
+	var isMatchMd5 bool
+	if checkMatchMd5(file) {
+		isMatchMd5 = true
 	}
 	xlsx, err := excelize.OpenReader(fileReader)
 	if err != nil {
@@ -249,6 +248,7 @@ func parseFile(file string) []*configStruct {
 		metaList := make([]*meta, 0, colNum)
 		dataList := make([]rowdata, 0, len(rows)-4)
 		version := ""
+	RowsLoop:
 		for line, row := range rows {
 			switch line {
 			case 0: // sheet 名
@@ -272,6 +272,9 @@ func parseFile(file string) []*configStruct {
 				}
 
 			default: //>= 5 row data
+				if isMatchMd5 {
+					break RowsLoop
+				}
 				data := make(rowdata, colNum)
 				for k := 0; k < colNum; k++ {
 					if k < len(row) {
@@ -282,30 +285,34 @@ func parseFile(file string) []*configStruct {
 			}
 		}
 		jsonFile := fmt.Sprintf("%s.json", s)
-		if len(excelToJsonPath) > 0 {
-			for _, p := range excelToJsonPath {
-				// 创建路径中的所有必要的目录
-				err := os.MkdirAll(p, os.ModePerm)
-				if err != nil {
-					panic(err)
-				}
-				err = output(p, jsonFile, toJson(dataList, metaList, S))
-				if err != nil {
-					fmt.Println(err)
+
+		if !isMatchMd5 {
+			fmt.Println("excel export : ", jsonFile)
+			if len(excelToJsonPath) > 0 {
+				for _, p := range excelToJsonPath {
+					// 创建路径中的所有必要的目录
+					err := os.MkdirAll(p, os.ModePerm)
+					if err != nil {
+						panic(err)
+					}
+					err = output(p, jsonFile, toJson(dataList, metaList, S))
+					if err != nil {
+						fmt.Println(err)
+					}
 				}
 			}
-		}
 
-		if len(excelToClientJsonPath) > 0 {
-			for _, p := range excelToClientJsonPath {
-				// 创建路径中的所有必要的目录
-				err := os.MkdirAll(p, os.ModePerm)
-				if err != nil {
-					panic(err)
-				}
-				err = output(p, jsonFile, toJson(dataList, metaList, C))
-				if err != nil {
-					fmt.Println(err)
+			if len(excelToClientJsonPath) > 0 {
+				for _, p := range excelToClientJsonPath {
+					// 创建路径中的所有必要的目录
+					err := os.MkdirAll(p, os.ModePerm)
+					if err != nil {
+						panic(err)
+					}
+					err = output(p, jsonFile, toJson(dataList, metaList, C))
+					if err != nil {
+						fmt.Println(err)
+					}
 				}
 			}
 		}
@@ -543,8 +550,8 @@ func loadMd5File(file string) {
 	}
 }
 
-// return false 说明没有匹配的md5，需要生成配置
-func checkMd5(file string) bool {
+// 返回 false 说明没有匹配的md5，需要生成配置
+func checkMatchMd5(file string) bool {
 	newMd5 := GetFileMd5(file)
 	fileName := filepath.Base(file)
 	oldMd5, ok := cacheMd5File[fileName]
