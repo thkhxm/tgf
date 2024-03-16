@@ -235,7 +235,7 @@ func (r *XClientHandler) PreCall(ctx context.Context, serviceName, methodName st
 		reqMetaData[tgf.ContextKeyNodeId] = tgf.NodeId
 	}
 	argStr, _ := sonic.MarshalString(args)
-	log.DebugTag("trace", "[%s] 节点 [%s] 发送 [%v-%v] 请求 , 参数 [%v]", reqMetaData[tgf.ContextKeyTRACEID], tgf.NodeId, serviceName, methodName, argStr)
+	log.DebugTag("trace", "[%s] client [%s] 发送 [%v-%v] 请求 , 参数 [%v]", reqMetaData[tgf.ContextKeyTRACEID], tgf.NodeId, serviceName, methodName, argStr)
 	return nil
 }
 
@@ -245,7 +245,7 @@ func (r *XClientHandler) PostCall(ctx context.Context, servicePath, serviceMetho
 		reqMetaData = sc.Value(share.ReqMetaDataKey).(map[string]string)
 	}
 	replyStr, _ := sonic.MarshalString(reply)
-	log.DebugTag("trace", "[%s] client 接收 %v-%v 响应 , 返回结果 %v ", reqMetaData[tgf.ContextKeyTRACEID], servicePath, serviceMethod, replyStr)
+	log.DebugTag("trace", "[%s] client [%s] 接收 [%v-%v] 响应 , 返回结果 [%v] ", reqMetaData[tgf.ContextKeyTRACEID], tgf.NodeId, servicePath, serviceMethod, replyStr)
 	return err
 }
 
@@ -258,7 +258,7 @@ func (r *XServerHandler) PreCall(ctx context.Context, serviceName, methodName st
 		reqMetaData = sc.Value(share.ReqMetaDataKey).(map[string]string)
 	}
 	argStr, _ := sonic.MarshalString(args)
-	log.DebugTag("trace", "[%s] server 接收 %v-%v 请求 , 参数 %v", reqMetaData[tgf.ContextKeyTRACEID], serviceName, methodName, argStr)
+	log.DebugTag("trace", "[%s] server [%s] 接收 [%v-%v] 请求 , 参数 [%v]", reqMetaData[tgf.ContextKeyTRACEID], tgf.NodeId, serviceName, methodName, argStr)
 	return args, nil
 }
 
@@ -268,7 +268,7 @@ func (r *XServerHandler) PostCall(ctx context.Context, servicePath, serviceMetho
 		reqMetaData = sc.Value(share.ReqMetaDataKey).(map[string]string)
 	}
 	replyStr, _ := sonic.MarshalString(reply)
-	log.DebugTag("trace", "[%s] server 执行 %v-%v 完毕 , 返回结果 %v ", reqMetaData[tgf.ContextKeyTRACEID], servicePath, serviceMethod, replyStr)
+	log.DebugTag("trace", "[%s] server [%s] 执行 [%v-%v] 完毕 , 返回结果 [%v] ", reqMetaData[tgf.ContextKeyTRACEID], tgf.NodeId, servicePath, serviceMethod, replyStr)
 	return reply, err
 }
 

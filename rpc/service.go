@@ -75,11 +75,11 @@ func (s *ServiceAPI[Req, Res]) NewRPC(req Req) *ServiceAPI[Req, Res] {
 	resValue := reflect.New(resType)              // 创建Res的新实例
 
 	// 如果Res是一个指针类型，我们需要通过.Elem()获取其指向的值
-	if resType.Kind() == reflect.Ptr {
-		res = resValue.Interface().(Res)
-	} else {
-		res = resValue.Elem().Interface().(Res)
-	}
+	//if resType.Kind() == reflect.Ptr {
+	//	res = resValue.Interface().(Res)
+	//} else {
+	res = resValue.Elem().Interface().(Res)
+	//}
 	return &ServiceAPI[Req, Res]{ModuleName: s.ModuleName, Name: s.Name, args: req, reply: res, MessageType: s.MessageType}
 }
 

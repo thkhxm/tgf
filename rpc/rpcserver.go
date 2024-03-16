@@ -590,6 +590,23 @@ func BorderAllServiceRPCMessageByContext[Req any, Res any](ct context.Context, a
 	}
 }
 
+func BorderAllServiceRPCMessageByContextNotCheck[Req any, Res any](ct context.Context, api *ServiceAPI[Req, Res]) {
+	var (
+		rc = getRPCClient()
+		//xclient = rc.getClient(api.ModuleName)
+	)
+	nodeMap := ct.Value(share.ReqMetaDataKey)
+	if _, h := nodeMap.(map[string]string); h {
+		rc.clients.Range(func(s string, xClient client.XClient) bool {
+			if s == tgf.MonitorServiceModuleName || s == tgf.AdminServiceModuleName {
+				return true
+			}
+			xClient.Oneshot(ct, api.Name, api.args)
+			return true
+		})
+	}
+}
+
 // SendToGate
 // @Description: 发送消息到用户所在的网关
 // @param ct

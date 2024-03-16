@@ -146,9 +146,10 @@ func initLogger() {
 	}
 
 	//Dev环境,日志级别使用带颜色的标识
-	//if tgf.GetStrConfig[string](tgf.EnvironmentRuntimeModule) == tgf.RuntimeModuleDev {
-	//	zapLoggerEncoderConfig.EncodeLevel = zapcore.CapitalColorLevelEncoder
-	//}
+	if tgf.GetStrConfig[string](tgf.EnvironmentRuntimeModule) == tgf.RuntimeModuleDev {
+		zapLoggerEncoderConfig.EncodeLevel = zapcore.CapitalColorLevelEncoder
+	}
+
 	ignoredTags = make(map[string]bool)
 	it := tgf.GetStrConfig[string](tgf.EnvironmentLoggerIgnoredTags)
 	if it != "" {
