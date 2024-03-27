@@ -44,6 +44,7 @@ func initMapping() {
 	mapping[EnvironmentMySqlAddr] = &config{env: EnvironmentMySqlAddr, val: defaultMySqlAddr}
 	mapping[EnvironmentMySqlPort] = &config{env: EnvironmentMySqlPort, val: defaultMySqlPort}
 	mapping[EnvironmentMySqlDB] = &config{env: EnvironmentMySqlDB, val: defaultMySqlDB}
+	mapping[EnvironmentGatePush] = &config{env: EnvironmentGatePush, val: defaultGatePush}
 
 	//初始化配置数据
 	for _, m := range mapping {
@@ -76,6 +77,7 @@ const (
 	defaultRedisAddr     = "127.0.0.1:6379"
 	defaultRedisPassword = ""
 	defaultRedisDB       = "1"
+	defaultGatePush      = "1"
 )
 
 func (c *config) initVal() *config {

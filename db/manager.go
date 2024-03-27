@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"github.com/cornelk/hashmap"
+	"github.com/thkhxm/tgf"
 	"github.com/thkhxm/tgf/log"
 	"github.com/thkhxm/tgf/util"
 	"golang.org/x/net/context"
@@ -133,6 +134,7 @@ func (h *hashAutoCacheManager[Val]) loadCache(key ...string) (keys []string) {
 				for i, v := range val {
 					lk := h.getLocalKey(pk, v.HashCacheFieldByVal())
 					h.set(lk, v)
+					PutMap(h.getCacheKey(pk), v.HashCacheFieldByVal(), v, h.cacheTimeOut())
 					keys[i] = lk
 				}
 				return keys, nil
@@ -144,7 +146,6 @@ func (h *hashAutoCacheManager[Val]) loadCache(key ...string) (keys []string) {
 }
 
 func (h *hashAutoCacheManager[Val]) Get(key ...string) (val Val, err error) {
-	//TODO: 并发场景下可能会重复创建
 	pk := h.image.HashCachePkKey(key...)
 	d, e, _ := h.sf.Do(pk, func() (interface{}, error) {
 		//是否首次加载，如果是
@@ -256,9 +257,12 @@ func (h *hashAutoCacheManager[Val]) Reset() IAutoCacheService[string, Val] {
 func (h *hashAutoCacheManager[Val]) GetAll(key ...string) (val []Val, err error) {
 	pk := h.image.HashCachePkKey(key...)
 	var keys []string
-	var has error
-	if keys, has = h.groupAutoCacheManager.Get(pk); has != nil {
+	if keys, err = h.groupAutoCacheManager.Get(pk); err != nil {
 		keys = h.loadCache(key...)
+		if keys == nil {
+			err = tgf.DBEmpty
+		}
+		h.groupAutoCacheManager.Set(make([]string, 0), pk)
 	}
 	//
 	val = make([]Val, 0, len(keys))
@@ -321,6 +325,8 @@ func (a *autoCacheManager[Key, Val]) Get(key ...Key) (val Val, err error) {
 				return val, errors.New("data not found in cache")
 			}
 			return
+		} else {
+			err = tgf.LocalEmpty
 		}
 	}
 	a.sf.Do(pk, func() (interface{}, error) {
@@ -329,6 +335,8 @@ func (a *autoCacheManager[Key, Val]) Get(key ...Key) (val Val, err error) {
 			if val, suc = Get[Val](a.getCacheKey(localKey)); suc {
 				a.set(localKey, val)
 				return val, nil
+			} else {
+				err = tgf.RedisEmpty
 			}
 		}
 
@@ -718,6 +726,8 @@ type sqlBuilder[Val any] struct {
 	updateEndSql       string
 	updateValueBaseSql string
 	updateAsSql        string
+	//mongo
+	collection string
 	//chan
 	updateChan chan Val
 	//

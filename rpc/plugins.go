@@ -60,6 +60,7 @@ type CustomSelector struct {
 	h            *doublejump.Hash
 	servers      *hashmap.Map[string, *ConsulServerInfo]
 	cacheManager db.IAutoCacheService[string, string]
+	pushGate     bool
 }
 
 func (c *CustomSelector) clearAllUserCache() {
@@ -153,9 +154,9 @@ func (c *CustomSelector) processNode(ctx context.Context, uid string, selected s
 	reqMetaDataKeyTemp := fmt.Sprintf(tgf.RedisKeyUserNodeMeta, uid)
 	db.PutMap(reqMetaDataKeyTemp, servicePath, selected, reqMetaDataTimeout)
 	if reqMetaData[tgf.ContextKeyCloseLocalCache] == "" {
-		c.cacheManager.Set(uid, selected)
+		c.cacheManager.Set(selected, uid)
 	}
-	if UploadUserNodeInfo.ModuleName != servicePath {
+	if c.pushGate && UploadUserNodeInfo.ModuleName != servicePath {
 		util.Go(func() {
 			if _, err := SendRPCMessage(ctx, UploadUserNodeInfo.New(&UploadUserNodeInfoReq{
 				UserId:      uid,
@@ -222,6 +223,7 @@ func (c *CustomSelector) initStruct(moduleName string) {
 	c.servers = hashmap.New[string, *ConsulServerInfo]()
 	c.h = doublejump.NewHash()
 	c.moduleName = moduleName
+	c.pushGate = tgf.GetStrConfig[int32](tgf.EnvironmentGatePush) == 1
 	c.cacheManager = db.NewAutoCacheManager[string, string](localNodeCacheTimeout)
 }
 

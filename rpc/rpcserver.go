@@ -560,6 +560,18 @@ func SendNoReplyRPCMessageByAddress(moduleName, address, serviceName string, arg
 	return err
 }
 
+func SendRPCMessageByStr(ct context.Context, moduleName, serviceName string, args, reply interface{}) error {
+	var (
+		rc      = getRPCClient()
+		xclient = rc.getClient(moduleName)
+	)
+	if xclient == nil {
+		return errors.New(fmt.Sprintf("找不到对应模块的服务 moduleName=%v", moduleName))
+	}
+	err := xclient.Call(ct, serviceName, args, reply)
+	return err
+}
+
 // BorderRPCMessage [Req any, Res any]
 //
 //	@Description: 推送消息到所有服务节点

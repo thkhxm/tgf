@@ -18,4 +18,7 @@ type GameError interface {
 
 var (
 	ErrorRPCTimeOut = errors.New("rpc time out")
+	LocalEmpty      = errors.New("local cache empty")
+	RedisEmpty      = errors.New("redis cache empty")
+	DBEmpty         = errors.New("db cache empty")
 )

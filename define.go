@@ -88,6 +88,8 @@ const (
 	// EnvironmentServicePort 当前进程提供的服务端口
 	EnvironmentServicePort    = "ServicePort"
 	EnvironmentServiceAddress = "ServiceAddress"
+
+	EnvironmentGatePush = "GatePush"
 )
 
 type CacheModule int
