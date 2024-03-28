@@ -110,6 +110,7 @@ func (h *hashAutoCacheManager[Val]) loadCache(key ...string) (keys []string) {
 			//根据主键Key组合成redis的Key,获取hash数据
 			if val, suc := GetMap[string, Val](h.getCacheKey(pk)); suc {
 				i := 0
+				keys = make([]string, len(val))
 				for _, v := range val {
 					//根据主键Key和hashKey组成唯一的cacheKey
 					lk := h.getLocalKey(pk, v.HashCacheFieldByVal())
@@ -261,8 +262,8 @@ func (h *hashAutoCacheManager[Val]) GetAll(key ...string) (val []Val, err error)
 		keys = h.loadCache(key...)
 		if keys == nil {
 			err = tgf.DBEmpty
+			h.groupAutoCacheManager.Set(make([]string, 0), pk)
 		}
-		h.groupAutoCacheManager.Set(make([]string, 0), pk)
 	}
 	//
 	val = make([]Val, 0, len(keys))
@@ -303,7 +304,7 @@ func (c *cacheData[Val]) checkState(state uint8) bool {
 }
 
 func (c *cacheData[Val]) removeState(state uint8) {
-	c.state = c.state ^ state
+	c.state = c.state &^ state
 }
 
 func (c *cacheData[Val]) getData(second int64) Val {
@@ -834,18 +835,21 @@ func (s *sqlBuilder[Val]) queryOne(args ...any) (val Val, err error) {
 		log.WarnTag("orm", "query script is empty")
 		return
 	}
-	stmt, err := dbService.getConnection().PrepareContext(context.Background(), s.querySql)
+	conn := dbService.getConnection()
+	defer conn.Close()
+
+	stmt, err := conn.PrepareContext(context.Background(), s.querySql)
+	defer stmt.Close()
 	if err != nil {
 		log.WarnTag("orm", "query script=%v error=%v", s.querySql, err)
 		return
 	}
-	defer stmt.Close()
 	rows, err := stmt.Query(args...)
+	defer rows.Close()
 	if err != nil {
 		log.WarnTag("orm", "query params=%v  error=%v", args, err)
 		return
 	}
-	defer rows.Close()
 	ex := time.Since(start)
 	log.DebugTag("orm", "query=%v params=%v time=%v/ms", s.querySql, args, ex)
 	if rows.Next() {
@@ -882,7 +886,10 @@ func (s *sqlBuilder[Val]) queryList(args ...any) (values []Val, err error) {
 		log.WarnTag("orm", "query script is empty")
 		return
 	}
-	stmt, err := dbService.getConnection().PrepareContext(context.Background(), s.queryListSql)
+	conn := dbService.getConnection()
+	defer conn.Close()
+
+	stmt, err := conn.PrepareContext(context.Background(), s.queryListSql)
 	if err != nil {
 		log.WarnTag("orm", "query script=%v error=%v", s.queryListSql, err)
 		return
@@ -948,7 +955,9 @@ func (s *sqlBuilder[Val]) updateOrCreate(values []any, count int) {
 		insertValuesSql := strings.Join(insertValues, ",")
 		updateSql := s.updateStartSql + insertValuesSql + s.updateAsSql + s.updateEndSql
 		//执行脚本
-		stmt, err := dbService.getConnection().PrepareContext(context.Background(), updateSql)
+		conn := dbService.getConnection()
+		stmt, err := conn.PrepareContext(context.Background(), updateSql)
+		conn.Close()
 		if err != nil {
 			log.WarnTag("orm", "update script=%v params=%v error=%v", updateSql, values[startIndex:endIndex], err)
 			continue
