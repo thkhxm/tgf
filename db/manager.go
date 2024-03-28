@@ -957,7 +957,6 @@ func (s *sqlBuilder[Val]) updateOrCreate(values []any, count int) {
 		//执行脚本
 		conn := dbService.getConnection()
 		stmt, err := conn.PrepareContext(context.Background(), updateSql)
-		conn.Close()
 		if err != nil {
 			log.WarnTag("orm", "update script=%v params=%v error=%v", updateSql, values[startIndex:endIndex], err)
 			continue
@@ -968,6 +967,7 @@ func (s *sqlBuilder[Val]) updateOrCreate(values []any, count int) {
 			continue
 		}
 		stmt.Close()
+		conn.Close()
 		ex := time.Since(start)
 		log.DebugTag("orm", "update=%v params=%v time=%v/ms", updateSql, values[startIndex:endIndex], ex)
 	}
