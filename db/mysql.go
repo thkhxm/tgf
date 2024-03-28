@@ -98,7 +98,7 @@ func initMySql() {
 	dbService = new(mysqlService)
 	dbService.executeChan = make(chan string)
 	// 定义 MySQL 数据库连接信息
-	dataSourceName := fmt.Sprintf("%v:%v@tcp(%v:%v)/%v?charset=utf8", userName, password, hostName, port, database)
+	dataSourceName := fmt.Sprintf("%v:%v@tcp(%v:%v)/%v?charset=utf8&parseTime=True&loc=Local", userName, password, hostName, port, database)
 	// 创建数据库连接池
 	d, err = sql.Open("mysql", dataSourceName)
 	d.SetMaxIdleConns(10)
