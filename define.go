@@ -112,6 +112,7 @@ const (
 	ContextKeyCloseLocalCache  = "CloseLocalCache"
 	ContextKeyBroadcastUserIds = "BroadcastUserIds"
 	ContextKeyTRACEID          = "TraceId"
+	ContextKeyHash             = "__hash"
 )
 
 const (

@@ -27,6 +27,7 @@ type IService interface {
 	Startup() (bool, error)
 	GetUserHook() IUserHook
 	Destroy(sub IService)
+	GetLogicSyncMethod() []string
 }
 
 type Module struct {
@@ -41,6 +42,9 @@ func (m *Module) Destroy(sub IService) {
 	log.InfoTag("system", "destroy module=%v version=%v", sub.GetName(), sub.GetVersion())
 }
 
+func (m *Module) GetLogicSyncMethod() []string {
+	return nil
+}
 func (m *Module) GetUserHook() IUserHook {
 	if m.userHook == nil {
 		m.userHook = NewUserHook()

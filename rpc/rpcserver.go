@@ -63,8 +63,6 @@ type Server struct {
 	customServiceAddress bool
 
 	//
-
-	//
 	whiteServiceList []string
 }
 
@@ -237,7 +235,17 @@ func (s *Server) Run() chan bool {
 	}
 	/**启动逻辑链*/
 	//注册rpcx服务
-	s.rpcServer = server.NewServer(server.WithPool(s.maxWorkers, s.maxCapacity))
+	op := make([]server.OptionFn, 0)
+	for _, ss := range s.service {
+		if ss.GetLogicSyncMethod() == nil {
+			continue
+		}
+		for _, lm := range ss.GetLogicSyncMethod() {
+			op = append(op, server.WithLogicSync(lm))
+		}
+	}
+	op = append(op, server.WithPool(s.maxWorkers, s.maxCapacity))
+	s.rpcServer = server.NewServer(op...)
 	s.rpcServer.EnableProfile = s.enableProfile
 	port := tgf.GetStrConfig[string](tgf.EnvironmentServicePort)
 	if s.minPort > 0 && s.maxPort > s.minPort {
@@ -255,6 +263,7 @@ func (s *Server) Run() chan bool {
 	}
 
 	discovery := internal.GetDiscovery()
+
 	//如果加入了服务注册，那么走服务注册的流程
 	if discovery != nil {
 		s.rpcServer.Plugins.Add(discovery.RegisterServer(ip))
@@ -719,6 +728,7 @@ func NewUserRPCContext(userId string) context.Context {
 	initData := make(map[string]string)
 	initData[tgf.ContextKeyRPCType] = tgf.RPCTip
 	initData[tgf.ContextKeyUserId] = userId
+	initData[tgf.ContextKeyHash] = userId
 	ct.SetValue(share.ReqMetaDataKey, initData)
 	ct.SetValue(share.ServerTimeout, 5)
 	return ct
