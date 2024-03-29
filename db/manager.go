@@ -1,6 +1,7 @@
 package db
 
 import (
+	"database/sql"
 	"errors"
 	"fmt"
 	"github.com/cornelk/hashmap"
@@ -260,9 +261,11 @@ func (h *hashAutoCacheManager[Val]) GetAll(key ...string) (val []Val, err error)
 	var keys []string
 	if keys, err = h.groupAutoCacheManager.Get(pk); err != nil {
 		keys = h.loadCache(key...)
-		if keys == nil {
+		if len(keys) == 0 {
 			err = tgf.DBEmpty
 			h.groupAutoCacheManager.Set(make([]string, 0), pk)
+		} else {
+			err = nil
 		}
 	}
 	//
@@ -351,10 +354,12 @@ func (a *autoCacheManager[Key, Val]) Get(key ...Key) (val Val, err error) {
 			if err == nil {
 				a.set(localKey, val)
 				Set(a.getCacheKey(localKey), val, a.cacheTimeOut())
+			} else {
+				err = tgf.DBEmpty
 			}
 			return val, err
 		}
-		return val, errors.New("data not found in cache")
+		return val, err
 	})
 
 	return val, errors.New("data not found in cache")
@@ -954,22 +959,38 @@ func (s *sqlBuilder[Val]) updateOrCreate(values []any, count int) {
 		}
 		insertValuesSql := strings.Join(insertValues, ",")
 		updateSql := s.updateStartSql + insertValuesSql + s.updateAsSql + s.updateEndSql
+		log.DB(updateSql, int32(valueSize))
 		//执行脚本
 		conn := dbService.getConnection()
-		stmt, err := conn.PrepareContext(context.Background(), updateSql)
+		tx, err := conn.BeginTx(context.Background(), &sql.TxOptions{
+			Isolation: sql.LevelReadUncommitted,
+			ReadOnly:  false,
+		})
+		log.DB(updateSql, int32(valueSize))
+		if err != nil {
+			continue
+		}
+		stmt, err := tx.PrepareContext(context.Background(), updateSql)
 		if err != nil {
 			log.WarnTag("orm", "update script=%v params=%v error=%v", updateSql, values[startIndex:endIndex], err)
+			tx.Rollback()
+			stmt.Close()
+			conn.Close()
 			continue
 		}
 		_, err = stmt.Exec(values[startIndex:endIndex]...)
 		if err != nil {
 			log.WarnTag("orm", "update run script=%v params=%v error=%v", updateSql, values[startIndex:endIndex], err)
+			tx.Rollback()
+			stmt.Close()
+			conn.Close()
 			continue
 		}
+		tx.Commit()
 		stmt.Close()
 		conn.Close()
 		ex := time.Since(start)
-		log.DebugTag("orm", "update=%v params=%v time=%v/ms", updateSql, values[startIndex:endIndex], ex)
+		log.DebugTag("orm", "update=%v params=%v time=%v/ms", updateSql, values[startIndex:endIndex], ex.Milliseconds())
 	}
 
 }
