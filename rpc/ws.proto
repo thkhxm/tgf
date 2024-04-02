@@ -1,0 +1,17 @@
+syntax = "proto3"; //指定版本信息
+option go_package="./;pb";
+
+message WSMessage{
+  string module =1; //模块名称
+  string serviceName =2; //服务名称
+  bytes data =3; //请求数据
+  int32 reqId =4; //请求id
+}
+
+message WSResponse{
+  string messageType =1; //响应消息
+  bytes data =2; //响应数据
+  int32 reqId =3; //请求id
+  int32 code =4; //响应状态码
+  bool zip =5; //是否压缩
+}

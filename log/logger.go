@@ -57,9 +57,9 @@ func Game(userId, tag, msg string, params ...interface{}) {
 	//}
 }
 
-func DB(script string, count int32) {
+func DB(traceId, dbName, script string, count int32) {
 	//if CheckLogTag(DBTAG) {
-	logger.Info(script, zap.String("tag", DBTAG), zap.String("nodeId", tgf.NodeId), zap.Int32("count", count))
+	logger.Info(script, zap.String("tag", DBTAG), zap.String("nodeId", tgf.NodeId), zap.String("db", dbName), zap.Int32("count", count), zap.String("traceId", traceId))
 	//}
 }
 

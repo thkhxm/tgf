@@ -4,6 +4,7 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
+	"github.com/bytedance/sonic"
 	"github.com/cornelk/hashmap"
 	"github.com/thkhxm/tgf"
 	"github.com/thkhxm/tgf/log"
@@ -959,20 +960,23 @@ func (s *sqlBuilder[Val]) updateOrCreate(values []any, count int) {
 		}
 		insertValuesSql := strings.Join(insertValues, ",")
 		updateSql := s.updateStartSql + insertValuesSql + s.updateAsSql + s.updateEndSql
-		log.DB(updateSql, int32(valueSize))
 		//执行脚本
 		conn := dbService.getConnection()
 		tx, err := conn.BeginTx(context.Background(), &sql.TxOptions{
 			Isolation: sql.LevelReadUncommitted,
 			ReadOnly:  false,
 		})
-		log.DB(updateSql, int32(valueSize))
+		logScript, err := sonic.MarshalString(values[startIndex:endIndex])
+		traceId := util.GenerateSnowflakeId()
+		if err == nil {
+			log.DB(traceId, s.tableName, logScript, int32(valueSize))
+		}
 		if err != nil {
 			continue
 		}
 		stmt, err := tx.PrepareContext(context.Background(), updateSql)
 		if err != nil {
-			log.WarnTag("orm", "update script=%v params=%v error=%v", updateSql, values[startIndex:endIndex], err)
+			log.WarnTag("orm", "traceId=%s,update script=%v params=%v error=%v", traceId, updateSql, values[startIndex:endIndex], err)
 			tx.Rollback()
 			stmt.Close()
 			conn.Close()
@@ -980,7 +984,7 @@ func (s *sqlBuilder[Val]) updateOrCreate(values []any, count int) {
 		}
 		_, err = stmt.Exec(values[startIndex:endIndex]...)
 		if err != nil {
-			log.WarnTag("orm", "update run script=%v params=%v error=%v", updateSql, values[startIndex:endIndex], err)
+			log.WarnTag("orm", "traceId=%s update run script=%v params=%v error=%v", traceId, updateSql, values[startIndex:endIndex], err)
 			tx.Rollback()
 			stmt.Close()
 			conn.Close()
@@ -990,7 +994,7 @@ func (s *sqlBuilder[Val]) updateOrCreate(values []any, count int) {
 		stmt.Close()
 		conn.Close()
 		ex := time.Since(start)
-		log.DebugTag("orm", "update=%v params=%v time=%v/ms", updateSql, values[startIndex:endIndex], ex.Milliseconds())
+		log.DebugTag("orm", "traceId=%s update=%v time=%v/ms valueSize=%v", traceId, s.tableName, ex.Milliseconds(), endIndex-startIndex)
 	}
 
 }
