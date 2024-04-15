@@ -35,16 +35,21 @@ type iCacheService interface {
 	DelNow(key string)
 	GetList(key string, start, end int64) (res []string, err error)
 	SetList(key string, l []interface{}, timeout time.Duration)
+	GetSet(key string) (res []string, err error)
+	AddSetItem(key string, val interface{}, timeout time.Duration)
 	AddListItem(key string, val string)
 }
 
 type iRedisCacheService interface {
 	TryLock(key string) (*redislock.Lock, error)
 	TryUnLock(l *redislock.Lock, ctx context.Context)
+	Incr(key string, timeout time.Duration) (res int64, err error)
+	IncrBy(key string, val float64, timeout time.Duration) (res float64, err error)
 }
 
 type IAutoCacheService[Key cacheKey, Val any] interface {
 	Get(key ...Key) (val Val, err error)
+	TryGet(key ...Key) (val Val, err error)
 	Set(val Val, key ...Key) (success bool)
 	Push(key ...Key)
 	Remove(key ...Key) (success bool)
@@ -184,6 +189,33 @@ func AddListItem[Val any](key string, timeout time.Duration, val ...Val) (err er
 	return
 }
 
+func GetAllSet[Res any](key string) []Res {
+	if cache == nil {
+		return nil
+	}
+	if res, err := cache.GetSet(key); err == nil {
+		data := make([]Res, len(res))
+		for i, r := range res {
+			data[i], _ = util.StrToAny[Res](r)
+		}
+		return data
+	}
+	return nil
+}
+
+func AddSetItem[Val any](key string, timeout time.Duration, val Val) (err error) {
+	if cache == nil {
+		return errors.New("cache is nil")
+	}
+	a, e := util.AnyToStr(val)
+	if e != nil {
+		err = e
+		return
+	}
+	cache.AddSetItem(key, a, timeout)
+	return
+}
+
 func Del(key string) {
 	if cache == nil {
 		return
@@ -223,6 +255,32 @@ func UnLock(l *redislock.Lock) {
 	if r, ok := cache.(iRedisCacheService); ok {
 		r.TryUnLock(l, context.Background())
 	}
+}
+
+// Incr
+// @Description: 释放锁
+// @param l
+func Incr(key string, timeout time.Duration) (res int64, err error) {
+	if cache == nil {
+		return
+	}
+	if r, ok := cache.(iRedisCacheService); ok {
+		res, err = r.Incr(key, timeout)
+	}
+	return
+}
+
+// IncrBy
+// @Description: 释放锁
+// @param l
+func IncrBy(key string, val float64, timeout time.Duration) (res float64, err error) {
+	if cache == nil {
+		return
+	}
+	if r, ok := cache.(iRedisCacheService); ok {
+		res, err = r.IncrBy(key, val, timeout)
+	}
+	return
 }
 
 // AutoCacheBuilder [Key comparable,Val any]

@@ -59,13 +59,13 @@ func Game(userId, tag, msg string, params ...interface{}) {
 
 func DB(traceId, dbName, script string, count int32) {
 	//if CheckLogTag(DBTAG) {
-	logger.Info(script, zap.String("tag", DBTAG), zap.String("nodeId", tgf.NodeId), zap.String("db", dbName), zap.Int32("count", count), zap.String("traceId", traceId))
+	logger.Debug(script, zap.String("tag", DBTAG), zap.String("nodeId", tgf.NodeId), zap.String("db", dbName), zap.Int32("count", count), zap.String("traceId", traceId))
 	//}
 }
 
 func Service(module, name, version, userId, args, reply string, consume int64, code int32) {
 	//if CheckLogTag(SERVICETAG) {
-	logger.Info("", zap.String("tag", SERVICETAG),
+	logger.Debug("", zap.String("tag", SERVICETAG),
 		zap.String("userId", userId),
 		zap.String("module", module),
 		zap.String("name", name),

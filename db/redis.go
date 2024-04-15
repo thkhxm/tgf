@@ -84,7 +84,7 @@ func (r *redisService) AddListItem(key string, val string) {
 
 func (r *redisService) TryLock(key string) (*redislock.Lock, error) {
 	var ()
-	lock := redislock.New(service.client)
+	lock := redislock.New(r.client)
 	return lock.Obtain(context.Background(), key, time.Second*5, nil)
 }
 
@@ -92,6 +92,36 @@ func (r *redisService) TryUnLock(l *redislock.Lock, ctx context.Context) {
 	var ()
 	l.Release(ctx)
 }
+
+func (r *redisService) Incr(key string, timeout time.Duration) (res int64, err error) {
+	var ()
+	fc := r.client.Incr(context.Background(), key)
+	if timeout > 0 {
+		r.client.Expire(context.Background(), key, timeout)
+	}
+	return fc.Val(), nil
+}
+
+func (r *redisService) IncrBy(key string, val float64, timeout time.Duration) (res float64, err error) {
+	var ()
+	fc := r.client.IncrByFloat(context.Background(), key, val)
+	if timeout > 0 {
+		r.client.Expire(context.Background(), key, timeout)
+	}
+	return fc.Val(), nil
+}
+
+func (r *redisService) GetSet(key string) (res []string, err error) {
+	data := r.client.SMembers(context.Background(), key)
+	return data.Result()
+}
+func (r *redisService) AddSetItem(key string, val interface{}, timeout time.Duration) {
+	r.client.SAdd(context.Background(), key, val)
+	if timeout > 0 {
+		r.client.Expire(context.Background(), key, timeout)
+	}
+}
+
 func newRedisService() *redisService {
 	var (
 		addr     = tgf.GetStrConfig[string](tgf.EnvironmentRedisAddr)

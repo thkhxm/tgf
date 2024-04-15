@@ -319,6 +319,22 @@ func (c *cacheData[Val]) getData(second int64) Val {
 	return c.data
 }
 
+func (a *autoCacheManager[Key, Val]) TryGet(key ...Key) (val Val, err error) {
+	var suc bool
+	var cd *cacheData[Val]
+	localKey := a.getLocalKey(key...)
+	//先从本地缓存获取
+	if val, suc, cd = a.get(localKey); suc {
+		if cd.checkState(data_del) {
+			return val, errors.New("data not found in cache")
+		}
+		return
+	} else {
+		err = tgf.LocalEmpty
+	}
+	return
+}
+
 func (a *autoCacheManager[Key, Val]) Get(key ...Key) (val Val, err error) {
 	var suc bool
 	var cd *cacheData[Val]
@@ -715,7 +731,7 @@ func ConvertCamelToSnake(s string) string {
 			result += string(v)
 		}
 	}
-	return result
+	return "`" + result + "`"
 }
 
 type sqlBuilder[Val any] struct {
@@ -880,7 +896,7 @@ func (s *sqlBuilder[Val]) queryOne(args ...any) (val Val, err error) {
 		}
 		return v.Interface().(Val), err
 	}
-	return val, errors.New("data is empty")
+	return val, tgf.DBEmpty
 }
 
 func (s *sqlBuilder[Val]) queryList(args ...any) (values []Val, err error) {
