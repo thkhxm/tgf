@@ -111,6 +111,12 @@ func (r *redisService) IncrBy(key string, val float64, timeout time.Duration) (r
 	return fc.Val(), nil
 }
 
+func (r *redisService) LLen(key string) (res int64, err error) {
+	var ()
+	i := r.client.LLen(context.Background(), key)
+	return i.Val(), nil
+}
+
 func (r *redisService) GetSet(key string) (res []string, err error) {
 	data := r.client.SMembers(context.Background(), key)
 	return data.Result()

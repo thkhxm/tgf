@@ -45,6 +45,7 @@ type iRedisCacheService interface {
 	TryUnLock(l *redislock.Lock, ctx context.Context)
 	Incr(key string, timeout time.Duration) (res int64, err error)
 	IncrBy(key string, val float64, timeout time.Duration) (res float64, err error)
+	LLen(key string) (res int64, err error)
 }
 
 type IAutoCacheService[Key cacheKey, Val any] interface {
@@ -279,6 +280,19 @@ func IncrBy(key string, val float64, timeout time.Duration) (res float64, err er
 	}
 	if r, ok := cache.(iRedisCacheService); ok {
 		res, err = r.IncrBy(key, val, timeout)
+	}
+	return
+}
+
+// LLen
+// @Description: 获取list长度
+// @param l
+func LLen(key string) (res int64, err error) {
+	if cache == nil {
+		return
+	}
+	if r, ok := cache.(iRedisCacheService); ok {
+		res, err = r.LLen(key)
 	}
 	return
 }
