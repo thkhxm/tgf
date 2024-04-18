@@ -578,6 +578,7 @@ func (t *TCPServer) Offline(userId string, replace bool) (exists bool) {
 		} else {
 			//发送重复登录消息通知
 			oldUser.Send(replaceLoginData)
+			time.Sleep(time.Second * 1)
 		}
 		//断开已经在线的玩家上下文
 		oldUser.Offline(userHook)
@@ -816,6 +817,12 @@ func (t *TCPServer) UpdateUserNodeInfo(userId, servicePath, nodeId string) bool 
 
 func (t *TCPServer) ToUser(userId, messageType string, data []byte) {
 	var ()
+	defer func() {
+		if r := recover(); r != nil {
+			t.users.Del(userId)
+			log.WarnTag("tcp", "ToUser panic %v", r)
+		}
+	}()
 	if connectData, ok := t.users.Get(userId); ok {
 		res := t.getSendToClientData(messageType, 0, 0, data)
 		connectData.Send(res)
@@ -883,6 +890,7 @@ func (u *UserConnectData) Send(data []byte) {
 	var ()
 	select {
 	case u.writeChan <- data:
+
 	case <-time.After(time.Second * 3):
 		log.WarnTag("tcp", "用户 %s 发送请求超时", u.userId)
 		return

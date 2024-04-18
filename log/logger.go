@@ -184,8 +184,9 @@ func initLogger() {
 	//
 	st := newCore(logPath, level, zapLoggerEncoderConfig, true)
 	zapCoreGame := newCore(logPath, level, zapLoggerEncoderConfig, false)
-	zapCoreService := newCore(fmt.Sprintf("%s%s..%sservice%sservice.log", logPath, string(filepath.Separator), string(filepath.Separator), string(filepath.Separator)), level, zapLoggerEncoderConfig, false)
-	zapCoreDB := newCore(fmt.Sprintf("%s%s..%sdb%sdb.log", logPath, string(filepath.Separator), string(filepath.Separator), string(filepath.Separator)), level, zapLoggerEncoderConfig, false)
+	basePath := filepath.Dir(logPath)
+	zapCoreService := newCore(fmt.Sprintf("%s%sservice%sservice.log", basePath, string(filepath.Separator), string(filepath.Separator)), level, zapLoggerEncoderConfig, false)
+	zapCoreDB := newCore(fmt.Sprintf("%s%sdb%sdb.log", basePath, string(filepath.Separator), string(filepath.Separator)), level, zapLoggerEncoderConfig, false)
 	//zapCore := zapcore.NewCore(zapcore.NewConsoleEncoder(zapLoggerEncoderConfig), syncWriter, level)
 	// 创建一个映射，将标签映射到对应的Core
 	taggedCores := map[string]zapcore.Core{

@@ -379,7 +379,7 @@ func (a *autoCacheManager[Key, Val]) Get(key ...Key) (val Val, err error) {
 		return val, err
 	})
 
-	return val, errors.New("data not found in cache")
+	return val, err
 }
 
 func (a *autoCacheManager[Key, Val]) Set(val Val, key ...Key) (success bool) {
