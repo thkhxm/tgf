@@ -613,7 +613,10 @@ func (t *TCPServer) DoLogin(userId, templateUserId string) (err error) {
 	log.InfoTag("tcp", "login templateUserId %v , uuid %v", templateUserId, userId)
 	if t.userHook != nil {
 		for _, hook := range t.userHook.GetLoginHooks() {
-			SendNoReplyRPCMessage(ct, hook.New(&DefaultArgs{C: userId}, &EmptyReply{}))
+			_, err = SendRPCMessage(ct, hook.New(&DefaultArgs{C: userId}, &EmptyReply{}))
+			if err != nil {
+				log.WarnTag("tcp", "user [%s] login hook [%s] error %v", userId, hook.MessageType, err)
+			}
 		}
 	}
 	return
@@ -860,7 +863,7 @@ func (u *UserConnectData) Offline(userHook IUserHook) {
 	var ()
 	if userHook != nil {
 		for _, hook := range userHook.GetOfflineHooks() {
-			SendNoReplyRPCMessage(u.contextData, hook.New(&DefaultArgs{C: u.userId}, &EmptyReply{}))
+			SendRPCMessage(u.contextData, hook.New(&DefaultArgs{C: u.userId}, &EmptyReply{}))
 		}
 	}
 
