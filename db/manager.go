@@ -598,7 +598,7 @@ func (a *autoCacheManager[Key, Val]) initField(rf reflect.Type, pkFields, pkList
 			continue
 		}
 		if field.Anonymous {
-			p, pl, f, t := a.initField(field.Type, newPkFields, newPkListFields, newFieldName, newTableFieldNum)
+			p, pl, f, t := a.initField(field.Type, []string{}, []string{}, []string{}, []string{})
 			newPkFields = append(newPkFields, p...)
 			newPkListFields = append(newPkListFields, pl...)
 			newFieldName = append(newFieldName, f...)
