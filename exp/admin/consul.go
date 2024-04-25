@@ -83,10 +83,15 @@ func (r *ConsulRegistry) fetchServices() []*ConsulData {
 			continue
 		}
 
+		baseServiceName := strings.TrimPrefix(value.Key, r.baseURL)
+
 		for _, n := range nodes {
 			key := n.Key[:]
 			i := strings.LastIndex(key, "/")
 			serviceName := strings.TrimPrefix(key[0:i], r.baseURL)
+			if serviceName == "" || baseServiceName != serviceName {
+				continue
+			}
 			var serviceAddr string
 			fields := strings.Split(key, "/")
 			if fields != nil && len(fields) > 1 {

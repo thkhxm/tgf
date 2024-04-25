@@ -351,7 +351,7 @@ func (t *TCPServer) handlerWSConn(conn *websocket.Conn) {
 	conn.SetPingHandler(func(message string) error {
 
 		err := conn.WriteControl(websocket.PongMessage, []byte(message), time.Now().Add(t.config.DeadLineTime()))
-		log.DebugTag("ping", "收到客户端的ping请求 %v err=%v", GetUserId(connectData.contextData), err)
+		//log.DebugTag("ping", "收到客户端的ping请求 %v err=%v", GetUserId(connectData.contextData), err)
 		if err == websocket.ErrCloseSent {
 			return nil
 		} else if e, ok := err.(net.Error); ok && e.Timeout() {
@@ -415,7 +415,7 @@ func (t *TCPServer) handlerWSConn(conn *websocket.Conn) {
 				User:          connectData,
 				ReqId:         data.ReqId,
 			}
-			log.DebugTag("tcp", "Logic 完整包数据 [%v]", pack)
+			log.DebugTag("tcp", "收到请求[%s.%s]", pack.Module, pack.RequestMethod)
 			reqChan <- pack
 		case websocket.PingMessage:
 			log.InfoTag("tcp", "收到ping请求 %v", message)
@@ -642,12 +642,12 @@ func (t *TCPServer) doLogic(data *RequestData) {
 		}
 		//记录客户端请求日志
 		log.Service(data.Module, data.RequestMethod, "1.0",
-			data.User.userId, string(data.Data), string(reply),
+			data.User.userId,
 			consumeTime, resData.Code)
 	}()
 	err = sendMessage(data.User, data.Module, data.RequestMethod, reqData, resData)
 	if err != nil {
-		log.InfoTag("tcp", "请求异常 数据 [%v] [%v]", data, err)
+		log.InfoTag("tcp", "请求异常 数据 [%v]", err)
 		return
 	}
 	//callbackErr := callback.Done()

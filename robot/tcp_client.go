@@ -232,6 +232,7 @@ func (w *ws) RegisterCallbackMessage(messageType string, f CallbackLogic) IRobot
 
 func (w *ws) Send(messageType string, v1 proto.Message) {
 	ms := strings.Split(messageType, ".")
+	//time.Sleep(time.Millisecond * 300)
 	w.SendMessage(ms[0], ms[1], v1)
 }
 

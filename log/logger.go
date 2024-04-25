@@ -63,7 +63,7 @@ func DB(traceId, dbName, script string, count int32) {
 	//}
 }
 
-func Service(module, name, version, userId, args, reply string, consume int64, code int32) {
+func Service(module, name, version, userId string, consume int64, code int32) {
 	//if CheckLogTag(SERVICETAG) {
 	logger.Debug("", zap.String("tag", SERVICETAG),
 		zap.String("userId", userId),
@@ -72,8 +72,6 @@ func Service(module, name, version, userId, args, reply string, consume int64, c
 		zap.String("version", version),
 		zap.Int64("consume", consume),
 		zap.Int32("code", code),
-		zap.String("args", args),
-		zap.String("reply", reply),
 	)
 	//}
 }

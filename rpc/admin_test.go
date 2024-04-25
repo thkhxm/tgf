@@ -2,6 +2,7 @@ package rpc_test
 
 import (
 	"github.com/thkhxm/tgf/rpc"
+	"strconv"
 	"testing"
 )
 
@@ -22,7 +23,7 @@ func TestServeAdmin(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			rpc.ServeAdmin()
+			rpc.ServeAdmin(strconv.Itoa(8001))
 		})
 	}
 	select {}

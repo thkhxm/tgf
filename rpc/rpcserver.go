@@ -467,7 +467,7 @@ func sendMessage(ct IUserConnectData, moduleName, serviceName string, args, repl
 		xclient = rc.getClient(moduleName)
 	)
 	if xclient == nil {
-		return errors.New(fmt.Sprintf("找不到对应模块的服务 moduleName=%v", moduleName))
+		return errors.New(fmt.Sprintf("找不到对应模块的服务 moduleName=%v serviceName=%v ", moduleName, serviceName))
 	}
 	if ct.IsLogin() || rc.CheckWhiteList(moduleName+"."+serviceName) {
 		err := xclient.Call(ct.GetContextData(), serviceName, args, reply)
@@ -497,6 +497,11 @@ func SendRPCMessage[Req any, Res any](ct context.Context, api *ServiceAPI[Req, R
 		return
 	}
 	call, err := xclient.Go(ct, api.Name, api.args, api.reply, done)
+	defer func() {
+		if call.Error != nil {
+			log.WarnTag("tcp", "RPC module=%v serviceName=%v userId=%s error=%v", api.ModuleName, api.Name, GetUserId(ct), call.Error)
+		}
+	}()
 	if err != nil {
 		err = errors.New(fmt.Sprintf("rpc请求异常 moduleName=%v serviceName=%v error=%v", api.ModuleName, api.Name, err))
 		log.WarnTag("tcp", err.Error())
@@ -510,12 +515,6 @@ func SendRPCMessage[Req any, Res any](ct context.Context, api *ServiceAPI[Req, R
 	case <-call.Done:
 		break
 	}
-
-	defer func() {
-		if call.Error != nil {
-			log.WarnTag("tcp", "RPC module=%v serviceName=%v error=%v", api.ModuleName, api.Name, call.Error)
-		}
-	}()
 	return api.reply, call.Error
 }
 

@@ -5,6 +5,7 @@ import (
 	"errors"
 	"github.com/bsm/redislock"
 	"github.com/bytedance/sonic"
+	"github.com/redis/go-redis/v9"
 	"github.com/thkhxm/tgf"
 	"github.com/thkhxm/tgf/log"
 	"github.com/thkhxm/tgf/util"
@@ -295,6 +296,16 @@ func LLen(key string) (res int64, err error) {
 		res, err = r.LLen(key)
 	}
 	return
+}
+
+func GetRedisClient() redis.UniversalClient {
+	if cache == nil {
+		return nil
+	}
+	if r, ok := cache.(*redisService); ok {
+		return r.GetClient()
+	}
+	return nil
 }
 
 // AutoCacheBuilder [Key comparable,Val any]

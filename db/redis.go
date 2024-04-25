@@ -2,6 +2,7 @@ package db
 
 import (
 	"context"
+	"errors"
 	"github.com/bsm/redislock"
 	"github.com/redis/go-redis/v9"
 	"github.com/thkhxm/tgf"
@@ -25,11 +26,15 @@ type redisService struct {
 	client redis.UniversalClient
 }
 
+func (r *redisService) GetClient() redis.UniversalClient {
+	return r.client
+}
+
 func (r *redisService) Get(key string) (res string) {
 	var (
 		err error
 	)
-	if res, err = r.client.Get(context.Background(), key).Result(); err == nil || err == redis.Nil {
+	if res, err = r.client.Get(context.Background(), key).Result(); err == nil || errors.Is(err, redis.Nil) {
 		return
 	}
 	log.Error("[redis] 获取缓存数据异常 key=%v,err=%v", key, err)
