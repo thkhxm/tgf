@@ -599,15 +599,15 @@ func BorderAllServiceRPCMessageByContext[Req any, Res any](ct context.Context, a
 		rc = getRPCClient()
 		//xclient = rc.getClient(api.ModuleName)
 	)
-	nodeMap := ct.Value(share.ReqMetaDataKey)
-	if m, h := nodeMap.(map[string]string); h {
-		rc.clients.Range(func(s string, xClient client.XClient) bool {
-			if m[s] != "" {
-				xClient.Oneshot(ct, api.Name, api.args)
-			}
-			return true
-		})
-	}
+	//nodeMap := ct.Value(share.ReqMetaDataKey)
+	//if m, h := nodeMap.(map[string]string); h {
+	rc.clients.Range(func(s string, xClient client.XClient) bool {
+		//if m[s] != "" {
+		xClient.Oneshot(ct, api.Name, api.args)
+		//}
+		return true
+	})
+	//}
 }
 
 func BorderAllServiceRPCMessageByContextNotCheck[Req any, Res any](ct context.Context, api *ServiceAPI[Req, Res]) {
@@ -615,16 +615,14 @@ func BorderAllServiceRPCMessageByContextNotCheck[Req any, Res any](ct context.Co
 		rc = getRPCClient()
 		//xclient = rc.getClient(api.ModuleName)
 	)
-	nodeMap := ct.Value(share.ReqMetaDataKey)
-	if _, h := nodeMap.(map[string]string); h {
-		rc.clients.Range(func(s string, xClient client.XClient) bool {
-			if s == tgf.MonitorServiceModuleName || s == tgf.AdminServiceModuleName {
-				return true
-			}
-			xClient.Oneshot(ct, api.Name, api.args)
+	rc.clients.Range(func(s string, xClient client.XClient) bool {
+		if s == tgf.MonitorServiceModuleName || s == tgf.AdminServiceModuleName {
 			return true
-		})
-	}
+		}
+		xClient.Oneshot(ct, api.Name, api.args)
+		return true
+	})
+
 }
 
 // SendToGate

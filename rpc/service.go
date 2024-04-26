@@ -100,13 +100,22 @@ func (s *ServiceAPI[Req, Res]) GetResult() Res {
 }
 
 func GetUserId(ctx context.Context) string {
-	return ctx.Value(share.ReqMetaDataKey).(map[string]string)[tgf.ContextKeyUserId]
+	if ct, ok := ctx.(*share.Context); ok {
+		return ct.GetReqMetaDataByKey(tgf.ContextKeyUserId)
+	}
+	return ""
 }
 
 func GetNodeId(ctx context.Context) string {
-	return ctx.Value(share.ReqMetaDataKey).(map[string]string)[tgf.ContextKeyNodeId]
+	if ct, ok := ctx.(*share.Context); ok {
+		return ct.GetReqMetaDataByKey(tgf.ContextKeyNodeId)
+	}
+	return ""
 }
 
 func GetTemplateUserId(ctx context.Context) string {
-	return ctx.Value(share.ReqMetaDataKey).(map[string]string)[tgf.ContextKeyTemplateUserId]
+	if ct, ok := ctx.(*share.Context); ok {
+		return ct.GetReqMetaDataByKey(tgf.ContextKeyTemplateUserId)
+	}
+	return ""
 }

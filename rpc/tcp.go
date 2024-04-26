@@ -330,9 +330,10 @@ func (t *TCPServer) handlerWSConn(conn *websocket.Conn) {
 	}
 	reqMetaData := make(map[string]string)
 	reqChan := make(chan *RequestData, 10)
-	reqMetaData[tgf.ContextKeyTemplateUserId] = util.GenerateSnowflakeId()
+	templateUserId := util.GenerateSnowflakeId()
+	reqMetaData[tgf.ContextKeyTemplateUserId] = templateUserId
 	connectData.contextData.SetValue(share.ReqMetaDataKey, reqMetaData)
-	t.users.Set(reqMetaData[tgf.ContextKeyTemplateUserId], connectData)
+	t.users.Set(templateUserId, connectData)
 	log.DebugTag("tcp", "接收到一条新的连接 addr=%v , templateUserId=%v", conn.RemoteAddr().String(), reqMetaData[tgf.ContextKeyTemplateUserId])
 	defer func() {
 		if err := recover(); err != nil {
@@ -446,10 +447,11 @@ func (t *TCPServer) handlerConn(conn *net.TCPConn) {
 		writeChan:   make(chan []byte, 20),
 	}
 	reqMetaData := make(map[string]string)
-	reqMetaData[tgf.ContextKeyTemplateUserId] = util.GenerateSnowflakeId()
+	templateUserId := util.GenerateSnowflakeId()
+	reqMetaData[tgf.ContextKeyTemplateUserId] = templateUserId
 	connectData.contextData.SetValue(share.ReqMetaDataKey, reqMetaData)
-	t.users.Set(reqMetaData[tgf.ContextKeyTemplateUserId], connectData)
-	log.DebugTag("tcp", "接收到一条新的连接 addr=%v , templateUserId=%v", conn.RemoteAddr().String(), reqMetaData[tgf.ContextKeyTemplateUserId])
+	t.users.Set(templateUserId, connectData)
+	log.DebugTag("tcp", "接收到一条新的连接 addr=%v , templateUserId=%v", conn.RemoteAddr().String(), templateUserId)
 	//
 
 	reqChan := make(chan *RequestData)
@@ -836,10 +838,7 @@ func (t *TCPServer) ToUser(userId, messageType string, data []byte) {
 
 func (u *UserConnectData) UpdateUserNodeId(servicePath, nodeId string) {
 	var ()
-	metaData := u.contextData.Value(share.ReqMetaDataKey)
-	if metaData != nil {
-		metaData.(map[string]string)[servicePath] = nodeId
-	}
+	u.contextData.SetReqMetaData(servicePath, nodeId)
 }
 func (u *UserConnectData) IsLogin() bool {
 	var ()
@@ -901,8 +900,7 @@ func (u *UserConnectData) Send(data []byte) {
 }
 
 func (u *UserConnectData) StartReq() {
-	reqMetaData := u.contextData.Value(share.ReqMetaDataKey).(map[string]string)
-	reqMetaData[tgf.ContextKeyTRACEID] = util.GenerateSnowflakeId()
+	u.contextData.SetReqMetaData(tgf.ContextKeyTRACEID, util.GenerateSnowflakeId())
 }
 
 func (u *UserConnectData) writeMessage() {

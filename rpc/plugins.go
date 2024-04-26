@@ -76,6 +76,8 @@ func (c *CustomSelector) Select(ctx context.Context, servicePath, serviceMethod 
 			return ""
 		default:
 			reqMetaData := sc.Value(share.ReqMetaDataKey).(map[string]string)
+			sc.Lock()
+			defer sc.Unlock()
 			selected = reqMetaData[servicePath]
 			//用户级别的请求
 			uid := reqMetaData[tgf.ContextKeyUserId]
@@ -231,23 +233,23 @@ type XClientHandler struct {
 }
 
 func (r *XClientHandler) PreCall(ctx context.Context, serviceName, methodName string, args interface{}) error {
-	var reqMetaData map[string]string
+	var traceId string
 	if sc, ok := ctx.(*share.Context); ok {
-		reqMetaData = sc.Value(share.ReqMetaDataKey).(map[string]string)
-		reqMetaData[tgf.ContextKeyNodeId] = tgf.NodeId
+		traceId = sc.GetReqMetaDataByKey(tgf.ContextKeyTRACEID)
+		sc.SetValue(tgf.ContextKeyNodeId, tgf.NodeId)
 	}
 	argStr, _ := sonic.MarshalString(args)
-	log.DebugTag("trace", "[%s] client [%s] 发送 [%v-%v] 请求 , 参数 [%v]", reqMetaData[tgf.ContextKeyTRACEID], tgf.NodeId, serviceName, methodName, argStr)
+	log.DebugTag("trace", "[%s] client [%s] 发送 [%v-%v] 请求 , 参数 [%v]", traceId, tgf.NodeId, serviceName, methodName, argStr)
 	return nil
 }
 
 func (r *XClientHandler) PostCall(ctx context.Context, servicePath, serviceMethod string, args interface{}, reply interface{}, err error) error {
-	var reqMetaData map[string]string
+	var traceId string
 	if sc, ok := ctx.(*share.Context); ok {
-		reqMetaData = sc.Value(share.ReqMetaDataKey).(map[string]string)
+		traceId = sc.GetReqMetaDataByKey(tgf.ContextKeyTRACEID)
 	}
 	replyStr, _ := sonic.MarshalString(reply)
-	log.DebugTag("trace", "[%s] client [%s] 接收 [%v-%v] 响应 , 返回结果 [%v] ", reqMetaData[tgf.ContextKeyTRACEID], tgf.NodeId, servicePath, serviceMethod, replyStr)
+	log.DebugTag("trace", "[%s] client [%s] 接收 [%v-%v] 响应 , 返回结果 [%v] ", traceId, tgf.NodeId, servicePath, serviceMethod, replyStr)
 	return err
 }
 
@@ -255,22 +257,28 @@ type XServerHandler struct {
 }
 
 func (r *XServerHandler) PreCall(ctx context.Context, serviceName, methodName string, args interface{}) (result interface{}, e error) {
-	var reqMetaData map[string]string
+	var traceId string
 	if sc, ok := ctx.(*share.Context); ok {
-		reqMetaData = sc.Value(share.ReqMetaDataKey).(map[string]string)
+		traceId = sc.GetReqMetaDataByKey(tgf.ContextKeyTRACEID)
+		sc.SetValue("timestamp", time.Now().UnixMilli())
 	}
 	argStr, _ := sonic.MarshalString(args)
-	log.DebugTag("trace", "[%s] server [%s] 接收 [%v-%v] 请求 , 参数 [%v]", reqMetaData[tgf.ContextKeyTRACEID], tgf.NodeId, serviceName, methodName, argStr)
+	log.DebugTag("trace", "[%s] server [%s] 接收 [%v-%v] 请求 , 参数 [%v]", traceId, tgf.NodeId, serviceName, methodName, argStr)
 	return args, nil
 }
 
 func (r *XServerHandler) PostCall(ctx context.Context, servicePath, serviceMethod string, args interface{}, reply interface{}, err error) (result interface{}, e error) {
-	var reqMetaData map[string]string
+	var d int64
+	var traceId string
 	if sc, ok := ctx.(*share.Context); ok {
-		reqMetaData = sc.Value(share.ReqMetaDataKey).(map[string]string)
+		traceId = sc.GetReqMetaDataByKey(tgf.ContextKeyTRACEID)
+		t := sc.Value("timestamp")
+		if t != nil {
+			d = time.Now().UnixMilli() - t.(int64)
+		}
 	}
 	replyStr, _ := sonic.MarshalString(reply)
-	log.DebugTag("trace", "[%s] server [%s] 执行 [%v-%v] 完毕 , 返回结果 [%v] ", reqMetaData[tgf.ContextKeyTRACEID], tgf.NodeId, servicePath, serviceMethod, replyStr)
+	log.DebugTag("trace", "[%s] server [%s] 执行 [%v-%v] 完毕 耗时[%d], 返回结果 [%v] ", traceId, tgf.NodeId, servicePath, serviceMethod, d, replyStr)
 	return reply, err
 }
 
