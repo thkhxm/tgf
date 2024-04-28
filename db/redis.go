@@ -23,7 +23,8 @@ import (
 var service *redisService
 
 type redisService struct {
-	client redis.UniversalClient
+	client  redis.UniversalClient
+	cluster redis.ClusterClient
 }
 
 func (r *redisService) GetClient() redis.UniversalClient {
@@ -138,17 +139,25 @@ func newRedisService() *redisService {
 		addr     = tgf.GetStrConfig[string](tgf.EnvironmentRedisAddr)
 		password = tgf.GetStrConfig[string](tgf.EnvironmentRedisPassword)
 		db       = tgf.GetStrConfig[int](tgf.EnvironmentRedisDB)
+		cluster  = tgf.GetStrConfig[int](tgf.EnvironmentRedisCluster)
 	)
 
 	service = new(redisService)
-	redisOptions := &redis.UniversalOptions{}
 
-	redisOptions.Addrs = strings.Split(addr, ",")
-	redisOptions.DB = db
-	if password != "" {
-		redisOptions.Password = password
+	if cluster == 1 {
+		redisOptions := &redis.ClusterOptions{}
+		redisOptions.Addrs = strings.Split(addr, ",")
+		service.client = redis.NewClusterClient(redisOptions)
+	} else {
+		redisOptions := &redis.UniversalOptions{}
+		redisOptions.Addrs = strings.Split(addr, ",")
+		redisOptions.DB = db
+		if password != "" {
+			redisOptions.Password = password
+		}
+		service.client = redis.NewUniversalClient(redisOptions)
 	}
-	service.client = redis.NewUniversalClient(redisOptions)
+
 	if stat := service.client.Ping(context.Background()); stat.Err() != nil {
 		log.WarnTag("init", "启动redis服务异常 addr=%v db=%v err=%v", addr, db, stat.Err())
 		return nil

@@ -36,6 +36,7 @@ func initMapping() {
 	mapping[EnvironmentRedisAddr] = &config{env: EnvironmentRedisAddr, val: defaultRedisAddr}
 	mapping[EnvironmentRedisPassword] = &config{env: EnvironmentRedisPassword, val: defaultRedisPassword}
 	mapping[EnvironmentRedisDB] = &config{env: EnvironmentRedisDB, val: defaultRedisDB}
+	mapping[EnvironmentRedisCluster] = &config{env: EnvironmentRedisCluster, val: defaultRedisCluster}
 	mapping[EnvironmentServicePort] = &config{env: EnvironmentServicePort, val: defaultServicePort}
 	mapping[EnvironmentServiceAddress] = &config{env: EnvironmentServiceAddress, val: defaultServiceAddress}
 
@@ -78,6 +79,7 @@ const (
 	defaultRedisPassword = ""
 	defaultRedisDB       = "1"
 	defaultGatePush      = "1"
+	defaultRedisCluster  = "0"
 )
 
 func (c *config) initVal() *config {

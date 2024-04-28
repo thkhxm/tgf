@@ -69,6 +69,8 @@ const (
 
 	// EnvironmentRedisDB redis的db
 	EnvironmentRedisDB Environment = "RedisDB"
+	// EnvironmentRedisCluster redis cluster 开关 0 关闭 1 开启,默认关闭
+	EnvironmentRedisCluster Environment = "RedisCluster"
 
 	// EnvironmentMySqlUser mysql用户名
 	EnvironmentMySqlUser Environment = "MySqlUser"
