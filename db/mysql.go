@@ -7,6 +7,7 @@ import (
 	_ "github.com/go-sql-driver/mysql"
 	"github.com/thkhxm/tgf"
 	"github.com/thkhxm/tgf/log"
+	"time"
 )
 
 //***************************************************
@@ -98,11 +99,12 @@ func initMySql() {
 	dbService = new(mysqlService)
 	dbService.executeChan = make(chan string)
 	// 定义 MySQL 数据库连接信息
-	dataSourceName := fmt.Sprintf("%v:%v@tcp(%v:%v)/%v?charset=utf8&parseTime=True&loc=Local", userName, password, hostName, port, database)
+	dataSourceName := fmt.Sprintf("%v:%v@tcp(%v:%v)/%v?charset=utf8mb4&parseTime=True&loc=Local", userName, password, hostName, port, database)
 	// 创建数据库连接池
 	d, err = sql.Open("mysql", dataSourceName)
 	d.SetMaxIdleConns(10)
-	d.SetMaxOpenConns(50)
+	d.SetMaxOpenConns(200)
+	d.SetConnMaxLifetime(300 * time.Second)
 	if err != nil {
 		log.WarnTag("init", "mysql dataSourceName is wrong")
 		return

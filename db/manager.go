@@ -12,6 +12,7 @@ import (
 	"golang.org/x/net/context"
 	"golang.org/x/sync/singleflight"
 	"reflect"
+	"runtime"
 	"strings"
 	"sync"
 	"time"
@@ -53,8 +54,8 @@ type autoCacheManager[Key cacheKey, Val any] struct {
 	//
 	cacheMap *hashmap.Map[string, *cacheData[Val]]
 	//
-	clearTimer     *time.Ticker
-	longevityTimer *time.Ticker
+	clearTimer     *time.Timer
+	longevityTimer *time.Timer
 	//
 	sb *sqlBuilder[Val]
 	//
@@ -488,6 +489,14 @@ func (a *autoCacheManager[Key, Val]) set(key string, val Val) *cacheData[Val] {
 
 func (a *autoCacheManager[Key, Val]) autoClear() {
 	var ()
+	defer func() {
+		if err := recover(); err != nil {
+			buf := make([]byte, 1024)
+			buf = buf[:runtime.Stack(buf, true)]
+			log.ErrorTag("cache", "autoClear error:%v,%v", string(buf), err)
+			return
+		}
+	}()
 	now := time.Now().Unix()
 	//初始化1/5的容量
 	removeKeys := make([]string, 0, a.cacheMap.Len()/5)
@@ -522,6 +531,14 @@ func (a *autoCacheManager[Key, Val]) getCacheKey(key string) string {
 
 func (a *autoCacheManager[Key, Val]) toLongevity() {
 	var ()
+	defer func() {
+		if err := recover(); err != nil {
+			buf := make([]byte, 1024)
+			buf = buf[:runtime.Stack(buf, true)]
+			log.ErrorTag("cache", "toLongevity error:%v,%v", string(buf), err)
+			return
+		}
+	}()
 	if !a.longevity() {
 		return
 	}
@@ -656,7 +673,7 @@ func (a *autoCacheManager[Key, Val]) InitStruct() {
 
 	//开启自动清除过期数据
 	if a.builder.autoClear {
-		a.clearTimer = time.NewTicker(time.Minute * 10)
+		a.clearTimer = time.NewTimer(time.Minute * 10)
 		//a.clearTimer = time.NewTicker(time.Second)
 		util.Go(func() {
 			counter := 0
@@ -668,6 +685,7 @@ func (a *autoCacheManager[Key, Val]) InitStruct() {
 					if counter > 1e10 {
 						counter = 0
 					}
+					a.clearTimer.Reset(time.Minute * 10)
 				}
 			}
 		})
@@ -702,7 +720,7 @@ func (a *autoCacheManager[Key, Val]) InitStruct() {
 		a.sb.modelFieldName = tableFieldNum
 		a.sb.initStruct()
 
-		a.longevityTimer = time.NewTicker(a.longevityInterval())
+		a.longevityTimer = time.NewTimer(a.longevityInterval())
 		util.Go(func() {
 			counter := 0
 			for {
@@ -713,6 +731,7 @@ func (a *autoCacheManager[Key, Val]) InitStruct() {
 					if counter > 1e10 {
 						counter = 0
 					}
+					a.longevityTimer.Reset(a.longevityInterval())
 				}
 			}
 		})
@@ -953,64 +972,62 @@ func (s *sqlBuilder[Val]) queryList(args ...any) (values []Val, err error) {
 }
 
 func (s *sqlBuilder[Val]) updateOrCreate(values []any, count int) {
-
 	//按批次发送所有更新脚本
 	group := count/defaultUpdateGroupSize + 1
 	fieldCount := len(s.modelFieldName)
 	baseValueSize := len(values)
 	for i := 0; i < group; i++ {
-		//初始化更新脚本
-		start := time.Now()
-		startIndex := i * defaultUpdateGroupSize * fieldCount
-		if startIndex >= baseValueSize {
-			break
-		}
-		endIndex := startIndex + defaultUpdateGroupSize*fieldCount
-		if endIndex > baseValueSize {
-			endIndex = baseValueSize
-		}
-		valueSize := (endIndex - startIndex) / fieldCount
-		insertValues := make([]string, valueSize)
-		for x := 0; x < valueSize; x++ {
-			insertValues[x] = s.updateValueBaseSql
-		}
-		insertValuesSql := strings.Join(insertValues, ",")
-		updateSql := s.updateStartSql + insertValuesSql + s.updateAsSql + s.updateEndSql
-		//执行脚本
-		conn := dbService.getConnection()
-		tx, err := conn.BeginTx(context.Background(), &sql.TxOptions{
-			Isolation: sql.LevelReadUncommitted,
-			ReadOnly:  false,
-		})
-		logScript, err := sonic.MarshalString(values[startIndex:endIndex])
-		traceId := util.GenerateSnowflakeId()
-		if err == nil {
-			log.DB(traceId, s.tableName, logScript, int32(valueSize))
-		}
-		if err != nil {
-			continue
-		}
-		stmt, err := tx.PrepareContext(context.Background(), updateSql)
-		if err != nil {
-			log.WarnTag("orm", "traceId=%s,update script=%v params=%v error=%v", traceId, updateSql, values[startIndex:endIndex], err)
-			tx.Rollback()
-			stmt.Close()
-			conn.Close()
-			continue
-		}
-		_, err = stmt.Exec(values[startIndex:endIndex]...)
-		if err != nil {
-			log.WarnTag("orm", "traceId=%s update run script=%v params=%v error=%v", traceId, updateSql, values[startIndex:endIndex], err)
-			tx.Rollback()
-			stmt.Close()
-			conn.Close()
-			continue
-		}
-		tx.Commit()
-		stmt.Close()
-		conn.Close()
-		ex := time.Since(start)
-		log.DebugTag("orm", "traceId=%s update=%v time=%v/ms valueSize=%v", traceId, s.tableName, ex.Milliseconds(), endIndex-startIndex)
+		s.update(i, fieldCount, baseValueSize, values)
 	}
+}
 
+func (s *sqlBuilder[Val]) update(i, fieldCount, baseValueSize int, values []any) {
+	//初始化更新脚本
+	start := time.Now()
+	startIndex := i * defaultUpdateGroupSize * fieldCount
+	if startIndex >= baseValueSize {
+		return
+	}
+	endIndex := startIndex + defaultUpdateGroupSize*fieldCount
+	if endIndex > baseValueSize {
+		endIndex = baseValueSize
+	}
+	valueSize := (endIndex - startIndex) / fieldCount
+	insertValues := make([]string, valueSize)
+	for x := 0; x < valueSize; x++ {
+		insertValues[x] = s.updateValueBaseSql
+	}
+	insertValuesSql := strings.Join(insertValues, ",")
+	updateSql := s.updateStartSql + insertValuesSql + s.updateAsSql + s.updateEndSql
+	//执行脚本
+	conn := dbService.getConnection()
+	defer conn.Close()
+	tx, err := conn.BeginTx(context.Background(), &sql.TxOptions{
+		Isolation: sql.LevelReadUncommitted,
+		ReadOnly:  false,
+	})
+	logScript, err := sonic.MarshalString(values[startIndex:endIndex])
+	traceId := util.GenerateSnowflakeId()
+	if err == nil {
+		log.DB(traceId, s.tableName, logScript, int32(valueSize))
+	}
+	if err != nil {
+		return
+	}
+	stmt, err := tx.PrepareContext(context.Background(), updateSql)
+	defer stmt.Close()
+	if err != nil {
+		log.WarnTag("orm", "traceId=%s,update script=%v params=%v error=%v", traceId, updateSql, values[startIndex:endIndex], err)
+		tx.Rollback()
+		return
+	}
+	_, err = stmt.Exec(values[startIndex:endIndex]...)
+	if err != nil {
+		log.WarnTag("orm", "traceId=%s update run script=%v params=%v error=%v", traceId, updateSql, values[startIndex:endIndex], err)
+		tx.Rollback()
+		return
+	}
+	tx.Commit()
+	ex := time.Since(start)
+	log.InfoTag("orm", "traceId=%s update=%v time=%v/ms group=%d valueSize=%v", traceId, s.tableName, ex.Milliseconds(), i, endIndex-startIndex)
 }
