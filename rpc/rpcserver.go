@@ -651,7 +651,7 @@ func SendToGate(ct context.Context, messageType string, pbMessage proto.Message)
 // @return error
 func SendToGateByUserId(userId, messageType string, pbMessage proto.Message) error {
 	data, err := proto.Marshal(pbMessage)
-	ct := NewCacheUserContext(userId)
+	ct := NewUserRPCContext(userId)
 	req := &ToUserReq{
 		Data:        data,
 		UserId:      GetUserId(ct),

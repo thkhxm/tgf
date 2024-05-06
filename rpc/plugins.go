@@ -80,12 +80,12 @@ func (c *CustomSelector) Select(ctx context.Context, servicePath, serviceMethod 
 			defer sc.Unlock()
 			selected = reqMetaData[servicePath]
 			//用户级别的请求
-			uid := reqMetaData[tgf.ContextKeyUserId]
+			userId := reqMetaData[tgf.ContextKeyUserId]
 			rpcTip := reqMetaData[tgf.ContextKeyRPCType]
 			broadcasts := make([]string, 1)
 
-			if uid != "" {
-				broadcasts[0] = uid
+			if userId != "" {
+				broadcasts[0] = userId
 			}
 			var bindNode bool
 			if rpcTip == tgf.RPCBroadcastTip {
