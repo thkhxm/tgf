@@ -188,9 +188,9 @@ func initLogger() {
 	//zapCore := zapcore.NewCore(zapcore.NewConsoleEncoder(zapLoggerEncoderConfig), syncWriter, level)
 	// 创建一个映射，将标签映射到对应的Core
 	taggedCores := map[string]zapcore.Core{
-		DBTAG:      &TaggedCore{Core: zapCoreDB, Tag: DBTAG},
+		DBTAG:      &TaggedCore{Core: zapCoreDB, Tag: DBTAG, Pass: true},
 		GAMETAG:    &TaggedCore{Core: zapCoreGame, Tag: ""},
-		SERVICETAG: &TaggedCore{Core: zapCoreService, Tag: SERVICETAG},
+		SERVICETAG: &TaggedCore{Core: zapCoreService, Tag: SERVICETAG, Pass: true},
 	}
 	logger = zap.New(zapcore.NewTee(taggedCores[DBTAG], taggedCores[GAMETAG], taggedCores[SERVICETAG], st), zap.AddCaller(), zap.AddCallerSkip(1))
 	slogger = logger.Sugar()
@@ -200,6 +200,11 @@ func initLogger() {
 
 // 为每个日志类型（game, system, all）创建一个专门的Core实例
 func newCore(logPath string, level zapcore.Level, zapLoggerEncoderConfig zapcore.EncoderConfig, stdout bool) zapcore.Core {
+	//如果logPath文件夹不存在则创建
+	if _, err := os.Stat(filepath.Dir(logPath)); os.IsNotExist(err) {
+		os.MkdirAll(filepath.Dir(logPath), os.ModePerm)
+	}
+
 	wys := make([]zapcore.WriteSyncer, 0, 2)
 	if stdout {
 		wys = append(wys, zapcore.AddSync(os.Stdout))
@@ -223,6 +228,7 @@ type TaggedCore struct {
 	Core        zapcore.Core
 	Tag         string
 	AllowedTags map[string]zapcore.Core
+	Pass        bool
 }
 
 func (t *TaggedCore) Enabled(lvl zapcore.Level) bool {
@@ -238,9 +244,8 @@ func (t *TaggedCore) With(fields []zapcore.Field) zapcore.Core {
 }
 
 func (t *TaggedCore) Check(entry zapcore.Entry, checkedEntry *zapcore.CheckedEntry) *zapcore.CheckedEntry {
-	if ce := t.Core.Check(entry, checkedEntry); ce != nil {
-		// 在这里检查entry的标签，并决定是否调用原始Core的Write方法
-		return ce
+	if t.Pass || t.Core.Enabled(entry.Level) {
+		return checkedEntry.AddCore(entry, t)
 	}
 	return nil
 }
@@ -248,6 +253,10 @@ func (t *TaggedCore) Check(entry zapcore.Entry, checkedEntry *zapcore.CheckedEnt
 func (t *TaggedCore) Write(entry zapcore.Entry, fields []zapcore.Field) error {
 	// 在这里可以根据标签过滤逻辑处理日志条目
 	// 例如，你可以在fields中查找特定的标签字段，并根据这个标签决定是否调用t.Core.Write
+	if t.Tag == "" {
+		return t.Core.Write(entry, fields)
+	}
+
 	for _, field := range fields {
 		if field.Key == "tag" && field.String == t.Tag {
 			return t.Core.Write(entry, fields)

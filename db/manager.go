@@ -1029,5 +1029,5 @@ func (s *sqlBuilder[Val]) update(i, fieldCount, baseValueSize int, values []any)
 	}
 	tx.Commit()
 	ex := time.Since(start)
-	log.InfoTag("orm", "traceId=%s update=%v time=%v/ms group=%d valueSize=%v", traceId, s.tableName, ex.Milliseconds(), i, endIndex-startIndex)
+	log.InfoTag("orm", "traceId=%s update=%v time=%v/ms group=%d valueSize=%v", traceId, s.tableName, ex.Milliseconds(), i, valueSize)
 }
