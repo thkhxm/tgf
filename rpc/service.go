@@ -37,6 +37,14 @@ type Module struct {
 	userHook IUserHook
 }
 
+func (m *Module) GetName() string {
+	return m.Name
+}
+
+func (m *Module) GetVersion() string {
+	return m.Version
+}
+
 func (m *Module) Destroy(sub IService) {
 	var ()
 	log.InfoTag("system", "destroy module=%v version=%v", sub.GetName(), sub.GetVersion())

@@ -3,7 +3,6 @@ package admin
 import (
 	"github.com/bytedance/sonic"
 	"github.com/cornelk/hashmap"
-	"github.com/thkhxm/rpcx/log"
 	"github.com/thkhxm/tgf"
 	"net/http"
 	"sync/atomic"
@@ -104,7 +103,6 @@ func PointRPCRequest(module, serviceName string) {
 	}
 	m := getMonitor(ServiceMonitor, module+"."+serviceName)
 	m.Inr()
-	log.Info("monitor update")
 }
 
 type NodeMonitorData struct {

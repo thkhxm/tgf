@@ -83,9 +83,12 @@ func (r *redisService) SetList(key string, l []interface{}, timeout time.Duratio
 	}
 }
 
-func (r *redisService) AddListItem(key string, val string) {
+func (r *redisService) AddListItem(key string, val string, timeout time.Duration) {
 	var ()
 	r.client.LPush(context.Background(), key, val)
+	if timeout > 0 {
+		r.client.Expire(context.Background(), key, timeout)
+	}
 }
 
 func (r *redisService) TryLock(key string) (*redislock.Lock, error) {

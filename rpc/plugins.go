@@ -139,8 +139,6 @@ func (c *CustomSelector) Select(ctx context.Context, servicePath, serviceMethod 
 				}
 			} else {
 				if c.checkServerAlive(selected) {
-					//key := client2.HashString(fmt.Sprintf("%v", time.Now().Unix()))
-					//selected, _ = c.h.Get(key).(string)
 					return
 				}
 				key := client2.HashString(fmt.Sprintf("%v", time.Now().UnixNano()))

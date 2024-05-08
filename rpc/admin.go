@@ -6,6 +6,7 @@ import (
 	"github.com/thkhxm/rpcx/client"
 	"github.com/thkhxm/tgf"
 	"github.com/thkhxm/tgf/exp/admin"
+	"github.com/thkhxm/tgf/log"
 	"net/http"
 	"time"
 )
@@ -19,7 +20,7 @@ import (
 //2024/2/20
 //***************************************************
 
-func ServeAdmin(port string) {
+func ServeAdmin(port string) (r chan bool) {
 	mux := http.NewServeMux()
 	c := &admin.ConsulRegistry{}
 	c.InitRegistry()
@@ -33,10 +34,7 @@ func ServeAdmin(port string) {
 	mux.HandleFunc("/consul/pause/{id}", CorsMiddleware(c.PauseService))
 	//
 	mux.HandleFunc("/monitor/service", CorsMiddleware(admin.QueryMonitor))
-	r := NewRPCServer().WithService(&Admin{Module: Module{Name: tgf.AdminServiceModuleName, Version: "1.0"}}).WithCache(tgf.CacheModuleClose).Run()
-	go func() {
-		<-r
-	}()
+	r = NewRPCServer().WithService(&Admin{Module: Module{Name: tgf.AdminServiceModuleName, Version: "1.0"}}).WithCache(tgf.CacheModuleClose).Run()
 	go func() {
 		corsVar := cors.New(cors.Options{
 			AllowedOrigins: []string{"*"},
@@ -50,7 +48,9 @@ func ServeAdmin(port string) {
 		})
 		handler := corsVar.Handler(mux)
 		http.ListenAndServe(":"+port, handler)
+		log.InfoTag("admin", "admin server start at port %s", port)
 	}()
+	return
 }
 
 func CorsMiddleware(handler http.HandlerFunc) http.HandlerFunc {

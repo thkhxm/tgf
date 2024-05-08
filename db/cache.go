@@ -38,7 +38,7 @@ type iCacheService interface {
 	SetList(key string, l []interface{}, timeout time.Duration)
 	GetSet(key string) (res []string, err error)
 	AddSetItem(key string, val interface{}, timeout time.Duration)
-	AddListItem(key string, val string)
+	AddListItem(key string, val string, timeout time.Duration)
 }
 
 type iRedisCacheService interface {
@@ -188,6 +188,19 @@ func AddListItem[Val any](key string, timeout time.Duration, val ...Val) (err er
 		data[i] = a
 	}
 	cache.SetList(key, data, timeout)
+	return
+}
+
+func AddListItemL[Val any](key string, timeout time.Duration, val Val) (err error) {
+	if cache == nil {
+		return errors.New("cache is nil")
+	}
+	a, e := util.AnyToStr(val)
+	if e != nil {
+		err = e
+		return
+	}
+	cache.AddListItem(key, a, timeout)
 	return
 }
 
