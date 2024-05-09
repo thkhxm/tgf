@@ -144,7 +144,9 @@ type ws struct {
 	sendChan      chan message
 	callback      *hashmap.Map[string, CallbackLogic]
 }
-
+type wss struct {
+	ws
+}
 type message struct {
 	messageType int
 	data        []byte
@@ -152,6 +154,80 @@ type message struct {
 
 func (w *ws) Connect(address string) IRobot {
 	u := url.URL{Scheme: "ws", Host: address, Path: w.path}
+	log.Info("连接到 %s", u.String())
+
+	conn, _, err := websocket.DefaultDialer.Dial(u.String(), nil)
+	if err != nil {
+		log.Info("连接失败:%v", err)
+	}
+	w.heartbeatData = []byte{byte(1)}
+	w.closeChan = make(chan struct{})
+	w.sendChan = make(chan message, 100)
+	w.conn = conn
+	//监听关闭事件
+	w.conn.SetCloseHandler(func(code int, text string) error {
+		w.closeChan <- struct{}{}
+		return nil
+	})
+
+	w.conn.SetPongHandler(func(appData string) error {
+		//	收到服务器的pong响应
+		//log.DebugTag("tcp", "收到服务器的pong响应 data=%v", appData)
+		return nil
+	})
+
+	// 启动读取协程，处理从服务器接收到的消息
+	util.Go(func() {
+		defer w.conn.Close()
+		for {
+			_, message, err := conn.ReadMessage()
+			if err != nil {
+				log.Info("读取消息失败:%v", err)
+				return
+			}
+			res := &rpc.WSResponse{}
+			proto.Unmarshal(message, res)
+			log.Info("收到消息: %s", res.MessageType)
+			if f, has := w.callback.Get(res.MessageType); has {
+				data := res.GetData()
+				if res.Zip {
+					if data, err = util2.Unzip(res.GetData()); err != nil {
+						log.Info("解压数据失败:%v", err)
+					}
+				}
+				f(w, data)
+			}
+		}
+	})
+
+	//启动心跳
+	util.Go(func() {
+		for {
+			select {
+			//监听关闭信号
+			case <-w.closeChan:
+				log.InfoTag("tcp", "连接断开,停止心跳发送")
+				return
+			default:
+				w.sendChan <- message{websocket.PingMessage, w.heartbeatData}
+				//log.InfoTag("tcp", "心跳发送")
+			}
+			time.Sleep(time.Second * 5)
+		}
+	})
+
+	util.Go(func() {
+		for {
+			select {
+			case send := <-w.sendChan:
+				w.conn.WriteMessage(send.messageType, send.data)
+			}
+		}
+	})
+	return w
+}
+func (w *wss) Connect(address string) IRobot {
+	u := url.URL{Scheme: "wss", Host: address, Path: w.path}
 	log.Info("连接到 %s", u.String())
 
 	conn, _, err := websocket.DefaultDialer.Dial(u.String(), nil)
@@ -260,6 +336,16 @@ func NewRobotTcp() IRobot {
 
 func NewRobotWs(path string) IRobot {
 	t := &ws{}
+	if path[0:1] != "/" {
+		path = "/" + path
+	}
+	t.path = path
+	t.callback = hashmap.New[string, CallbackLogic]()
+	return t
+}
+
+func NewRobotWss(path string) IRobot {
+	t := &wss{}
 	if path[0:1] != "/" {
 		path = "/" + path
 	}
