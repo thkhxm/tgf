@@ -14,6 +14,7 @@ import (
 	"net"
 	"net/url"
 	"strings"
+	"sync/atomic"
 	"time"
 )
 
@@ -143,6 +144,7 @@ type ws struct {
 	closeChan     chan struct{}
 	sendChan      chan message
 	callback      *hashmap.Map[string, CallbackLogic]
+	start         time.Time
 }
 type wss struct {
 	ws
@@ -152,9 +154,12 @@ type message struct {
 	data        []byte
 }
 
+var costCache = make([]*atomic.Int64, 6)
+var lastReq, curReq = &atomic.Int64{}, &atomic.Int64{}
+
 func (w *ws) Connect(address string) IRobot {
 	u := url.URL{Scheme: "ws", Host: address, Path: w.path}
-	log.Info("连接到 %s", u.String())
+	//log.Info("连接到 %s", u.String())
 
 	conn, _, err := websocket.DefaultDialer.Dial(u.String(), nil)
 	if err != nil {
@@ -185,9 +190,13 @@ func (w *ws) Connect(address string) IRobot {
 				log.Info("读取消息失败:%v", err)
 				return
 			}
+			cost := time.Since(w.start).Milliseconds()
+			index := getCostIndex(cost)
+			costCache[index].Add(1)
+			curReq.Add(1)
 			res := &rpc.WSResponse{}
 			proto.Unmarshal(message, res)
-			log.Info("收到消息: %s", res.MessageType)
+			//log.Info("收到消息: %s", res.MessageType)
 			if f, has := w.callback.Get(res.MessageType); has {
 				data := res.GetData()
 				if res.Zip {
@@ -255,13 +264,17 @@ func (w *wss) Connect(address string) IRobot {
 		defer w.conn.Close()
 		for {
 			_, message, err := conn.ReadMessage()
+			cost := time.Since(w.start).Milliseconds()
+			if cost > 500 {
+				log.Info("消息处理时间:%v", cost)
+			}
 			if err != nil {
 				log.Info("读取消息失败:%v", err)
 				return
 			}
 			res := &rpc.WSResponse{}
 			proto.Unmarshal(message, res)
-			log.Info("收到消息: %s", res.MessageType)
+			//log.Info("收到消息: %s", res.MessageType)
 			if f, has := w.callback.Get(res.MessageType); has {
 				data := res.GetData()
 				if res.Zip {
@@ -310,6 +323,7 @@ func (w *ws) Send(messageType string, v1 proto.Message) {
 	ms := strings.Split(messageType, ".")
 	//time.Sleep(time.Millisecond * 300)
 	w.SendMessage(ms[0], ms[1], v1)
+	w.start = time.Now()
 }
 
 func (w *ws) SendMessage(module, serviceName string, v1 proto.Message) {
@@ -352,4 +366,42 @@ func NewRobotWss(path string) IRobot {
 	t.path = path
 	t.callback = hashmap.New[string, CallbackLogic]()
 	return t
+}
+
+func init() {
+	costCache[0] = &atomic.Int64{}
+	costCache[1] = &atomic.Int64{}
+	costCache[2] = &atomic.Int64{}
+	costCache[3] = &atomic.Int64{}
+	costCache[4] = &atomic.Int64{}
+	costCache[5] = &atomic.Int64{}
+	go func() {
+		t := time.NewTimer(time.Second)
+		for {
+			select {
+			case <-t.C:
+				qps := curReq.Load() - lastReq.Load()
+				lastReq.Store(curReq.Load())
+				log.InfoTag("tcp", "消息处理时间统计:qps:%v, 0-50ms:%v, 50-100ms:%v, 100-300ms:%v, 300-600ms:%v, 600-1000ms:%v, >1000ms:%v",
+					qps, costCache[0].Load(), costCache[1].Load(), costCache[2].Load(), costCache[3].Load(), costCache[4].Load(), costCache[5].Load())
+			}
+			t.Reset(time.Second)
+		}
+	}()
+}
+
+func getCostIndex(mill int64) int32 {
+	if mill < 50 {
+		return 0
+	} else if mill < 100 {
+		return 1
+	} else if mill < 300 {
+		return 2
+	} else if mill < 600 {
+		return 3
+	} else if mill < 1000 {
+		return 4
+	} else {
+		return 5
+	}
 }
