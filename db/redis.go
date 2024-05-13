@@ -150,6 +150,9 @@ func newRedisService() *redisService {
 	if cluster == 1 {
 		redisOptions := &redis.ClusterOptions{}
 		redisOptions.Addrs = strings.Split(addr, ",")
+		if password != "" {
+			redisOptions.Password = password
+		}
 		service.client = redis.NewClusterClient(redisOptions)
 	} else {
 		redisOptions := &redis.UniversalOptions{}
