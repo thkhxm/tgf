@@ -574,6 +574,12 @@ func (t *TCPServer) SetUserHook(userHook IUserHook) {
 func (t *TCPServer) Offline(userId string, replace bool) (exists bool) {
 	oldUser, _ := t.users.Get(userId)
 	if oldUser != nil {
+		defer func() {
+			if err := recover(); err != nil {
+				log.WarnTag("tcp", "关闭用户连接异常 %v", err)
+				exists = true
+			}
+		}()
 		var userHook IUserHook
 		if !replace {
 			userHook = t.userHook
