@@ -96,27 +96,27 @@ func (h *hashAutoCacheManager[Val]) PostClear(key string) {
 
 func (h *hashAutoCacheManager[Val]) loadCache(key ...string) (keys []string) {
 	//获取主键key
-	pk := h.image.HashCachePkKey(key...)
+	localKey := h.image.HashCachePkKey(key...)
 	defer func() {
 		if err := recover(); err != nil {
 			log.ErrorTag("cache", "load cache error:%v", err)
 			return
 		}
 		if keys != nil {
-			h.groupAutoCacheManager.Set(keys, pk)
+			h.groupAutoCacheManager.Set(keys, localKey)
 		}
 	}()
 
-	h.sf.Do(pk, func() (interface{}, error) {
+	h.sf.Do(localKey, func() (interface{}, error) {
 		//从cache缓存中获取
 		if h.cache() {
 			//根据主键Key组合成redis的Key,获取hash数据
-			if val, suc := GetMap[string, Val](h.getCacheKey(pk)); suc {
+			if val, suc := GetMap[string, Val](h.getCacheKey(localKey)); suc {
 				i := 0
 				keys = make([]string, len(val))
 				for _, v := range val {
 					//根据主键Key和hashKey组成唯一的cacheKey
-					lk := h.getLocalKey(pk, v.HashCacheFieldByVal())
+					lk := h.getLocalKey(localKey, v.HashCacheFieldByVal())
 					h.set(lk, v)
 					//将该cacheKey放入slice中,用于管理用户的key列表
 					keys[i] = lk
@@ -150,14 +150,14 @@ func (h *hashAutoCacheManager[Val]) loadCache(key ...string) (keys []string) {
 }
 
 func (h *hashAutoCacheManager[Val]) Get(key ...string) (val Val, err error) {
-	pk := h.image.HashCachePkKey(key...)
-	d, e, _ := h.sf.Do(pk, func() (interface{}, error) {
+	mKey := h.image.HashCachePkKey(key...)
+	d, e, _ := h.sf.Do(mKey, func() (interface{}, error) {
 		//是否首次加载，如果是
-		if _, has := h.groupAutoCacheManager.Get(pk); has != nil {
+		if _, has := h.groupAutoCacheManager.Get(mKey); has != nil {
 			h.loadCache(key...)
 		}
 		//
-		localKey := h.getLocalKey(pk, h.image.HashCacheFieldByKeys(key...))
+		localKey := h.getLocalKey(mKey, h.image.HashCacheFieldByKeys(key...))
 		//从本地缓存获取
 		if v, has, cd := h.get(localKey); has && !cd.checkState(data_del) {
 			return v, nil
@@ -351,7 +351,7 @@ func (a *autoCacheManager[Key, Val]) Get(key ...Key) (val Val, err error) {
 			err = tgf.LocalEmpty
 		}
 	}
-	a.sf.Do(pk, func() (interface{}, error) {
+	a.sf.Do(localKey, func() (interface{}, error) {
 		//从cache缓存中获取
 		if a.cache() {
 			if val, suc = Get[Val](a.getCacheKey(localKey)); suc {
