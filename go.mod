@@ -30,8 +30,10 @@ require (
 //replace github.com/rs/cors v1.8.3 => github.com/rs/cors v1.8.2
 
 require (
+	github.com/rs/cors v1.8.3
 	golang.org/x/sync v0.6.0
 	golang.org/x/text v0.14.0
+	golang.org/x/time v0.5.0
 )
 
 require (
@@ -94,7 +96,6 @@ require (
 	github.com/richardlehane/mscfb v1.0.4 // indirect
 	github.com/richardlehane/msoleps v1.0.3 // indirect
 	github.com/rogpeppe/go-internal v1.10.0 // indirect
-	github.com/rs/cors v1.8.3 // indirect
 	github.com/rubyist/circuitbreaker v2.2.1+incompatible // indirect
 	github.com/smallnest/quick v0.1.0 // indirect
 	github.com/smallnest/statsview v0.0.0-20231119085602-10700f9abec4 // indirect

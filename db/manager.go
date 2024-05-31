@@ -136,9 +136,9 @@ func (h *hashAutoCacheManager[Val]) loadCache(key ...string) (keys []string) {
 			if err == nil {
 				keys = make([]string, len(val))
 				for i, v := range val {
-					lk := h.getLocalKey(pk, v.HashCacheFieldByVal())
+					lk := h.getLocalKey(localKey, v.HashCacheFieldByVal())
 					h.set(lk, v)
-					PutMap(h.getCacheKey(pk), v.HashCacheFieldByVal(), v, h.cacheTimeOut())
+					PutMap(h.getCacheKey(localKey), v.HashCacheFieldByVal(), v, h.cacheTimeOut())
 					keys[i] = lk
 				}
 				return keys, nil
@@ -151,36 +151,30 @@ func (h *hashAutoCacheManager[Val]) loadCache(key ...string) (keys []string) {
 
 func (h *hashAutoCacheManager[Val]) Get(key ...string) (val Val, err error) {
 	mKey := h.image.HashCachePkKey(key...)
-	d, e, _ := h.sf.Do(mKey, func() (interface{}, error) {
-		//是否首次加载，如果是
-		if _, has := h.groupAutoCacheManager.Get(mKey); has != nil {
-			h.loadCache(key...)
-		}
-		//
-		localKey := h.getLocalKey(mKey, h.image.HashCacheFieldByKeys(key...))
-		//从本地缓存获取
-		if v, has, cd := h.get(localKey); has && !cd.checkState(data_del) {
-			return v, nil
-		}
-		return nil, errors.New("not found in cache")
-	})
-	if d == nil {
-		return val, e
+	//是否首次加载，如果是
+	if _, has := h.groupAutoCacheManager.Get(mKey); has != nil {
+		h.loadCache(mKey)
 	}
-	return d.(Val), e
+	//
+	localKey := h.getLocalKey(mKey, h.image.HashCacheFieldByKeys(key...))
+	//从本地缓存获取
+	if v, has, cd := h.get(localKey); has && !cd.checkState(data_del) {
+		return v, nil
+	}
+	return val, errors.New("data not found in cache")
 }
 
 func (h *hashAutoCacheManager[Val]) Set(val Val, key ...string) (success bool) {
-	pk := h.image.HashCachePkKey(key...)
+	mKey := h.image.HashCachePkKey(key...)
 	var keys []string
 	var has error
 	//是否首次加载
-	if keys, has = h.groupAutoCacheManager.Get(pk); has != nil {
-		keys = h.loadCache(key...)
+	if keys, has = h.groupAutoCacheManager.Get(mKey); has != nil {
+		keys = h.loadCache(mKey)
 	}
 	//
 	fieldKey := val.HashCacheFieldByVal()
-	localKey := h.getLocalKey(pk, fieldKey)
+	localKey := h.getLocalKey(mKey, fieldKey)
 	//放入本地cache缓存中
 	cd := h.set(localKey, val)
 	//判断是否需要添加到key列表
@@ -192,7 +186,7 @@ func (h *hashAutoCacheManager[Val]) Set(val Val, key ...string) (success bool) {
 	}
 	if ap {
 		keys = append(keys, localKey)
-		h.groupAutoCacheManager.Set(keys, pk)
+		h.groupAutoCacheManager.Set(keys, mKey)
 	}
 	//写入redis缓存
 	if h.cache() {
@@ -224,14 +218,14 @@ func (h *hashAutoCacheManager[Val]) Push(key ...string) {
 }
 
 func (h *hashAutoCacheManager[Val]) Remove(key ...string) (success bool) {
-	pk := h.image.HashCachePkKey(key...)
+	mKey := h.image.HashCachePkKey(key...)
 	fieldKey := h.image.HashCacheFieldByKeys(key...)
-	localKey := h.getLocalKey(pk, fieldKey)
+	localKey := h.getLocalKey(mKey, fieldKey)
 	var keys []string
 	var has error
 	//是否首次加载
-	if keys, has = h.groupAutoCacheManager.Get(pk); has != nil {
-		keys = h.loadCache(key...)
+	if keys, has = h.groupAutoCacheManager.Get(mKey); has != nil {
+		keys = h.loadCache(mKey)
 	}
 	keys = util.RemoveOneKey(keys, localKey)
 
@@ -250,7 +244,7 @@ func (h *hashAutoCacheManager[Val]) Remove(key ...string) (success bool) {
 		h.cacheMap.Del(localKey)
 	}
 	success = true
-	h.groupAutoCacheManager.Set(keys, pk)
+	h.groupAutoCacheManager.Set(keys, mKey)
 	return
 }
 
@@ -259,13 +253,13 @@ func (h *hashAutoCacheManager[Val]) Reset() IAutoCacheService[string, Val] {
 }
 
 func (h *hashAutoCacheManager[Val]) GetAll(key ...string) (val []Val, err error) {
-	pk := h.image.HashCachePkKey(key...)
+	mKey := h.image.HashCachePkKey(key...)
 	var keys []string
-	if keys, err = h.groupAutoCacheManager.Get(pk); err != nil {
-		keys = h.loadCache(key...)
+	if keys, err = h.groupAutoCacheManager.Get(mKey); err != nil {
+		keys = h.loadCache(mKey)
 		if len(keys) == 0 {
 			err = tgf.DBEmpty
-			h.groupAutoCacheManager.Set(make([]string, 0), pk)
+			h.groupAutoCacheManager.Set(make([]string, 0), mKey)
 		} else {
 			err = nil
 		}

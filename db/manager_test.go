@@ -122,11 +122,9 @@ func Test_convertCamelToSnake(t *testing.T) {
 
 type Item struct {
 	db.Model
-	UserId string `orm:"pk"`
+	UserId string `orm:"pk;pkList"`
 	PropId string `orm:"pk"`
 	Amount uint64
-	abb    string
-	Items  *Item
 }
 
 func (i *Item) GetTableName() string {
@@ -148,8 +146,7 @@ func (i *Item) HashCacheFieldByKeys(key ...string) string {
 func NewTestHashCacheManager() db.IHashCacheService[*Item] {
 	db.Run()
 	builder := db.NewHashAutoCacheBuilder[*Item]()
-	return builder.WithLongevityCache(time.Second*5).
-		WithAutoCache("test:item", time.Hour*24).
+	return builder.WithLongevityCache(time.Second * 5).
 		WithMemCache(5).
 		New()
 }
@@ -167,8 +164,8 @@ func Test_hashAutoCacheManager_Get(t *testing.T) {
 	}
 	tests := []testCase[*Item]{
 		{name: "example1", h: NewTestHashCacheManager(),
-			args:    args{key: []string{"123", "1"}},
-			wantVal: &Item{UserId: "123", PropId: "1", Amount: 1},
+			args:    args{key: []string{"123", "2"}},
+			wantVal: &Item{UserId: "123", PropId: "2", Amount: 1},
 			wantErr: false,
 		},
 	}
