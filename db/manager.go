@@ -153,7 +153,7 @@ func (h *hashAutoCacheManager[Val]) Get(key ...string) (val Val, err error) {
 	mKey := h.image.HashCachePkKey(key...)
 	//是否首次加载，如果是
 	if _, has := h.groupAutoCacheManager.Get(mKey); has != nil {
-		h.loadCache(mKey)
+		h.loadCache(key...)
 	}
 	//
 	localKey := h.getLocalKey(mKey, h.image.HashCacheFieldByKeys(key...))
@@ -170,7 +170,7 @@ func (h *hashAutoCacheManager[Val]) Set(val Val, key ...string) (success bool) {
 	var has error
 	//是否首次加载
 	if keys, has = h.groupAutoCacheManager.Get(mKey); has != nil {
-		keys = h.loadCache(mKey)
+		keys = h.loadCache(key...)
 	}
 	//
 	fieldKey := val.HashCacheFieldByVal()
@@ -190,7 +190,7 @@ func (h *hashAutoCacheManager[Val]) Set(val Val, key ...string) (success bool) {
 	}
 	//写入redis缓存
 	if h.cache() {
-		PutMap(h.getCacheKey(pk), fieldKey, val, h.cacheTimeOut())
+		PutMap(h.getCacheKey(mKey), fieldKey, val, h.cacheTimeOut())
 	}
 
 	//写入db
@@ -202,14 +202,14 @@ func (h *hashAutoCacheManager[Val]) Set(val Val, key ...string) (success bool) {
 }
 
 func (h *hashAutoCacheManager[Val]) Push(key ...string) {
-	pk := h.image.HashCachePkKey(key...)
+	mKey := h.image.HashCachePkKey(key...)
 	fieldKey := h.image.HashCacheFieldByKeys(key...)
-	localKey := h.getLocalKey(pk, fieldKey)
+	localKey := h.getLocalKey(mKey, fieldKey)
 
 	if localCacheData, ok := h.cacheMap.Get(localKey); ok {
 		localCacheData.removeState(data_del)
 		if h.cache() {
-			PutMap(h.getCacheKey(pk), fieldKey, localCacheData.data, h.cacheTimeOut())
+			PutMap(h.getCacheKey(mKey), fieldKey, localCacheData.data, h.cacheTimeOut())
 		}
 		if h.longevity() {
 			localCacheData.update()
@@ -225,7 +225,7 @@ func (h *hashAutoCacheManager[Val]) Remove(key ...string) (success bool) {
 	var has error
 	//是否首次加载
 	if keys, has = h.groupAutoCacheManager.Get(mKey); has != nil {
-		keys = h.loadCache(mKey)
+		keys = h.loadCache(key...)
 	}
 	keys = util.RemoveOneKey(keys, localKey)
 
@@ -256,7 +256,7 @@ func (h *hashAutoCacheManager[Val]) GetAll(key ...string) (val []Val, err error)
 	mKey := h.image.HashCachePkKey(key...)
 	var keys []string
 	if keys, err = h.groupAutoCacheManager.Get(mKey); err != nil {
-		keys = h.loadCache(mKey)
+		keys = h.loadCache(key...)
 		if len(keys) == 0 {
 			err = tgf.DBEmpty
 			h.groupAutoCacheManager.Set(make([]string, 0), mKey)
