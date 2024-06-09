@@ -176,7 +176,8 @@ var (
 	tm := template.New("apiStruct")
 	tp, _ := tm.Parse(tpl)
 	fileName := strings.ToLower(moduleName) + ".rpc.service.go"
-	path := autoGenerateAPICodePath + string(filepath.Separator) + "generated" + string(filepath.Separator) + moduleName + "_service"
+	dirPath := autoGenerateAPICodePath + string(filepath.Separator) + "generated" + string(filepath.Separator)
+	path := dirPath + moduleName + "_service"
 
 	// 创建路径中的所有必要的目录
 	err := os.MkdirAll(path, os.ModePerm)
@@ -191,7 +192,7 @@ var (
 	tp.Execute(file, a)
 	//
 	modulePath := getProjectModulePath() + "/generated/" + moduleName + "_service"
-	packageName = moduleName
+	packageName = moduleName + "_rpc"
 	tt["context"] = true
 	tt[modulePath] = true
 	pi = make([]string, 0)
@@ -230,10 +231,10 @@ func {{.MethodName}}(ctx context.Context, args {{.Args}}, async bool) (reply {{.
 	tm2 := template.New("rpcStruct")
 	tp2, _ := tm2.Parse(tpl2)
 	fileName2 := strings.ToLower(moduleName) + ".rpc.go"
-	path2 := "."
+	path2 := dirPath + moduleName + "_rpc"
 
 	// 创建路径中的所有必要的目录
-	err2 := os.MkdirAll(path, os.ModePerm)
+	err2 := os.MkdirAll(path2, os.ModePerm)
 	if err2 != nil {
 		panic(err2)
 	}
