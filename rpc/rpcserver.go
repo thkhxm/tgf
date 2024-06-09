@@ -664,6 +664,27 @@ func SendToGateByUserId(userId, messageType string, pbMessage proto.Message) err
 	return err
 }
 
+// SendToGateSync
+//
+//	@Description: 发送消息到用户所在的网关同步
+//	@param ct
+//	@param messageType
+//	@param pbMessage
+func SendToGateSync(ct context.Context, messageType string, pbMessage proto.Message) error {
+	data, err := proto.Marshal(pbMessage)
+	req := &ToUserReq{
+		Data:        data,
+		UserId:      GetUserId(ct),
+		MessageType: messageType,
+	}
+	if err != nil {
+		return err
+	}
+	_, err = SendRPCMessage(ct, ToUser.New(req, &ToUserRes{}))
+	//err = SendNoReplyRPCMessage[*ToUserReq, *ToUserRes](ct, ToUser.New(req, &ToUserRes{}))
+	return err
+}
+
 func UserLogin(ctx context.Context, userId string) (*LoginRes, error) {
 	return SendRPCMessage(ctx, Login.New(&LoginReq{
 		UserId:         userId,
