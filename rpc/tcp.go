@@ -144,7 +144,7 @@ type IUserConnectData interface {
 type ITCPService interface {
 	Run()
 	UpdateUserNodeInfo(userId, servicePath, nodeId string) bool
-	ToUser(userId, messageType string, data []byte)
+	ToUser(userId, messageType string, data []byte) bool
 	DoLogin(userId, templateUserId string) (err error)
 
 	Offline(userId string, replace bool) (exists bool)
@@ -826,7 +826,7 @@ func (t *TCPServer) UpdateUserNodeInfo(userId, servicePath, nodeId string) bool 
 	return res
 }
 
-func (t *TCPServer) ToUser(userId, messageType string, data []byte) {
+func (t *TCPServer) ToUser(userId, messageType string, data []byte) bool {
 	var ()
 	defer func() {
 		if r := recover(); r != nil {
@@ -837,8 +837,10 @@ func (t *TCPServer) ToUser(userId, messageType string, data []byte) {
 	if connectData, ok := t.users.Get(userId); ok {
 		res := t.getSendToClientData(messageType, 0, 0, data)
 		connectData.Send(res)
+		return true
 	} else {
 		log.DebugTag("tcp", "userid=%v user connection not found", userId)
+		return false
 	}
 }
 
