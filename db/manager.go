@@ -107,22 +107,22 @@ func (h *hashAutoCacheManager[Val]) loadCache(key ...string) (keys []string) {
 		}
 	}()
 
-	h.sf.Do(localKey, func() (interface{}, error) {
+	v, _, _ := h.sf.Do("loadCache:"+localKey, func() (interface{}, error) {
 		//从cache缓存中获取
 		if h.cache() {
 			//根据主键Key组合成redis的Key,获取hash数据
 			if val, suc := GetMap[string, Val](h.getCacheKey(localKey)); suc {
 				i := 0
-				keys = make([]string, len(val))
+				ak := make([]string, len(val))
 				for _, v := range val {
 					//根据主键Key和hashKey组成唯一的cacheKey
 					lk := h.getLocalKey(localKey, v.HashCacheFieldByVal())
 					h.set(lk, v)
 					//将该cacheKey放入slice中,用于管理用户的key列表
-					keys[i] = lk
+					ak[i] = lk
 					i++
 				}
-				return keys, nil
+				return ak, nil
 			}
 		}
 
@@ -134,18 +134,19 @@ func (h *hashAutoCacheManager[Val]) loadCache(key ...string) (keys []string) {
 			}
 			val, err := h.sb.queryList(d...)
 			if err == nil {
-				keys = make([]string, len(val))
+				ak := make([]string, len(val))
 				for i, v := range val {
 					lk := h.getLocalKey(localKey, v.HashCacheFieldByVal())
 					h.set(lk, v)
 					PutMap(h.getCacheKey(localKey), v.HashCacheFieldByVal(), v, h.cacheTimeOut())
-					keys[i] = lk
+					ak[i] = lk
 				}
-				return keys, nil
+				return ak, nil
 			}
 		}
-		return keys, errors.New("not found in cache")
+		return make([]string, 0), errors.New("not found in cache")
 	})
+	keys = v.([]string)
 	return
 }
 
@@ -345,7 +346,7 @@ func (a *autoCacheManager[Key, Val]) Get(key ...Key) (val Val, err error) {
 			err = tgf.LocalEmpty
 		}
 	}
-	a.sf.Do(localKey, func() (interface{}, error) {
+	v, _, _ := a.sf.Do("Get:"+localKey, func() (interface{}, error) {
 		//从cache缓存中获取
 		if a.cache() {
 			if val, suc = Get[Val](a.getCacheKey(localKey)); suc {
@@ -373,7 +374,7 @@ func (a *autoCacheManager[Key, Val]) Get(key ...Key) (val Val, err error) {
 		}
 		return val, err
 	})
-
+	val = v.(Val)
 	return val, err
 }
 
