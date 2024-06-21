@@ -346,11 +346,12 @@ func (a *autoCacheManager[Key, Val]) Get(key ...Key) (val Val, err error) {
 			err = tgf.LocalEmpty
 		}
 	}
-	v, _, _ := a.sf.Do("Get:"+localKey, func() (interface{}, error) {
+	v, e, _ := a.sf.Do("Get:"+localKey, func() (interface{}, error) {
 		//从cache缓存中获取
 		if a.cache() {
 			if val, suc = Get[Val](a.getCacheKey(localKey)); suc {
 				a.set(localKey, val)
+				err = nil
 				return val, nil
 			} else {
 				err = tgf.RedisEmpty
@@ -375,6 +376,7 @@ func (a *autoCacheManager[Key, Val]) Get(key ...Key) (val Val, err error) {
 		return val, err
 	})
 	val = v.(Val)
+	err = e
 	return val, err
 }
 
