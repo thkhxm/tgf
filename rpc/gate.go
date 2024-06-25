@@ -68,8 +68,13 @@ func (g *GateService) Offline(ctx context.Context, args *OfflineReq, reply *Offl
 
 func (g *GateService) ToUser(ctx context.Context, args *ToUserReq, reply *ToUserRes) error {
 	var ()
-	g.tcpService.ToUser(args.UserId, args.MessageType, args.Data)
-	log.DebugTag("gate", "主动推送 userId=%v msgLen=%v", args.UserId, len(args.Data))
+	for _, userId := range args.UserId {
+		done := g.tcpService.ToUser(userId, args.MessageType, args.Data)
+		if done {
+			log.DebugTag("gate", "主动推送 userId=%v msgLen=%v", args.UserId, len(args.Data))
+		}
+	}
+
 	return nil
 }
 
@@ -156,7 +161,7 @@ type UploadUserNodeInfoRes struct {
 
 type ToUserReq struct {
 	Data        []byte
-	UserId      string
+	UserId      []string
 	MessageType string
 }
 

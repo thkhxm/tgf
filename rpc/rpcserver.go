@@ -634,7 +634,7 @@ func SendToGate(ct context.Context, messageType string, pbMessage proto.Message)
 	data, err := proto.Marshal(pbMessage)
 	req := &ToUserReq{
 		Data:        data,
-		UserId:      GetUserId(ct),
+		UserId:      []string{GetUserId(ct)},
 		MessageType: messageType,
 	}
 	if err != nil {
@@ -654,13 +654,55 @@ func SendToGateByUserId(userId, messageType string, pbMessage proto.Message) err
 	ct := NewUserRPCContext(userId)
 	req := &ToUserReq{
 		Data:        data,
-		UserId:      GetUserId(ct),
+		UserId:      []string{GetUserId(ct)},
 		MessageType: messageType,
 	}
 	if err != nil {
 		return err
 	}
 	err = SendNoReplyRPCMessage[*ToUserReq, *ToUserRes](ct, ToUser.New(req, &ToUserRes{}))
+	return err
+}
+
+// SendToGateSync
+//
+//	@Description: 发送消息到用户所在的网关同步
+//	@param ct
+//	@param messageType
+//	@param pbMessage
+func SendToGateSync(ct context.Context, messageType string, pbMessage proto.Message) error {
+	data, err := proto.Marshal(pbMessage)
+	req := &ToUserReq{
+		Data:        data,
+		UserId:      []string{GetUserId(ct)},
+		MessageType: messageType,
+	}
+	if err != nil {
+		return err
+	}
+	_, err = SendRPCMessage(ct, ToUser.New(req, &ToUserRes{}))
+	//err = SendNoReplyRPCMessage[*ToUserReq, *ToUserRes](ct, ToUser.New(req, &ToUserRes{}))
+	return err
+}
+
+// SendAllUserToGate
+//
+//	@Description: 发送消息到所有用户所在的网关,这个函数不会关注用户所在网关,会广播到所有网关.所以非必要不建议使用该函数,除非你知道你在做什么,并且同时推送的用户数量很大
+//	@param messageType
+//	@param pbMessage
+//	@param userIds
+//	@return error
+func SendAllUserToGate(messageType string, pbMessage proto.Message, userIds []string) error {
+	data, err := proto.Marshal(pbMessage)
+	req := &ToUserReq{
+		Data:        data,
+		UserId:      userIds,
+		MessageType: messageType,
+	}
+	if err != nil {
+		return err
+	}
+	BorderRPCMessage(NewRPCContext(), ToUser.New(req, &ToUserRes{}))
 	return err
 }
 
