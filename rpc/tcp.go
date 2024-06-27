@@ -126,7 +126,7 @@ const (
 	defaultWriteBuffer = 8 * 1024
 	//默认tcp监听的地址
 	defaultIp             = "0.0.0.0"
-	defaultDeadLineTime   = time.Second * 60
+	defaultDeadLineTime   = time.Second * 5
 	defaultMaxConnections = 10000
 )
 
@@ -350,23 +350,22 @@ func (t *TCPServer) handlerWSConn(conn *websocket.Conn) {
 	}()
 
 	conn.SetPingHandler(func(message string) error {
-
 		err := conn.WriteControl(websocket.PongMessage, []byte(message), time.Now().Add(t.config.DeadLineTime()))
-		//log.DebugTag("ping", "收到客户端的ping请求 %v err=%v", GetUserId(connectData.contextData), err)
+		log.DebugTag("heartbeat", "收到客户端的ping请求 %v err=%v", GetUserId(connectData.contextData), err)
 		if err == websocket.ErrCloseSent {
 			return nil
 		} else if e, ok := err.(net.Error); ok && e.Timeout() {
 			return nil
 		}
+		conn.SetReadDeadline(time.Now().Add(t.config.DeadLineTime() * 2))
 		return err
 	})
 	////设置pong,响应客户端的ping心跳
-	//conn.SetPongHandler(func(m string) error {
-	//	log.DebugTag("tcp", "收到客户端的ping请求 %v", m)
-	//	conn.SetReadDeadline(time.Now().Add(t.config.DeadLineTime()))
-	//	conn.SetWriteDeadline(time.Now().Add(t.config.DeadLineTime()))
-	//	return nil
-	//})
+	conn.SetPongHandler(func(m string) error {
+		log.DebugTag("heartbeat", "收到客户端的ping请求 %v", m)
+		conn.SetReadDeadline(time.Now().Add(t.config.DeadLineTime() * 2))
+		return nil
+	})
 
 	//收到关闭消息后的处理
 	conn.SetCloseHandler(func(code int, text string) error {
@@ -417,12 +416,14 @@ func (t *TCPServer) handlerWSConn(conn *websocket.Conn) {
 				ReqId:         data.ReqId,
 			}
 			log.DebugTag("tcp", "收到请求[%s.%s]", pack.Module, pack.RequestMethod)
+			conn.SetReadDeadline(time.Now().Add(t.config.DeadLineTime()))
 			reqChan <- pack
 		case websocket.PingMessage:
-			log.InfoTag("tcp", "收到ping请求 %v", message)
+			log.InfoTag("heartbeat", "收到ping请求 %v", message)
 		case websocket.CloseMessage:
 			log.InfoTag("tcp", "收到结束连接请求 %v", message)
 		default:
+			conn.SetReadDeadline(time.Now().Add(t.config.DeadLineTime()))
 			log.DebugTag("tcp", "收到不支持的消息:msType %v   ----   %s", messageType, message)
 		}
 	}
@@ -927,6 +928,8 @@ func (u *UserConnectData) writeMessage() {
 				u.conn.Write(d)
 			} else if u.wsConn != nil {
 				u.wsConn.WriteMessage(websocket.BinaryMessage, d)
+				u.wsConn.SetWriteDeadline(time.Now().Add(time.Minute * 10))
+
 			} else {
 				log.DebugTag("tcp", "用户没有可用的连接数据 %v", u.userId)
 				return
