@@ -126,7 +126,7 @@ const (
 	defaultWriteBuffer = 8 * 1024
 	//默认tcp监听的地址
 	defaultIp             = "0.0.0.0"
-	defaultDeadLineTime   = time.Second * 30
+	defaultDeadLineTime   = time.Hour * 1
 	defaultMaxConnections = 10000
 )
 
