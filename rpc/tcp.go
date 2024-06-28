@@ -126,7 +126,7 @@ const (
 	defaultWriteBuffer = 8 * 1024
 	//默认tcp监听的地址
 	defaultIp             = "0.0.0.0"
-	defaultDeadLineTime   = time.Second * 5
+	defaultDeadLineTime   = time.Second * 30
 	defaultMaxConnections = 10000
 )
 
@@ -929,7 +929,6 @@ func (u *UserConnectData) writeMessage() {
 			} else if u.wsConn != nil {
 				u.wsConn.WriteMessage(websocket.BinaryMessage, d)
 				u.wsConn.SetWriteDeadline(time.Now().Add(time.Minute * 10))
-
 			} else {
 				log.DebugTag("tcp", "用户没有可用的连接数据 %v", u.userId)
 				return
