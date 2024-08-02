@@ -383,6 +383,7 @@ func (a *autoCacheManager[Key, Val]) Get(key ...Key) (val Val, err error) {
 func (a *autoCacheManager[Key, Val]) Set(val Val, key ...Key) (success bool) {
 	localKey := a.getLocalKey(key...)
 	cd := a.set(localKey, val)
+	cd.removeState(data_del)
 	if a.cache() {
 		Set(a.getCacheKey(localKey), val, a.cacheTimeOut())
 	}
