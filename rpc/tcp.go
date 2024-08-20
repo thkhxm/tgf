@@ -417,7 +417,12 @@ func (t *TCPServer) handlerWSConn(conn *websocket.Conn) {
 			}
 			log.DebugTag("tcp", "收到请求[%s.%s]", pack.Module, pack.RequestMethod)
 			conn.SetReadDeadline(time.Now().Add(t.config.DeadLineTime()))
-			reqChan <- pack
+			select {
+			case reqChan <- pack:
+			default:
+				log.DebugTag("tcp", "用户[%s] 请求处理繁忙,直接丢弃请求[%s.%s]", connectData.userId, pack.Module, pack.RequestMethod)
+			}
+
 		case websocket.PingMessage:
 			log.InfoTag("heartbeat", "收到ping请求 %v", message)
 		case websocket.CloseMessage:
