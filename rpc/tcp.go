@@ -879,6 +879,9 @@ func (u *UserConnectData) Offline(userHook IUserHook) {
 	var ()
 	if userHook != nil {
 		for _, hook := range userHook.GetOfflineHooks() {
+			if u.GetContextData().GetReqMetaDataByKey(hook.ModuleName) == "" {
+				continue
+			}
 			SendRPCMessage(u.contextData, hook.New(&DefaultArgs{C: u.userId}, &EmptyReply{}))
 		}
 	}
