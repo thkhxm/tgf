@@ -22,7 +22,7 @@ import (
 //2023/2/23
 //***************************************************
 
-// TODO 修改consul的配置，调整心跳间隔
+var LocalServerAddress = ""
 
 type ConsulDiscovery struct {
 	discoveryMap *hashmap.Map[string, *client.ConsulDiscovery]
@@ -56,7 +56,7 @@ func (c *ConsulDiscovery) RegisterServer(ip string) server.Plugin {
 		_logAddressMsg += s + ","
 	}
 	log.InfoTag("init", "服务发现加载成功 注册根目录 consulAddress=%v serviceAddress=%v path=%v", r.ServiceAddress, _logAddressMsg, _basePath)
-
+	LocalServerAddress = serviceAddress
 	return r
 }
 

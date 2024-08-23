@@ -13,6 +13,7 @@ import (
 	"github.com/thkhxm/tgf"
 	"github.com/thkhxm/tgf/db"
 	"github.com/thkhxm/tgf/log"
+	"github.com/thkhxm/tgf/rpc/internal"
 	"github.com/thkhxm/tgf/util"
 	"github.com/valyala/bytebufferpool"
 	"golang.org/x/net/context"
@@ -332,6 +333,8 @@ func (t *TCPServer) handlerWSConn(conn *websocket.Conn) {
 	reqChan := make(chan *RequestData, 10)
 	templateUserId := util.GenerateSnowflakeId()
 	reqMetaData[tgf.ContextKeyTemplateUserId] = templateUserId
+	reqMetaData[tgf.GatewayServiceModuleName] = internal.LocalServerAddress
+
 	connectData.contextData.SetValue(share.ReqMetaDataKey, reqMetaData)
 	t.users.Set(templateUserId, connectData)
 	log.DebugTag("tcp", "接收到一条新的连接 addr=%v , templateUserId=%v", conn.RemoteAddr().String(), reqMetaData[tgf.ContextKeyTemplateUserId])
