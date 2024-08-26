@@ -664,7 +664,7 @@ func (t *TCPServer) doLogic(data *RequestData) {
 	}()
 	err = sendMessage(data.User, data.Module, data.RequestMethod, reqData, resData)
 	if err != nil {
-		log.InfoTag("tcp", "请求异常 数据 [%v]", err)
+		log.InfoTag("tcp", "请求异常 module=%s serviceName=%s 数据 [%v]", data.Module, data.RequestMethod, err)
 		return
 	}
 	//callbackErr := callback.Done()
