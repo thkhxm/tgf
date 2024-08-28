@@ -20,7 +20,7 @@ import (
 //2024/2/20
 //***************************************************
 
-func ServeAdmin(port string) (r chan bool) {
+func ServeAdmin(port string) (r <-chan bool) {
 	mux := http.NewServeMux()
 	c := &admin.ConsulRegistry{}
 	c.InitRegistry()

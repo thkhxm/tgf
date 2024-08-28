@@ -52,8 +52,7 @@ type Server struct {
 	maxWorkers  int
 	maxCapacity int
 	//
-	service   []IService
-	closeChan chan bool
+	service []IService
 	//
 	minPort int32
 	maxPort int32
@@ -217,7 +216,7 @@ func (s *Server) WithProfileDebug() *Server {
 	return s
 }
 
-func (s *Server) Run() chan bool {
+func (s *Server) Run() <-chan bool {
 	var (
 		serviceName    string
 		ip             string
@@ -303,7 +302,7 @@ func (s *Server) Run() chan bool {
 
 	//启用服务,使用tcp
 	log.InfoTag("init", "rpcx服务启动成功 addr=%v service=[%v] ", _logServiceMsg, ip)
-	return s.closeChan
+	return tgf.CloseChan()
 }
 
 func (s *Server) Destroy() {
@@ -318,7 +317,6 @@ func NewRPCServer() *Server {
 	rpcServer.beforeOptionals = make([]Optional, 0)
 	rpcServer.maxWorkers = defaultMaxWorkers
 	rpcServer.maxCapacity = defaultMaxCapacity
-	rpcServer.closeChan = make(chan bool, 1)
 
 	//
 	rpcServer.withConsulDiscovery()

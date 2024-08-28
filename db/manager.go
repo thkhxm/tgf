@@ -441,9 +441,7 @@ func (a *autoCacheManager[Key, Val]) Remove(key ...Key) (success bool) {
 }
 
 func (a *autoCacheManager[Key, Val]) Reset() IAutoCacheService[Key, Val] {
-	util.Go(func() {
-		a.Destroy()
-	})
+	a.Destroy()
 	return a.builder.New()
 }
 
@@ -556,7 +554,7 @@ func (a *autoCacheManager[Key, Val]) toLongevity() {
 		//util.Go(func() {
 		a.sb.updateOrCreate(valueStr, count)
 		//})
-		log.DebugTag("orm:trace", "execute longevity logic , longevity size=%v", count)
+		log.DebugTag("orm", "execute table name [%s] longevity logic , longevity size=%v", a.sb.tableName, count)
 	}
 }
 
@@ -734,6 +732,7 @@ func (a *autoCacheManager[Key, Val]) InitStruct() {
 			}
 		})
 	}
+	tgf.AddDestroyHandler(a)
 }
 
 func ConvertCamelToSnake(s string) string {
