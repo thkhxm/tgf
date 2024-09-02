@@ -67,9 +67,6 @@ type Admin struct {
 func (a *Admin) L(ctx context.Context, args *string, reply *string) (err error) {
 	return
 }
-func (a *Admin) GetUserHook() IUserHook {
-	return nil
-}
 
 func (a *Admin) Destroy(sub IService) {
 }

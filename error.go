@@ -21,4 +21,5 @@ var (
 	LocalEmpty      = errors.New("local cache empty")
 	RedisEmpty      = errors.New("redis cache empty")
 	DBEmpty         = errors.New("db cache empty")
+	ServiceNotFound = errors.New("service not found")
 )

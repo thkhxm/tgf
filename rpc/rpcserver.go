@@ -65,6 +65,9 @@ type Server struct {
 	whiteServiceList []string
 }
 
+type loginHook func(ctx context.Context, userId string) (err error)
+type offlineHook func(ctx context.Context, userId string, replace bool) (err error)
+
 type Optional func(*Server)
 
 func (s *Server) withConsulDiscovery() *Server {
@@ -145,12 +148,11 @@ func (s *Server) withServiceClient() *Server {
 	return s
 }
 
-func (s *Server) WithGateway(port string, hook IUserHook) *Server {
+func (s *Server) WithGateway(port string) *Server {
 	var ()
 	s.beforeOptionals = append(s.beforeOptionals, func(server *Server) {
 		builder := newTCPBuilder()
 		builder.WithPort(port)
-		builder.SetUserHook(hook)
 		gateway := GatewayService(builder)
 		s.service = append(s.service, gateway)
 		log.InfoTag("init", "装载逻辑服务[%v@%v]", gateway.GetName(), gateway.GetVersion())
@@ -165,19 +167,6 @@ func (s *Server) WithGatewayWSS(port, path, key, cert string) *Server {
 		builder.WithPort(port)
 		builder.WithWSPath(path)
 		builder.WithWss(key, cert)
-		userHook := &UserHook{}
-		for _, service := range server.service {
-			if service.GetUserHook() == nil {
-				continue
-			}
-			for _, hook := range service.GetUserHook().GetLoginHooks() {
-				userHook.AddLoginHook(hook)
-			}
-			for _, hook := range service.GetUserHook().GetOfflineHooks() {
-				userHook.AddOfflineHook(hook)
-			}
-		}
-		builder.SetUserHook(userHook)
 		gateway := GatewayService(builder)
 		s.service = append(s.service, gateway)
 		log.InfoTag("init", "装载逻辑服务[%v@%v]", gateway.GetName(), gateway.GetVersion())
@@ -191,19 +180,7 @@ func (s *Server) WithGatewayWS(port, path string) *Server {
 		builder := newTCPBuilder()
 		builder.WithPort(port)
 		builder.WithWSPath(path)
-		userHook := &UserHook{}
-		for _, service := range server.service {
-			if service.GetUserHook() == nil {
-				continue
-			}
-			for _, hook := range service.GetUserHook().GetLoginHooks() {
-				userHook.AddLoginHook(hook)
-			}
-			for _, hook := range service.GetUserHook().GetOfflineHooks() {
-				userHook.AddOfflineHook(hook)
-			}
-		}
-		builder.SetUserHook(userHook)
+
 		gateway := GatewayService(builder)
 		s.service = append(s.service, gateway)
 		log.InfoTag("init", "装载逻辑服务[%v@%v]", gateway.GetName(), gateway.GetVersion())
@@ -572,7 +549,7 @@ func SendRPCMessageByStr(ct context.Context, moduleName, serviceName string, arg
 		xclient = rc.getClient(moduleName)
 	)
 	if xclient == nil {
-		return errors.New(fmt.Sprintf("找不到对应模块的服务 moduleName=%v", moduleName))
+		return tgf.ServiceNotFound
 	}
 	err := xclient.Call(ct, serviceName, args, reply)
 	return err

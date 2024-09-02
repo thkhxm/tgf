@@ -25,16 +25,16 @@ type IService interface {
 	GetName() string
 	GetVersion() string
 	Startup() (bool, error)
-	GetUserHook() IUserHook
 	Destroy(sub IService)
 	GetLogicSyncMethod() []string
 }
 
 type Module struct {
-	Name     string
-	Version  string
-	State    client.ConsulServerState
-	userHook IUserHook
+	Name            string
+	Version         string
+	State           client.ConsulServerState
+	userLoginHook   []loginHook
+	userOfflineHook []offlineHook
 }
 
 func (m *Module) GetName() string {
@@ -53,16 +53,43 @@ func (m *Module) Destroy(sub IService) {
 func (m *Module) GetLogicSyncMethod() []string {
 	return nil
 }
-func (m *Module) GetUserHook() IUserHook {
-	if m.userHook == nil {
-		m.userHook = NewUserHook()
-	}
-	return m.userHook
-}
 
 func (m *Module) StateHandler(ctx context.Context, args *client.ConsulServerState, reply *string) (err error) {
 	m.State = *args
 	log.InfoTag("system", "update module state %s to %s module=%v version=%v", m.State, args, m.Name, m.Version)
+	return
+}
+
+func (m *Module) AddUserLoginHook(hook loginHook) {
+	m.userLoginHook = append(m.userLoginHook, hook)
+}
+func (m *Module) AddUserOfflineHook(hook offlineHook) {
+	m.userOfflineHook = append(m.userOfflineHook, hook)
+}
+
+func (m *Module) OfflineHook(ctx context.Context, args *OfflineReq, reply *EmptyReply) (err error) {
+	if len(m.userOfflineHook) == 0 {
+		return
+	}
+	for _, hook := range m.userOfflineHook {
+		err = hook(ctx, args.UserId, args.Replace)
+		if err != nil {
+			return
+		}
+	}
+	return
+}
+
+func (m *Module) LoginHook(ctx context.Context, args *DefaultArgs, reply *EmptyReply) (err error) {
+	if len(m.userLoginHook) == 0 {
+		return
+	}
+	for _, hook := range m.userLoginHook {
+		err = hook(ctx, args.C)
+		if err != nil {
+			return
+		}
+	}
 	return
 }
 

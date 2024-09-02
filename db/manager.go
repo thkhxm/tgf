@@ -538,6 +538,7 @@ func (a *autoCacheManager[Key, Val]) toLongevity() {
 	if !a.longevity() {
 		return
 	}
+	start := time.Now()
 	if a.longevityLock.TryLock() {
 		defer a.longevityLock.Unlock()
 		size := a.cacheMap.Len()
@@ -554,7 +555,8 @@ func (a *autoCacheManager[Key, Val]) toLongevity() {
 		//util.Go(func() {
 		a.sb.updateOrCreate(valueStr, count)
 		//})
-		log.DebugTag("orm", "execute table name [%s] longevity logic , longevity size=%v", a.sb.tableName, count)
+		mill := time.Since(start).Milliseconds()
+		log.DebugTag("orm", "execute table name [%s] longevity logic , longevity size=%d consume[%d]", a.sb.tableName, count, mill)
 	}
 }
 

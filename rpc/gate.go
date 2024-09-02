@@ -84,43 +84,6 @@ func GatewayService(tcpBuilder ITCPBuilder) IService {
 	return service
 }
 
-type IUserHook interface {
-	GetLoginHooks() []*ServiceAPI[*DefaultArgs, *EmptyReply]
-	GetOfflineHooks() []*ServiceAPI[*DefaultArgs, *EmptyReply]
-	AddLoginHook(hook *ServiceAPI[*DefaultArgs, *EmptyReply]) IUserHook
-	AddOfflineHook(hook *ServiceAPI[*DefaultArgs, *EmptyReply]) IUserHook
-}
-
-type UserHook struct {
-	loginHooks   []*ServiceAPI[*DefaultArgs, *EmptyReply]
-	offlineHooks []*ServiceAPI[*DefaultArgs, *EmptyReply]
-}
-
-func (u *UserHook) AddLoginHook(hook *ServiceAPI[*DefaultArgs, *EmptyReply]) IUserHook {
-	u.loginHooks = append(u.loginHooks, hook)
-	return u
-}
-
-func (u *UserHook) AddOfflineHook(hook *ServiceAPI[*DefaultArgs, *EmptyReply]) IUserHook {
-	u.offlineHooks = append(u.offlineHooks, hook)
-	return u
-}
-
-func (u *UserHook) GetLoginHooks() []*ServiceAPI[*DefaultArgs, *EmptyReply] {
-	return u.loginHooks
-}
-
-func (u *UserHook) GetOfflineHooks() []*ServiceAPI[*DefaultArgs, *EmptyReply] {
-	return u.offlineHooks
-}
-
-func NewUserHook() IUserHook {
-	return &UserHook{
-		loginHooks:   make([]*ServiceAPI[*DefaultArgs, *EmptyReply], 0),
-		offlineHooks: make([]*ServiceAPI[*DefaultArgs, *EmptyReply], 0),
-	}
-}
-
 var Gate = &Module{Name: "gate", Version: "1.0"}
 
 var (

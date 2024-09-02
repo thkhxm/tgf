@@ -135,7 +135,7 @@ type IUserConnectData interface {
 	UpdateUserNodeId(servicePath, nodeId string)
 	GetContextData() *share.Context
 	GetChannel() chan *client.Call
-	Offline(userHook IUserHook)
+	Offline(replace bool)
 	Send(data []byte)
 	IsLogin() bool
 	Login(userId string)
@@ -163,8 +163,6 @@ type ITCPBuilder interface {
 	ReadBufferSize() int
 	WriteBufferSize() int
 	IsWebSocket() bool
-	SetUserHook(userHook IUserHook)
-	UserHook() IUserHook
 	WithWss(certFile, keyFile string) ITCPBuilder
 	IsWss() bool
 	WssCertFile() string
@@ -177,8 +175,6 @@ type TCPServer struct {
 
 	closeChan chan bool //关闭chan
 	users     *hashmap.Map[string, IUserConnectData]
-
-	userHook IUserHook
 	//
 	startup *sync.Once //是否已经启动
 }
@@ -198,15 +194,8 @@ type ServerConfig struct {
 	wSSCertPath string
 	//
 
-	userHook IUserHook
 }
 
-func (s *ServerConfig) SetUserHook(userHook IUserHook) {
-	s.userHook = userHook
-}
-func (s *ServerConfig) UserHook() IUserHook {
-	return s.userHook
-}
 func (s *ServerConfig) Address() string {
 	return s.address
 }
@@ -287,6 +276,8 @@ type UserConnectData struct {
 	reqChan     chan *client.Call
 	stop        chan struct{}
 	writeChan   chan []byte
+
+	replace bool // 是否重复登录
 }
 
 type RequestData struct {
@@ -349,7 +340,7 @@ func (t *TCPServer) handlerWSConn(conn *websocket.Conn) {
 			}
 		}
 		//
-		connectData.Offline(t.userHook)
+		connectData.Offline(false)
 	}()
 
 	conn.SetPingHandler(func(message string) error {
@@ -474,7 +465,8 @@ func (t *TCPServer) handlerConn(conn *net.TCPConn) {
 				t.users.Del(connectData.userId)
 			}
 		}
-		connectData.Offline(t.userHook)
+
+		connectData.Offline(false)
 	}()
 
 	go func() {
@@ -576,10 +568,6 @@ func (t *TCPServer) handlerConn(conn *net.TCPConn) {
 	}
 }
 
-func (t *TCPServer) SetUserHook(userHook IUserHook) {
-	t.userHook = userHook
-}
-
 func (t *TCPServer) Offline(userId string, replace bool) (exists bool) {
 	oldUser, _ := t.users.Get(userId)
 	if oldUser != nil {
@@ -589,16 +577,13 @@ func (t *TCPServer) Offline(userId string, replace bool) (exists bool) {
 				exists = true
 			}
 		}()
-		var userHook IUserHook
-		if !replace {
-			userHook = t.userHook
-		} else {
+		if replace {
 			//发送重复登录消息通知
 			oldUser.Send(replaceLoginData)
 			time.Sleep(time.Second * 1)
 		}
 		//断开已经在线的玩家上下文
-		oldUser.Offline(userHook)
+		oldUser.Offline(replace)
 		exists = true
 		log.InfoTag("login", "重复登录,踢掉在线玩家 userId=%v", userId)
 	}
@@ -628,14 +613,6 @@ func (t *TCPServer) DoLogin(userId, templateUserId string) (err error) {
 	//remove key
 	t.users.Del(templateUserId)
 	log.InfoTag("tcp", "login templateUserId %v , uuid %v", templateUserId, userId)
-	if t.userHook != nil {
-		for _, hook := range t.userHook.GetLoginHooks() {
-			_, err = SendRPCMessage(ct, hook.New(&DefaultArgs{C: userId}, &EmptyReply{}))
-			if err != nil {
-				log.WarnTag("tcp", "user [%s] login hook [%s] error %v", userId, hook.MessageType, err)
-			}
-		}
-	}
 	return
 }
 
@@ -682,9 +659,7 @@ func (t *TCPServer) getSendToClientData(messageType string, reqId, code int32, r
 		compress byte = 0
 		err      error
 	)
-	bp := bytebufferpool.Get()
-	// [1][1][2][4][n][n]
-	// message type|compress|request method name size|data size|method name|data
+
 	//逻辑响应
 	if t.config.IsWebSocket() {
 		data := &WSResponse{}
@@ -703,6 +678,9 @@ func (t *TCPServer) getSendToClientData(messageType string, reqId, code int32, r
 		return
 	}
 
+	// [1][1][2][4][n][n]
+	// message type|compress|request method name size|data size|method name|data
+	bp := bytebufferpool.Get()
 	//放回池子
 	defer bytebufferpool.Put(bp)
 
@@ -759,7 +737,6 @@ func (t *TCPServer) Run() {
 	var ()
 	//保证每个tcp只会被启动一次,避免误操作
 	t.startup.Do(func() {
-		t.userHook = t.config.UserHook()
 		if t.config.IsWebSocket() {
 			util.Go(func() {
 				log.InfoTag("init", "启动ws服务 %v", t.config.Address()+":"+t.config.Port()+"/"+t.config.WsPath())
@@ -870,22 +847,24 @@ func (u *UserConnectData) GetChannel() chan *client.Call {
 	var ()
 	return u.reqChan
 }
-func (u *UserConnectData) Offline(userHook IUserHook) {
+func (u *UserConnectData) Offline(replace bool) {
+	if u.replace {
+		return
+	}
 	defer func() {
 		if r := recover(); r != nil {
 			log.DebugTag("tcp", "用户 userId=%v Offline: %v", u.userId, r)
 		}
 	}()
-	var ()
-	if userHook != nil {
-		for _, hook := range userHook.GetOfflineHooks() {
-			if u.GetContextData().GetReqMetaDataByKey(hook.ModuleName) == "" {
-				continue
-			}
-			SendRPCMessage(u.contextData, hook.New(&DefaultArgs{C: u.userId}, &EmptyReply{}))
-		}
-	}
+	var (
+		keys = u.GetContextData().GetAllReqMetaDataKeys()
+	)
 
+	for _, key := range keys {
+		SendRPCMessageByStr(u.contextData, key, "OfflineHook", &OfflineReq{UserId: u.userId, Replace: replace}, &EmptyReply{})
+	}
+	u.replace = replace
+	//
 	u.contextData.Deadline()
 	ip := ""
 	if u.conn != nil {
@@ -905,8 +884,21 @@ func (u *UserConnectData) Stop() {
 	u.stop <- struct{}{}
 }
 func (u *UserConnectData) Login(userId string) {
-	var ()
+	defer func() {
+		if r := recover(); r != nil {
+			log.DebugTag("tcp", "用户 userId=%v Login: %v", u.userId, r)
+		}
+	}()
+	var (
+		err error
+	)
 	u.userId = userId
+	for _, key := range u.contextData.GetAllReqMetaDataKeys() {
+		err = SendRPCMessageByStr(u.contextData, key, "LoginHook", &DefaultArgs{C: u.userId}, &EmptyReply{})
+		if err != nil && !errors.Is(err, tgf.ServiceNotFound) {
+			log.WarnTag("tcp", "用户 userId=%s LoginHook: %v", u.userId, err)
+		}
+	}
 }
 func (u *UserConnectData) Send(data []byte) {
 	var ()
