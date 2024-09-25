@@ -128,3 +128,4 @@ const AdminServiceModuleName = "admin"
 
 var NodeId = ""
 var ServerModule = false
+var LoggerCallerFullPath = false // 是否启用日志调用文件全路径

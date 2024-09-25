@@ -122,7 +122,12 @@ func initLogger() {
 		}
 		/*自定义代码路径、行号输出*/
 		customCallerEncoder = func(caller zapcore.EntryCaller, enc zapcore.PrimitiveArrayEncoder) {
-			enc.AppendString("[" + caller.TrimmedPath() + "]")
+			if tgf.LoggerCallerFullPath {
+				enc.AppendString(fmt.Sprintf("%s:%d", caller.File, caller.Line))
+			} else {
+				_, file := filepath.Split(caller.File)
+				enc.AppendString(fmt.Sprintf("%s:%d", file, caller.Line))
+			}
 		}
 		logLevel = tgf.GetStrConfig[string](tgf.EnvironmentLoggerLevel)
 		logPath  = tgf.GetStrConfig[string](tgf.EnvironmentLoggerPath)
