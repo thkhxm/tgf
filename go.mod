@@ -1,11 +1,11 @@
 module github.com/thkhxm/tgf
 
-go 1.22
+go 1.23
 
 require (
 	github.com/bsm/redislock v0.9.0
 	github.com/bwmarrin/snowflake v0.3.0
-	github.com/bytedance/sonic v1.11.0
+	github.com/bytedance/sonic v1.12.3
 	github.com/cornelk/hashmap v1.0.8
 	github.com/edwingeng/doublejump v1.0.1
 	github.com/go-sql-driver/mysql v1.7.1
