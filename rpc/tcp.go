@@ -11,7 +11,6 @@ import (
 	"github.com/thkhxm/rpcx/share"
 	util2 "github.com/thkhxm/rpcx/util"
 	"github.com/thkhxm/tgf"
-	"github.com/thkhxm/tgf/db"
 	"github.com/thkhxm/tgf/log"
 	"github.com/thkhxm/tgf/rpc/internal"
 	"github.com/thkhxm/tgf/util"
@@ -592,7 +591,7 @@ func (t *TCPServer) Offline(userId string, replace bool) (exists bool) {
 
 func (t *TCPServer) DoLogin(userId, templateUserId string) (err error) {
 	var (
-		reqMetaDataKey string
+	//reqMetaDataKey string
 	)
 	userData, _ := t.users.Get(templateUserId)
 	if userData == nil {
