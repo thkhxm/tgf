@@ -127,7 +127,7 @@ const (
 	defaultWriteBuffer = 8 * 1024
 	//默认tcp监听的地址
 	defaultIp             = "0.0.0.0"
-	defaultDeadLineTime   = time.Second * 30
+	defaultDeadLineTime   = time.Second * 60
 	defaultMaxConnections = 10000
 )
 
@@ -356,7 +356,7 @@ func (t *TCPServer) handlerWSConn(conn *websocket.Conn) {
 	})
 	////设置pong,响应客户端的ping心跳
 	conn.SetPongHandler(func(m string) error {
-		log.DebugTag("heartbeat", "收到客户端的ping请求 %v", m)
+		log.DebugTag("heartbeat", "收到客户端的pong请求 %v", m)
 		conn.SetReadDeadline(time.Now().Add(t.config.DeadLineTime() * 2))
 		return nil
 	})
@@ -601,13 +601,19 @@ func (t *TCPServer) DoLogin(userId, templateUserId string) (err error) {
 
 	ct := userData.GetContextData()
 	//
-	reqMetaDataKey = fmt.Sprintf(tgf.RedisKeyUserNodeMeta, userId)
-	reqMetaData, suc := db.GetMap[string, string](reqMetaDataKey)
-	if !suc {
-		reqMetaData = make(map[string]string)
-	}
-	reqMetaData[tgf.ContextKeyUserId] = userId
-	ct.SetValue(share.ReqMetaDataKey, reqMetaData)
+
+	//reqMetaDataKey = fmt.Sprintf(tgf.RedisKeyUserNodeMeta, userId)
+	//reqMetaData, suc := db.GetMap[string, string](reqMetaDataKey)
+	//if !suc {
+	//	reqMetaDataKey = fmt.Sprintf(tgf.RedisKeyUserNodeMeta, templateUserId)
+	//	reqMetaData, suc = db.GetMap[string, string](reqMetaDataKey)
+	//	if !suc {
+	//		reqMetaData = make(map[string]string)
+	//	}
+	//}
+	ct.SetReqMetaData(tgf.ContextKeyUserId, userId)
+	//reqMetaData[tgf.ContextKeyUserId] = userId
+	//ct.SetValue(share.ReqMetaDataKey, reqMetaData)
 	t.users.Set(userId, userData)
 	userData.Login(userId)
 	//remove key
