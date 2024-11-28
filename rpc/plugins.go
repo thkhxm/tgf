@@ -86,6 +86,12 @@ func (c *CustomSelector) Select(ctx context.Context, servicePath, serviceMethod 
 
 			if userId != "" {
 				broadcasts[0] = userId
+			} else {
+				// 判断是否首次登录，查看templeUserId是否存在
+				templeUserId := reqMetaData[tgf.ContextKeyTemplateUserId]
+				if templeUserId != "" {
+					broadcasts[0] = templeUserId
+				}
 			}
 			var bindNode bool
 			if rpcTip == tgf.RPCBroadcastTip {
