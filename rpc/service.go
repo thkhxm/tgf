@@ -1,8 +1,8 @@
 package rpc
 
 import (
-	"github.com/thkhxm/rpcx/client"
-	"github.com/thkhxm/rpcx/share"
+	"github.com/smallnest/rpcx/client"
+	"github.com/smallnest/rpcx/share"
 	"github.com/thkhxm/tgf"
 	"github.com/thkhxm/tgf/log"
 	"golang.org/x/net/context"

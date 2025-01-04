@@ -6,7 +6,7 @@ import (
 	"github.com/rpcxio/libkv"
 	"github.com/rpcxio/libkv/store"
 	"github.com/rpcxio/libkv/store/consul"
-	"github.com/thkhxm/rpcx/client"
+	"github.com/smallnest/rpcx/client"
 	"github.com/thkhxm/tgf"
 	"log"
 	"net/http"

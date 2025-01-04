@@ -1,8 +1,8 @@
 package internal
 
 import (
-	"github.com/thkhxm/rpcx-consul/client"
-	"github.com/thkhxm/rpcx/server"
+	"github.com/rpcxio/rpcx-consul/client"
+	"github.com/smallnest/rpcx/server"
 	"github.com/thkhxm/tgf/log"
 )
 

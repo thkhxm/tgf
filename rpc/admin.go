@@ -3,7 +3,7 @@ package rpc
 import (
 	"context"
 	"github.com/rs/cors"
-	"github.com/thkhxm/rpcx/client"
+	"github.com/smallnest/rpcx/client"
 	"github.com/thkhxm/tgf"
 	"github.com/thkhxm/tgf/exp/admin"
 	"github.com/thkhxm/tgf/log"
