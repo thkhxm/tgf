@@ -26,8 +26,8 @@ var slogger *zap.SugaredLogger
 
 var (
 	defaultMaxSize    = 512
-	defaultMaxAge     = 5
-	defaultMaxBackups = 31
+	defaultMaxAge     = 0
+	defaultMaxBackups = 100
 	ignoredTags       map[string]bool
 )
 
