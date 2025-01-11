@@ -43,12 +43,19 @@ func StrToAny[T any](a string) (T, error) {
 			return t, err
 		}
 		t = *(*T)(unsafe.Pointer(&v))
-	case float32, float64:
+	case float64:
 		v, err := strconv.ParseFloat(a, 64)
 		if err != nil {
 			return t, err
 		}
 		t = *(*T)(unsafe.Pointer(&v))
+	case float32:
+		v, err := strconv.ParseFloat(a, 32)
+		v32 := float32(v)
+		if err != nil {
+			return t, err
+		}
+		t = *(*T)(unsafe.Pointer(&v32))
 	case string:
 		v := a
 		t = any(v).(T)
