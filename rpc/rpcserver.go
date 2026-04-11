@@ -89,6 +89,11 @@ type Server struct {
 	disableConsul bool
 	disableClient bool
 
+	// 单进程模式新增：开启后 SendRPCMessage 会先查 localDispatcher
+	// 做进程内反射调用，命中即绕开 rpcx/Consul。
+	// 由 WithInProcessDispatch / WithSingleProcess 设置。
+	inProcessDispatch bool
+
 	// A6 新增：后台健康心跳骨架。
 	// healthInterval > 0 时 Run 会启动一个心跳 goroutine，每 healthInterval
 	// 打一次"进程存活"的 heartbeat（当前只做 atomic 状态位 + 日志，未来 C2/B4
@@ -494,29 +499,48 @@ func (s *Server) Run() <-chan bool {
 
 	discovery := internal.GetDiscovery()
 
-	//如果加入了服务注册，那么走服务注册的流程
+	// v2 修复：Startup 与 discovery 注册解耦。
+	// v1 行为是 "discovery 非 nil 时才调 Startup"——A4 引入 WithoutConsul
+	// 之后，discovery 为 nil 会导致所有 service 的 Startup 被跳过。
+	// 单进程模式（WithSingleProcess / WithStandalone）明确需要 Startup 被调用，
+	// 所以这里把 Startup 从"注册 discovery"的 if 块里拆出来独立执行。
+
+	// 如果要向 discovery 注册，先装 plugin 并追加 MonitorService——MonitorService
+	// 只在 discovery 开启时存在。
 	if discovery != nil {
 		s.rpcServer.Plugins.Add(discovery.RegisterServer(ip))
 		s.rpcServer.Plugins.Add(NewRPCXServerHandler())
 		s.service = append(s.service, &MonitorService{})
-		//注册服务到服务发现上,允许多个服务，注册到一个节点
-		for _, service := range s.service {
-			serviceName = fmt.Sprintf("%v", service.GetName())
-			metaData := fmt.Sprintf("version=%s&nodeId=%s", service.GetVersion(), tgf.NodeId)
-			err := s.rpcServer.RegisterName(serviceName, service, metaData)
-			if err != nil {
+	}
+
+	// 统一遍历：所有 service 都要 Startup；额外的 RegisterName 只在 discovery 非 nil 时做。
+	for _, service := range s.service {
+		serviceName = fmt.Sprintf("%v", service.GetName())
+		metaData := fmt.Sprintf("version=%s&nodeId=%s", service.GetVersion(), tgf.NodeId)
+
+		if discovery != nil {
+			if err := s.rpcServer.RegisterName(serviceName, service, metaData); err != nil {
 				log.Error("[init] 注册服务发现失败 serviceName=%v metaDat=%v error=%v", serviceName, metaData, err)
 				continue
 			}
+		}
 
-			if startupOK, startupErr := service.Startup(); !startupOK {
-				log.Error("[init] 服务启动异常 serviceName=%v error=%v", serviceName, startupErr)
-				continue
-			}
-			_logServiceMsg += serviceName + " " + metaData + ","
+		if startupOK, startupErr := service.Startup(); !startupOK {
+			log.Error("[init] 服务启动异常 serviceName=%v error=%v", serviceName, startupErr)
+			continue
+		}
+
+		_logServiceMsg += serviceName + " " + metaData + ","
+		if discovery != nil {
 			log.InfoTag("init", "注册服务发现 serviceName=%v metaDat=%v", serviceName, metaData)
+		} else {
+			log.InfoTag("init", "服务启动 serviceName=%v metaDat=%v (无 discovery)", serviceName, metaData)
 		}
 	}
+
+	// 单进程模式：Startup 完成后把 service 注册到本地 dispatcher。
+	// 放在 Startup 之后是因为 Startup 可能修改 service 内部状态（比如 rpc.Module 的 State 字段）。
+	s.registerLocalServices()
 
 	util.Go(func() {
 		if err := s.rpcServer.Serve("tcp", ip); err != nil {
@@ -722,12 +746,6 @@ func sendMessage(ct IUserConnectData, moduleName, serviceName string, args, repl
 //	@return res
 //	@return err
 func SendRPCMessage[Req any, Res any](ct context.Context, api *ServiceAPI[Req, Res]) (res Res, err error) {
-	var (
-		done    = make(chan *client.Call, 1)
-		rc      = getRPCClient()
-		xclient = rc.getClient(api.ModuleName)
-	)
-
 	// B4 埋点：进入前记录起始时间戳；任何返回路径 defer 里观测延迟 + 累加计数/错误。
 	startTime := time.Now()
 	defer func() {
@@ -736,6 +754,8 @@ func SendRPCMessage[Req any, Res any](ct context.Context, api *ServiceAPI[Req, R
 
 	// C6 策略化：查 per-method 策略，触发限流/熔断/并发控制。
 	// 命中快速失败时直接返回对应的 error，不进入 rpcx Go。
+	// 注意：策略检查放在 dispatch 分支之前，本地调用和远程调用走完全相同的
+	// 限流/熔断/并发语义——对业务代码透明。
 	var policyRelease func(error) = noopRelease
 	if mr := resolveMethodPolicy(api.ModuleName, api.Name); mr != nil {
 		var perr error
@@ -748,6 +768,24 @@ func SendRPCMessage[Req any, Res any](ct context.Context, api *ServiceAPI[Req, R
 	defer func() {
 		policyRelease(err)
 	}()
+
+	// 单进程模式 fast path：如果开启了 in-process dispatch 且 module 在本地
+	// 注册，直接反射调用。绕开 rpcx + Consul 的全部网络路径。
+	if localDispatchEnabled.Load() {
+		if _, ok := localDispatcher.Lookup(api.ModuleName); ok {
+			if derr := localDispatcher.Call(ct, api.ModuleName, api.Name, api.args, api.reply); derr != nil {
+				err = derr
+				return
+			}
+			return api.reply, nil
+		}
+	}
+
+	var (
+		done    = make(chan *client.Call, 1)
+		rc      = getRPCClient()
+		xclient = rc.getClient(api.ModuleName)
+	)
 
 	if xclient == nil {
 		err = fmt.Errorf("找不到对应模块的服务 moduleName=%v serviceName=%v", api.ModuleName, api.Name)
@@ -803,6 +841,18 @@ func SendAsyncRPCMessage[Req any, Res any](ct context.Context, api *ServiceAPI[R
 //	@param Res
 //	@return error
 func SendNoReplyRPCMessage[Req any, Res any](ct context.Context, api *ServiceAPI[Req, Res]) error {
+	// 单进程模式 fast path：同 SendRPCMessage 的逻辑，命中 local dispatcher 就
+	// 直接反射调用（忽略 reply——no reply 语义）。
+	if localDispatchEnabled.Load() {
+		if _, ok := localDispatcher.Lookup(api.ModuleName); ok {
+			// 后台执行避免阻塞调用方——和 rpcx Oneshot 的语义保持一致
+			go func() {
+				_ = localDispatcher.Call(ct, api.ModuleName, api.Name, api.args, api.reply)
+			}()
+			return nil
+		}
+	}
+
 	var (
 		rc      = getRPCClient()
 		xclient = rc.getClient(api.ModuleName)
@@ -815,6 +865,17 @@ func SendNoReplyRPCMessage[Req any, Res any](ct context.Context, api *ServiceAPI
 }
 
 func SendNoReplyRPCMessageByAddress(moduleName, address, serviceName string, args interface{}) error {
+	// 单进程模式 fast path：地址参数在单进程下没意义，命中即本地调用。
+	// reply 为 nil，Call 内部会构造零值对象占位。
+	if localDispatchEnabled.Load() {
+		if _, ok := localDispatcher.Lookup(moduleName); ok {
+			go func() {
+				_ = localDispatcher.Call(context.Background(), moduleName, serviceName, args, nil)
+			}()
+			return nil
+		}
+	}
+
 	var (
 		rc      = getRPCClient()
 		xclient = rc.getClient(moduleName)

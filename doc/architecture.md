@@ -157,7 +157,9 @@ autoCacheManager
 | RPC 策略 | `rpc.SetMethodPolicy` | 运行时任意调用 |
 | 日志级别 | 暂无——zap 包初始化时一次性读 | 重启生效 |
 
-## 单机模式（C1）
+## 单机模式 / 单进程模式
+
+### WithStandalone（C1，不挂 Consul）
 
 ```go
 rpc.NewRPCServer().
@@ -174,7 +176,37 @@ rpc.NewRPCServer().
 - 不启动 RPC client watch
 - 依然可以完整用 Gateway / DB / Cache 等功能
 
-适合本地开发、单元测试、小规模部署。
+适合本地开发、**单服务测试**、小规模部署。
+
+### WithSingleProcess（进程内多 module）
+
+如果一个进程里要启动**多个 module** 并且它们之间通过 `SendRPCMessage` 互相调用，
+单纯 `WithStandalone()` 不够——rpcx client 没有 discovery 条目会直接失败。
+使用 `WithSingleProcess()` 开启**进程内反射调用**：
+
+```go
+rpc.NewRPCServer().
+    WithSingleProcess().                       // = WithStandalone() + WithInProcessDispatch()
+    WithService(userService).
+    WithService(shopService).
+    WithGatewayOptions(rpc.GatewayOptions{TCPPort: "8082"}).
+    Run()
+```
+
+`userService` 在方法里调 `SendRPCMessage(ctx, Shop.BuyItem.NewRPC(req))`：
+- `localDispatcher` 命中 `shopService` 已注册
+- 直接反射调用 `shopService.BuyItem(ctx, req, reply)`
+- 零网络开销，零 Consul 依赖
+- 策略管道（限流/熔断/并发控制）依然生效——和分布式路径语义一致
+
+单进程模式适合：
+- **单元测试**：不需要 Consul/Redis 容器，完整跑 module 间通信
+- **小型/原型项目**：一个进程装 5~10 个 module 够用
+- **本地联调**：开发阶段所有 service 跑在一个进程里便于调试
+
+不适合：
+- 需要水平扩展的生产场景（这时应当走完整的 Consul + rpcx 网络路径）
+- 动态增减 service 的场景（`registerLocalServices` 只在 `Run` 时一次性注册）
 
 ## 关键文件索引
 

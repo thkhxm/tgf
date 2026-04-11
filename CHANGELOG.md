@@ -10,6 +10,15 @@
 架构图：`doc/architecture.md`
 可观测性接入：`doc/observability.md`
 
+### C8 · 单进程模式 / In-Process RPC 直通
+
+- 新增 `rpc.WithInProcessDispatch()` / `rpc.WithSingleProcess()` builder 方法
+- 新增 `localDispatcher` 反射调度器：`SendRPCMessage` 先查本地注册 service，
+  命中则反射调用绕开 rpcx/Consul，策略管道和 metrics 埋点依然生效
+- 配套修复 A4 遗留 bug：`WithoutConsul()` 下 `service.Startup()` 被跳过，
+  现在 Startup 与 discovery 注册完全解耦
+- 18 个新测试
+
 ### C 档 - API 与架构演进
 
 - **C7 文档**：`doc/architecture.md` + `doc/migration-v1-to-v2.md` + `doc/observability.md`。
