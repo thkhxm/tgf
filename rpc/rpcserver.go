@@ -4,6 +4,13 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"math/rand"
+	"os"
+	"strings"
+	"sync"
+	"sync/atomic"
+	"time"
+
 	"github.com/cornelk/hashmap"
 	client2 "github.com/rpcxio/rpcx-consul/client"
 	"github.com/smallnest/rpcx/client"
@@ -16,11 +23,6 @@ import (
 	"github.com/thkhxm/tgf/rpc/internal"
 	"github.com/thkhxm/tgf/util"
 	"google.golang.org/protobuf/proto"
-	"math/rand"
-	"os"
-	"strings"
-	"sync"
-	"time"
 )
 
 //***************************************************
@@ -41,14 +43,30 @@ var singletonLock = &sync.Mutex{}
 
 // Server
 // @Description:
+//
+// A4 说明：Hook 装载顺序明确为两阶段：
+//
+//	preServe 阶段（= 原 beforeOptionals，Run 里 rpcx Serve 启动前执行）
+//	├─ 1. 默认 Consul 发现装载      （除非 WithoutConsul()）
+//	└─ 2. 用户通过 With* 注册的 Hook（WithServerPool / WithGateway / WithGameConfig / ...）
+//
+//	postServe 阶段（= 原 afterOptionals，Run 里 rpcx Serve goroutine 启动后执行）
+//	├─ 1. 用户注册的 Hook
+//	└─ 2. 默认 RPC Client 启动      （除非 WithoutServiceClient()）
+//
+// 顺序策略的理由：
+//   - Consul 装载必须在用户 Hook 之前，因为某些 Hook（未来的 WithStandalone 等）
+//     可能会查 `internal.GetDiscovery()` 做开关判断。
+//   - RPC Client 启动必须在 rpcx Serve 之后，因为它要 watch 自己的注册条目。
 type Server struct {
 	rpcServer *server.Server
 
-	//启动后执行的操作
-	afterOptionals []Optional
-	//启动前执行
+	// beforeOptionals 是"Serve 前执行"的用户 Hook 列表。字段名保留为
+	// beforeOptionals 避免内部大量改名，语义等价于新的 preServe 阶段。
 	beforeOptionals []Optional
-	//
+	// afterOptionals 是"Serve 后执行"的用户 Hook 列表。语义等价于新的 postServe 阶段。
+	afterOptionals []Optional
+
 	maxWorkers  int
 	maxCapacity int
 	//
@@ -63,6 +81,21 @@ type Server struct {
 
 	//
 	whiteServiceList []string
+
+	// A4 新增：默认模块的开关。构造时全为 false（=默认开启）。
+	// WithoutConsul / WithoutServiceClient 设置对应标志。
+	disableConsul bool
+	disableClient bool
+
+	// A6 新增：后台健康心跳骨架。
+	// healthInterval > 0 时 Run 会启动一个心跳 goroutine，每 healthInterval
+	// 打一次"进程存活"的 heartbeat（当前只做 atomic 状态位 + 日志，未来 C2/B4
+	// 集成 Consul Agent TTL check / Prometheus gauge 时复用这条 goroutine）。
+	healthInterval time.Duration
+	// healthCheckStop 是心跳 goroutine 的退出信号，Destroy 时关闭。
+	healthCheckStop chan struct{}
+	// healthy 是进程级存活标志，默认 false，心跳 goroutine 启动后首次 tick 前就会置 true。
+	healthy atomic.Bool
 }
 
 type loginHook func(ctx context.Context, userId string) (err error)
@@ -70,12 +103,90 @@ type offlineHook func(ctx context.Context, userId string, replace bool) (err err
 
 type Optional func(*Server)
 
-func (s *Server) withConsulDiscovery() *Server {
-	var ()
-	s.beforeOptionals = append(s.beforeOptionals, func(server *Server) {
-		internal.UseConsulDiscovery()
-	})
+// WithoutConsul 关闭默认的 Consul 服务发现装载。
+// A4 新增：用于单机 / 单测 / 未来单进程调试模式，避免强制依赖外部 Consul。
+// 默认情况下（不调用此方法）Consul 发现仍然被自动装上。
+func (s *Server) WithoutConsul() *Server {
+	s.disableConsul = true
 	return s
+}
+
+// WithoutServiceClient 关闭默认的 RPC Client 启动（包括 discovery watch）。
+// A4 新增：单机模式下也不需要 client 自动 watch Consul。
+func (s *Server) WithoutServiceClient() *Server {
+	s.disableClient = true
+	return s
+}
+
+// WithHealthCheck 开启进程级健康心跳。interval 指定每次心跳的间隔；传 0 或负数
+// 视为禁用（默认行为就是禁用）。
+//
+// A6 定位是"骨架"：当前心跳只做两件事——
+//  1. 通过 atomic.Bool 维护 `healthy` 状态，业务可通过 Server.IsHealthy() 观察；
+//  2. 每次 tick 打一条 DebugTag 日志，便于运维从日志里确认进程存活。
+//
+// 后续 C2（Consul 改造）/ B4（可观测性）会在这条心跳 goroutine 上挂上真正的
+// Consul Agent TTL check 续约调用 + Prometheus gauge 上报。
+//
+// 由于是骨架，本 Option 的默认 interval 建议用 5~10 秒；再短容易干扰 Consul
+// 的 rpcx UpdateInterval。
+func (s *Server) WithHealthCheck(interval time.Duration) *Server {
+	if interval > 0 {
+		s.healthInterval = interval
+	}
+	return s
+}
+
+// IsHealthy 返回当前进程的健康状态快照。
+// 未开 WithHealthCheck 时恒为 false；开了之后从第一次心跳 tick 开始为 true，
+// Destroy 时 goroutine 退出后会被重新置为 false。
+func (s *Server) IsHealthy() bool {
+	return s.healthy.Load()
+}
+
+// startHealthCheckLoop 在 Run 里启动心跳 goroutine。幂等——多次调用只启动一次。
+// 内部细节：
+//   - healthCheckStop 是退出信号，由 Destroy 关闭
+//   - goroutine 启动后立即把 healthy 置 true（表示进程 bootstrapping 完成）
+//   - 后续 tick 每次都写日志 + 可以在这里接入外部 ping / TTL check
+func (s *Server) startHealthCheckLoop() {
+	if s.healthInterval <= 0 {
+		return
+	}
+	if s.healthCheckStop != nil {
+		return // 已启动
+	}
+	s.healthCheckStop = make(chan struct{})
+	stop := s.healthCheckStop
+	interval := s.healthInterval
+	s.healthy.Store(true)
+
+	util.Go(func() {
+		ticker := time.NewTicker(interval)
+		defer ticker.Stop()
+		for {
+			select {
+			case <-ticker.C:
+				// A6 骨架：当前只打日志。C2/B4 在这里接 Consul agent check 续约
+				// 和 Prometheus gauge 上报。
+				log.DebugTag("health", "heartbeat tick nodeId=%v healthy=%v",
+					tgf.NodeId, s.healthy.Load())
+			case <-stop:
+				s.healthy.Store(false)
+				log.InfoTag("health", "heartbeat loop stopped nodeId=%v", tgf.NodeId)
+				return
+			}
+		}
+	})
+}
+
+// stopHealthCheckLoop 由 Destroy 调用。幂等。
+func (s *Server) stopHealthCheckLoop() {
+	if s.healthCheckStop == nil {
+		return
+	}
+	close(s.healthCheckStop)
+	s.healthCheckStop = nil
 }
 
 func (s *Server) WithServerPool(maxWorkers, maxCapacity int) *Server {
@@ -128,24 +239,37 @@ func (s *Server) WithCustomServiceAddress() {
 	s.customServiceAddress = true
 }
 
-// withServiceClient
-//
-//	@Description: 注册rpcx的客户端程序
-//	@receiver this
-func (s *Server) withServiceClient() *Server {
-	var ()
-	//_
-	s.afterOptionals = append(s.afterOptionals, func(server *Server) {
-		c := newRPCClient().startup()
-		log.InfoTag("init", "装载RPCClient服务")
-		if len(server.whiteServiceList) > 0 {
-			for _, messageType := range server.whiteServiceList {
+// buildPreServeHooks 组装 rpcx Serve 之前要运行的 Hook 列表。
+// A4 把"默认 Consul 装载"从 NewRPCServer 的硬编码改为这里按 disableConsul 条件注入。
+// 拆成独立方法便于单测断言"按标志生成的 pipeline 形状"。
+func (s *Server) buildPreServeHooks() []Optional {
+	hooks := make([]Optional, 0, len(s.beforeOptionals)+1)
+	if !s.disableConsul {
+		// 默认 Consul 发现放在用户 Hook 之前，保证后续 Hook 可以读 internal.GetDiscovery()。
+		hooks = append(hooks, func(*Server) {
+			internal.UseConsulDiscovery()
+		})
+	}
+	hooks = append(hooks, s.beforeOptionals...)
+	return hooks
+}
+
+// buildPostServeHooks 组装 rpcx Serve goroutine 启动后要运行的 Hook 列表。
+// 默认 RPC Client watch 放在用户 postServe Hook 之后——A4 让它可以被 WithoutServiceClient 关闭。
+func (s *Server) buildPostServeHooks() []Optional {
+	hooks := make([]Optional, 0, len(s.afterOptionals)+1)
+	hooks = append(hooks, s.afterOptionals...)
+	if !s.disableClient {
+		hooks = append(hooks, func(sv *Server) {
+			c := newRPCClient().startup()
+			log.InfoTag("init", "装载RPCClient服务")
+			for _, messageType := range sv.whiteServiceList {
 				c.AddWhiteService(messageType)
 				log.InfoTag("init", "加入请求无需登录的白名单 serviceName=%v", messageType)
 			}
-		}
-	})
-	return s
+		})
+	}
+	return hooks
 }
 
 func (s *Server) WithGateway(port string) *Server {
@@ -188,6 +312,48 @@ func (s *Server) WithGatewayWS(port, path string) *Server {
 	return s
 }
 
+// WithGatewayKCP 装载 KCP 网关作为 GateService 的副 listener。
+//
+// A8 决策细节：
+//   - KCP 和 TCP 共享同一个 TCPServer 实例（users / handleConn / doLogic 三者共用）
+//   - 如果同时 WithGateway(tcpPort) + WithGatewayKCP(kcpPort)，节点会同时监听两种
+//     传输——客户端选其一走即可。A3 的 Redis 登录锁保证同一 uid 不能同时登录两次。
+//   - 如果只调 WithGatewayKCP 没调 WithGateway，GateService 的 tcpBuilder 会默认
+//     用 newTCPBuilder()（TCP 端口 defaultTcpServerPort 仍会监听，因为 TCPServer.Run
+//     必须起一个 listener）。推荐显式 WithGateway 搭配使用。
+//   - AEAD 密钥必须通过 kcpBuilder.WithAEADKey(key) 显式设置；不设就是明文模式
+//     （仅限开发/内网）。
+//
+// 典型用法：
+//
+//	key := [32]byte{...}
+//	kcp := rpc.NewKCPBuilder("8300").WithAEADKey(key[:])
+//	rpc.NewRPCServer().
+//	    WithGateway("8082").
+//	    WithGatewayKCP(kcp).
+//	    WithService(...).
+//	    Run()
+func (s *Server) WithGatewayKCP(kcpBuilder IKCPBuilder) *Server {
+	s.beforeOptionals = append(s.beforeOptionals, func(server *Server) {
+		// 找到已有的 GateService 附加 KCP——否则新建一个 GateService with 默认 TCP builder。
+		for i, svc := range s.service {
+			if gs, ok := svc.(*GateService); ok {
+				gs.kcpBuilder = kcpBuilder
+				s.service[i] = gs
+				log.InfoTag("init", "装载KCP网关到已有的GateService port=%v", kcpBuilder.Port())
+				return
+			}
+		}
+		// 没找到 GateService——新建一个 TCP + KCP 组合的 GateService
+		tcpBuilder := newTCPBuilder()
+		gateway := GatewayServiceWithKCP(tcpBuilder, kcpBuilder)
+		s.service = append(s.service, gateway)
+		log.InfoTag("init", "装载逻辑服务[%v@%v] 含KCP listener",
+			gateway.GetName(), gateway.GetVersion())
+	})
+	return s
+}
+
 func (s *Server) WithProfileDebug() *Server {
 	s.enableProfile = true
 	return s
@@ -205,9 +371,11 @@ func (s *Server) Run() <-chan bool {
 
 	//开启服务器模式
 	tgf.ServerModule = true
-	// TODO 如果有需要，可以对Optional进行优先级的控制，控制加载顺序
-	for _, beforeOptional := range s.beforeOptionals {
-		beforeOptional(s)
+	// A4: 两阶段 Hook 调度，顺序由 buildPreServeHooks / buildPostServeHooks 明确定义。
+	// 默认 Consul 装载 prepend 到最前，用户 Hook 按注册顺序追加；
+	// 这替代了原先 NewRPCServer 里硬编码 withConsulDiscovery + withServiceClient 的写法。
+	for _, hook := range s.buildPreServeHooks() {
+		hook(s)
 	}
 	/**启动逻辑链*/
 	//注册rpcx服务
@@ -272,10 +440,14 @@ func (s *Server) Run() <-chan bool {
 		}
 	})
 
-	//启动后执行的业务
-	for _, afterOptional := range s.afterOptionals {
-		afterOptional(s)
+	// A4: 走 buildPostServeHooks——用户 Hook 先跑，之后默认 RPC Client watch（除非被关闭）。
+	for _, hook := range s.buildPostServeHooks() {
+		hook(s)
 	}
+
+	// A6: 如果 WithHealthCheck 已配置，在 postServe Hook 全部跑完后启动心跳 goroutine。
+	// 放在最后是因为心跳的存在条件是"rpcx Serve 已启动 + 默认 client watch 已装载"。
+	s.startHealthCheckLoop()
 
 	//启用服务,使用tcp
 	log.InfoTag("init", "rpcx服务启动成功 addr=%v service=[%v] ", _logServiceMsg, ip)
@@ -283,6 +455,10 @@ func (s *Server) Run() <-chan bool {
 }
 
 func (s *Server) Destroy() {
+	// A6: 先停心跳 goroutine，再跑业务 service 的 Destroy。顺序原因：service Destroy
+	// 过程可能需要 "进程还活着" 的前提（例如通过 RPC 把 in-flight 请求 drain 完），
+	// 心跳仍能观察到；但业务 Destroy 完成后心跳就不应再跳。
+	s.stopHealthCheckLoop()
 	for _, service := range s.service {
 		service.Destroy(service)
 	}
@@ -295,10 +471,10 @@ func NewRPCServer() *Server {
 	rpcServer.maxWorkers = defaultMaxWorkers
 	rpcServer.maxCapacity = defaultMaxCapacity
 
-	//
-	rpcServer.withConsulDiscovery()
-	rpcServer.withServiceClient()
-	//
+	// A4: 不再在构造时硬编码 withConsulDiscovery / withServiceClient。
+	// 这两个默认 Hook 的装载挪到 Run → buildPreServeHooks / buildPostServeHooks，
+	// 允许用户在构造之后调 WithoutConsul() / WithoutServiceClient() 关闭默认行为。
+
 	tgf.AddDestroyHandler(rpcServer)
 	return rpcServer
 }
@@ -467,8 +643,8 @@ func SendRPCMessage[Req any, Res any](ct context.Context, api *ServiceAPI[Req, R
 	)
 
 	if xclient == nil {
-		err = errors.New(fmt.Sprintf("找不到对应模块的服务 moduleName=%v serviceName=%v", api.ModuleName, api.Name))
-		log.WarnTag("tcp", err.Error())
+		err = fmt.Errorf("找不到对应模块的服务 moduleName=%v serviceName=%v", api.ModuleName, api.Name)
+		log.WarnTag("tcp", "%s", err.Error())
 		return
 	}
 	call, err := xclient.Go(ct, api.Name, api.args, api.reply, done)
@@ -478,17 +654,17 @@ func SendRPCMessage[Req any, Res any](ct context.Context, api *ServiceAPI[Req, R
 		}
 	}()
 	if err != nil {
-		err = errors.New(fmt.Sprintf("rpc请求异常 moduleName=%v serviceName=%v error=%v", api.ModuleName, api.Name, err))
-		log.WarnTag("tcp", err.Error())
+		err = fmt.Errorf("rpc请求异常 moduleName=%v serviceName=%v error=%v", api.ModuleName, api.Name, err)
+		log.WarnTag("tcp", "%s", err.Error())
 		return
 	}
 	//这里需要处理超时，避免channel的内存泄漏
+	// A7: 原先硬编码 5 秒，现在走 resolveRPCTimeout 查 per-method 覆盖 → 全局默认。
+	// 业务可通过 Server.WithMethodTimeout("gate.Login", 10*time.Second) 配置。
 	select {
-	case <-time.After(time.Second * 5):
+	case <-time.After(resolveRPCTimeout(api.ModuleName, api.Name)):
 		call.Error = tgf.ErrorRPCTimeOut
-		break
 	case <-call.Done:
-		break
 	}
 	return api.reply, call.Error
 }

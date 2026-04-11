@@ -24,6 +24,13 @@ import (
 
 var LocalServerAddress = ""
 
+// ConsulDiscovery 是 rpcx-consul 的封装。
+//
+// A6 说明 discoveryMap 的语义：key 是 rpcx moduleName（集群里服务模块的有限集
+// 合，通常几十个），不是会无限增长的动态集合。因此这里不需要 LRU/TTL 过期。
+// RegisterDiscovery 对同一个 key 的重复调用会覆盖——这对幂等初始化是安全的，
+// 但对"同一个 key 被重复注册导致浪费 conn"是略浪费的，所以 A6 顺手加了一层
+// GetDiscovery 前置检查，已存在就复用。
 type ConsulDiscovery struct {
 	discoveryMap *hashmap.Map[string, *client.ConsulDiscovery]
 }
@@ -61,13 +68,18 @@ func (c *ConsulDiscovery) RegisterServer(ip string) server.Plugin {
 }
 
 func (c *ConsulDiscovery) RegisterDiscovery(moduleName string) *client.ConsulDiscovery {
-	var ()
+	// A6: 幂等化。同一 moduleName 重复调用直接返回已有实例，避免浪费 Consul 连接。
+	// 原实现每次都 new 一个 ConsulDiscovery 并覆盖 map，被覆盖的老实例会泄漏一条
+	// 长连接（直到 GC 把它回收，但在 watchBaseDiscovery 的 discovery.WatchService
+	// 还持有 channel 的情况下 GC 不会生效）。
+	if existing, ok := c.discoveryMap.Get(moduleName); ok && existing != nil {
+		return existing
+	}
+
 	var (
 		address  = tgf.GetStrListConfig(tgf.EnvironmentConsulAddress)
 		basePath = tgf.GetStrConfig[string](tgf.EnvironmentConsulPath)
 	)
-
-	//new discovery
 
 	conf := &store.Config{
 		ClientTLS:         nil,
@@ -80,11 +92,15 @@ func (c *ConsulDiscovery) RegisterDiscovery(moduleName string) *client.ConsulDis
 	}
 	d, _ := client.NewConsulDiscovery(basePath, moduleName, address, conf)
 
-	//if moduleName != "" {
-	c.discoveryMap.Set(moduleName, d)
+	// 并发 RegisterDiscovery 同一个 moduleName 的情况下，两个 goroutine 都会走到
+	// 这里——hashmap.Set 是原子的但后写者会覆盖先写者，可能产生一个无人引用的
+	// ConsulDiscovery 泄漏。Insert 在已存在时不覆盖，所以先用它。
+	if !c.discoveryMap.Insert(moduleName, d) {
+		if existing, ok := c.discoveryMap.Get(moduleName); ok && existing != nil {
+			return existing
+		}
+	}
 	log.InfoTag("init", "注册rpcx discovery moduleName=%v", moduleName)
-	//}
-
 	return d
 }
 

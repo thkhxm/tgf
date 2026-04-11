@@ -1,8 +1,9 @@
 module github.com/thkhxm/tgf
 
-go 1.23.4
+go 1.24.7
 
 replace (
+	github.com/go-echarts/go-echarts/v2 => github.com/go-echarts/go-echarts/v2 v2.3.3
 	github.com/rpcxio/rpcx-consul v0.1.1 => github.com/thkhxm/rpcx-consul v1.0.1
 	github.com/smallnest/rpcx v1.8.36 => github.com/thkhxm/rpcx v1.0.6
 )
@@ -45,8 +46,7 @@ require (
 	github.com/cenk/backoff v2.2.1+incompatible // indirect
 	github.com/cenkalti/backoff v2.2.1+incompatible // indirect
 	github.com/cespare/xxhash/v2 v2.2.0 // indirect
-	github.com/cloudwego/base64x v0.1.4 // indirect
-	github.com/cloudwego/iasm v0.2.0 // indirect
+	github.com/cloudwego/base64x v0.1.5 // indirect
 	github.com/dgryski/go-jump v0.0.0-20170409065014-e1f439676b57 // indirect
 	github.com/dgryski/go-rendezvous v0.0.0-20200823014737-9f7001d12a5f // indirect
 	github.com/facebookgo/clock v0.0.0-20150410010913-600d898af40a // indirect

@@ -1,8 +1,10 @@
 package util
 
 import (
-	"golang.org/x/exp/rand"
+	"sync/atomic"
 	"time"
+
+	"golang.org/x/exp/rand"
 )
 
 //***************************************************
@@ -10,7 +12,12 @@ import (
 //@Link  https://gitee.com/timgame/tgf
 //@QQ群 7400585
 //author tim.huang<thkhxm@gmail.com>
-//@Description 权重通用工具,非线程安全,需要注意
+//@Description 权重通用工具。
+//
+// A5: 单个 weight item 的 Hit 已经是 atomic（基于 sync/atomic.Int32 的 CAS 循环），
+// 不再有"并发导致数量负数"的风险。但外层 weightOperation（Roll/OnlyRoll/TotalRatio 等）
+// 对 totalRatio 的读写仍非原子，并发 Roll 会看到 totalRatio 的中间态，导致随机分布
+// 略有偏差。真正高并发场景下请给 weightOperation 外部加锁。C4 会考虑完整重构。
 //2023/11/29
 //***************************************************
 
@@ -54,9 +61,11 @@ type IWeightBuilder[T any] interface {
 }
 
 type weight[T any] struct {
-	ratio  int32
-	data   T
-	amount int32
+	ratio int32
+	data  T
+	// A5: amount 改为 atomic.Int32，Hit 走 CAS 循环保证并发正确性。
+	// 负值语义：< 0 表示无限库存（Hit 永远返回 true 但不减）。
+	amount atomic.Int32
 }
 
 type weightOperation[T any] struct {
@@ -80,11 +89,11 @@ func (w *weight[T]) Data() T {
 }
 
 func (w *weight[T]) Amount() int32 {
-	return w.amount
+	return w.amount.Load()
 }
 
 func (w *weight[T]) Ratio() int32 {
-	if w.amount == 0 {
+	if w.amount.Load() == 0 {
 		return 0
 	}
 	return w.ratio
@@ -94,21 +103,28 @@ func (w *weight[T]) BaseRatio() int32 {
 	return w.ratio
 }
 
+// Hit 原子递减 amount。
+//   - amount < 0：无限库存，返回 (w, false)，不减
+//   - amount == 0：已耗尽，返回 (nil, false)
+//   - amount > 0：CAS 循环递减 1；返回 (w, 递减后是否恰好耗尽)
+//
+// A5 修复：原实现用非原子 `w.amount--`，并发 Hit 会出现负值（作者已加一个
+// `if w.amount < 0 { w.amount = 0 }` 的 hack 但仍然丢 Hit 计数）。现在 CAS
+// 循环保证每次 Hit 恰好消耗 1 份库存，不丢不多。
 func (w *weight[T]) Hit() (IWeightItem[T], bool) {
-	//如果数量小于0,则表示该权重无限制
-	if w.amount < 0 {
-		return w, false
-	}
-
-	if w.amount > 0 {
-		w.amount--
-		//避免因为并发导致的负数
-		if w.amount < 0 {
-			w.amount = 0
+	for {
+		cur := w.amount.Load()
+		if cur < 0 {
+			return w, false
 		}
-		return w, w.amount == 0
+		if cur == 0 {
+			return nil, false
+		}
+		if w.amount.CompareAndSwap(cur, cur-1) {
+			return w, cur-1 == 0
+		}
+		// CAS 失败说明有并发修改，重新读取再试
 	}
-	return nil, false
 }
 
 func (w *weightOperation[T]) Roll() (res IWeightData[T]) {
@@ -196,7 +212,10 @@ func (w *weightBuilder[T]) AddWeight(weightRatio, amount int32, data T) IWeightB
 	if weightRatio <= 0 {
 		return w
 	}
-	w.weights = append(w.weights, &weight[T]{ratio: weightRatio, amount: amount, data: data})
+	// A5: atomic.Int32 不能直接在 struct literal 里初始化，改为构造后 Store。
+	item := &weight[T]{ratio: weightRatio, data: data}
+	item.amount.Store(amount)
+	w.weights = append(w.weights, item)
 	return w
 }
 

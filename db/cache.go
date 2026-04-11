@@ -340,6 +340,10 @@ type AutoCacheBuilder[Key cacheKey, Val any] struct {
 	//数据是否持久化
 	longevity         bool
 	longevityInterval time.Duration
+	// 单批落库的最大条数，0 表示使用 defaultUpdateGroupSize
+	longevityGroupSize int
+	// 单批落库失败时的最大重试次数（含首次），<=0 表示使用 defaultLongevityRetry
+	longevityRetry int
 	//
 	//是否自动清除过期数据
 	autoClear        bool
@@ -438,6 +442,26 @@ func (a *AutoCacheBuilder[Key, Val]) WithLongevityCache(updateInterval time.Dura
 		updateInterval = time.Second
 	}
 	a.longevityInterval = updateInterval
+	return a
+}
+
+// WithLongevityGroupSize
+//
+//	@Description: 指定单批落库的最大条数，用于在脏数据较多时把一次事务切小。size<=0 时回退到默认值。
+func (a *AutoCacheBuilder[Key, Val]) WithLongevityGroupSize(size int) *AutoCacheBuilder[Key, Val] {
+	if size > 0 {
+		a.longevityGroupSize = size
+	}
+	return a
+}
+
+// WithLongevityRetry
+//
+//	@Description: 指定单批落库失败时的最大重试次数（含首次），<=0 时回退到默认值。
+func (a *AutoCacheBuilder[Key, Val]) WithLongevityRetry(attempts int) *AutoCacheBuilder[Key, Val] {
+	if attempts > 0 {
+		a.longevityRetry = attempts
+	}
 	return a
 }
 

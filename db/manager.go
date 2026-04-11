@@ -47,6 +47,13 @@ type cacheData[Val any] struct {
 
 var defaultUpdateGroupSize = 500
 
+const (
+	// 单批落库失败时的默认重试次数（含首次）
+	defaultLongevityRetry = 3
+	// 单批落库失败后的首个退避间隔
+	defaultLongevityRetryBackoff = 50 * time.Millisecond
+)
+
 const StateName = "state"
 
 type autoCacheManager[Key cacheKey, Val any] struct {
@@ -64,6 +71,9 @@ type autoCacheManager[Key cacheKey, Val any] struct {
 	clearPlugins []IAutoCacheClearPlugin
 
 	sf *singleflight.Group
+
+	// 单批落库执行函数，默认指向 sqlBuilder.flushBatch；测试可替换。
+	flushBatch func(values []any, count int) error
 }
 
 type hashAutoCacheManager[Val IHashModel] struct {
@@ -538,26 +548,68 @@ func (a *autoCacheManager[Key, Val]) toLongevity() {
 	if !a.longevity() {
 		return
 	}
-	start := time.Now()
-	if a.longevityLock.TryLock() {
-		defer a.longevityLock.Unlock()
-		size := a.cacheMap.Len()
-		valueStr := make([]any, 0, size*len(a.sb.modelFieldName))
-		count := 0
-		a.cacheMap.Range(func(s string, c *cacheData[Val]) bool {
-			if c.checkState(data_update) {
-				valueStr = append(valueStr, a.sb.toValueSql(c.getData(0))...)
-				count++
-				c.removeState(data_update)
-			}
-			return true
-		})
-		//util.Go(func() {
-		a.sb.updateOrCreate(valueStr, count)
-		//})
-		mill := time.Since(start).Milliseconds()
-		log.DebugTag("orm", "execute table name [%s] longevity logic , longevity size=%d consume[%d]", a.sb.tableName, count, mill)
+	// 本轮抢不到锁，说明有另一轮正在执行。直接返回，脏标志保留在内存里，下一轮 timer 会再来。
+	if !a.longevityLock.TryLock() {
+		log.WarnTag("orm", "toLongevity skipped: another flush in progress, table=%s", a.sb.tableName)
+		return
 	}
+	defer a.longevityLock.Unlock()
+
+	start := time.Now()
+	groupSize := a.builder.longevityGroupSize
+	if groupSize <= 0 {
+		groupSize = defaultUpdateGroupSize
+	}
+
+	// Phase 1: 收集脏数据。每个 batch 同时记录 values（用于 SQL）与对应 cacheData 指针
+	// （用于事务成功后再清标志——失败时必须保留 data_update，交给下一轮补偿）。
+	type pendingBatch struct {
+		values []any
+		dirty  []*cacheData[Val]
+	}
+	var batches []pendingBatch
+	var current pendingBatch
+	a.cacheMap.Range(func(s string, c *cacheData[Val]) bool {
+		if !c.checkState(data_update) {
+			return true
+		}
+		current.values = append(current.values, a.sb.toValueSql(c.getData(0))...)
+		current.dirty = append(current.dirty, c)
+		if len(current.dirty) >= groupSize {
+			batches = append(batches, current)
+			current = pendingBatch{}
+		}
+		return true
+	})
+	if len(current.dirty) > 0 {
+		batches = append(batches, current)
+	}
+
+	if len(batches) == 0 {
+		return
+	}
+
+	// Phase 2: 逐批落库。成功才清 data_update；失败打 ERROR 日志并保留脏标志，
+	// 下一轮 timer 会重新捡起来重试。这样任何单批失败都不会导致丢数据。
+	successCount, failCount := 0, 0
+	for _, b := range batches {
+		if err := a.flushBatch(b.values, len(b.dirty)); err != nil {
+			log.ErrorTag("orm",
+				"longevity batch failed, keeping dirty flag for next round, table=%s size=%d err=%v",
+				a.sb.tableName, len(b.dirty), err)
+			failCount += len(b.dirty)
+			continue
+		}
+		for _, c := range b.dirty {
+			c.removeState(data_update)
+		}
+		successCount += len(b.dirty)
+	}
+
+	mill := time.Since(start).Milliseconds()
+	log.DebugTag("orm",
+		"execute table name [%s] longevity logic, success=%d fail=%d consume=%dms",
+		a.sb.tableName, successCount, failCount, mill)
 }
 
 func (a *autoCacheManager[Key, Val]) longevityInterval() time.Duration {
@@ -657,6 +709,7 @@ func (a *autoCacheManager[Key, Val]) InitStruct() {
 	a.longevityLock = &sync.Mutex{}
 	a.sb = &sqlBuilder[Val]{}
 	a.sf = &singleflight.Group{}
+	a.flushBatch = a.sb.flushBatch
 	var k Val
 	v := reflect.ValueOf(k)
 	if (v.Kind() == reflect.Ptr || v.Kind() == reflect.Interface) && v.IsNil() {
@@ -970,63 +1023,83 @@ func (s *sqlBuilder[Val]) queryList(args ...any) (values []Val, err error) {
 	return
 }
 
-func (s *sqlBuilder[Val]) updateOrCreate(values []any, count int) {
-	//按批次发送所有更新脚本
-	group := count/defaultUpdateGroupSize + 1
+// flushBatch 执行单批 upsert，成功返回 nil，失败（含内部重试耗尽）返回最后一次错误。
+// 调用方负责把大批数据切分为合适的 group 大小再传进来。
+func (s *sqlBuilder[Val]) flushBatch(values []any, count int) error {
+	if count <= 0 {
+		return nil
+	}
 	fieldCount := len(s.modelFieldName)
-	baseValueSize := len(values)
-	for i := 0; i < group; i++ {
-		s.update(i, fieldCount, baseValueSize, values)
+	if fieldCount == 0 {
+		return errors.New("sqlBuilder: modelFieldName is empty, initStruct not called?")
 	}
-}
+	if len(values) != count*fieldCount {
+		return fmt.Errorf(
+			"sqlBuilder: values size mismatch, got=%d expect=%d (count=%d fieldCount=%d)",
+			len(values), count*fieldCount, count, fieldCount)
+	}
 
-func (s *sqlBuilder[Val]) update(i, fieldCount, baseValueSize int, values []any) {
-	//初始化更新脚本
-	start := time.Now()
-	startIndex := i * defaultUpdateGroupSize * fieldCount
-	if startIndex >= baseValueSize {
-		return
-	}
-	endIndex := startIndex + defaultUpdateGroupSize*fieldCount
-	if endIndex > baseValueSize {
-		endIndex = baseValueSize
-	}
-	valueSize := (endIndex - startIndex) / fieldCount
-	insertValues := make([]string, valueSize)
-	for x := 0; x < valueSize; x++ {
+	insertValues := make([]string, count)
+	for x := 0; x < count; x++ {
 		insertValues[x] = s.updateValueBaseSql
 	}
-	insertValuesSql := strings.Join(insertValues, ",")
-	updateSql := s.updateStartSql + insertValuesSql + s.updateAsSql + s.updateEndSql
-	//执行脚本
+	updateSql := s.updateStartSql + strings.Join(insertValues, ",") + s.updateAsSql + s.updateEndSql
+
+	traceId := util.GenerateSnowflakeId()
+	if logScript, err := sonic.MarshalString(values); err == nil {
+		log.DB(traceId, s.tableName, logScript, int32(count))
+	}
+
+	maxAttempts := defaultLongevityRetry
+	var lastErr error
+	backoff := defaultLongevityRetryBackoff
+	for attempt := 1; attempt <= maxAttempts; attempt++ {
+		start := time.Now()
+		err := s.execBatchOnce(updateSql, values)
+		if err == nil {
+			log.InfoTag("orm",
+				"traceId=%s update=%v time=%d/ms valueSize=%v attempt=%d",
+				traceId, s.tableName, time.Since(start).Milliseconds(), count, attempt)
+			return nil
+		}
+		lastErr = err
+		log.WarnTag("orm",
+			"traceId=%s update table=%v attempt=%d/%d failed err=%v",
+			traceId, s.tableName, attempt, maxAttempts, err)
+		if attempt < maxAttempts {
+			time.Sleep(backoff)
+			backoff *= 2
+		}
+	}
+	return lastErr
+}
+
+// execBatchOnce 执行一次 upsert 事务，不做重试。
+func (s *sqlBuilder[Val]) execBatchOnce(updateSql string, values []any) (err error) {
 	conn := dbService.getConnection()
 	defer conn.Close()
+
 	tx, err := conn.BeginTx(context.Background(), &sql.TxOptions{
 		Isolation: sql.LevelReadUncommitted,
 		ReadOnly:  false,
 	})
-	logScript, err := sonic.MarshalString(values[startIndex:endIndex])
-	traceId := util.GenerateSnowflakeId()
-	if err == nil {
-		log.DB(traceId, s.tableName, logScript, int32(valueSize))
-	}
 	if err != nil {
-		return
+		return err
 	}
+	defer func() {
+		if err != nil {
+			_ = tx.Rollback()
+		}
+	}()
+
 	stmt, err := tx.PrepareContext(context.Background(), updateSql)
+	if err != nil {
+		return err
+	}
 	defer stmt.Close()
-	if err != nil {
-		log.WarnTag("orm", "traceId=%s,update script=%v params=%v error=%v", traceId, updateSql, values[startIndex:endIndex], err)
-		tx.Rollback()
-		return
+
+	if _, err = stmt.Exec(values...); err != nil {
+		return err
 	}
-	_, err = stmt.Exec(values[startIndex:endIndex]...)
-	if err != nil {
-		log.WarnTag("orm", "traceId=%s update run script=%v params=%v error=%v", traceId, updateSql, values[startIndex:endIndex], err)
-		tx.Rollback()
-		return
-	}
-	tx.Commit()
-	ex := time.Since(start)
-	log.InfoTag("orm", "traceId=%s update=%v time=%v/ms group=%d valueSize=%v", traceId, s.tableName, ex.Milliseconds(), i, valueSize)
+	return tx.Commit()
 }

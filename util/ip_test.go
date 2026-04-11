@@ -15,9 +15,9 @@ import (
 //***************************************************
 
 func TestGetLocalHost(t *testing.T) {
-	t.Logf(util.GetLocalHost())
+	t.Logf("%s", util.GetLocalHost())
 }
 
 func TestGetLocalHost2(t *testing.T) {
-	t.Logf(util.GetLocalHost2())
+	t.Logf("%s", util.GetLocalHost2())
 }

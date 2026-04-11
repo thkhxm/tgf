@@ -56,7 +56,7 @@ func (m *Module) GetLogicSyncMethod() []string {
 
 func (m *Module) StateHandler(ctx context.Context, args *client.ConsulServerState, reply *string) (err error) {
 	m.State = *args
-	log.InfoTag("system", "update module state %s to %s module=%v version=%v", m.State, args, m.Name, m.Version)
+	log.InfoTag("system", "update module state %v to %v module=%v version=%v", m.State, args, m.Name, m.Version)
 	return
 }
 
