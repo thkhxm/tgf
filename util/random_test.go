@@ -41,12 +41,18 @@ func TestRandNumberReturnsNumberWithinRange(t *testing.T) {
 	}
 }
 
+// TestRandNumberReturnsDifferentNumbers 验证 RandNumber 不是一个常量。
+// 原实现只取两次然后断言两次不同——1~100 范围 1% 概率撞相同值会误报。
+// 改为取 50 次后断言至少出现过 2 个不同的值，撞相同概率 ~1e-100 可以忽略。
 func TestRandNumberReturnsDifferentNumbers(t *testing.T) {
 	min := 1
 	max := 100
-	result1 := util.RandNumber[int](min, max)
-	result2 := util.RandNumber[int](min, max)
-	if result1 == result2 {
-		t.Errorf("Expected different numbers, got %d and %d", result1, result2)
+	seen := make(map[int]struct{}, 2)
+	for i := 0; i < 50; i++ {
+		seen[util.RandNumber[int](min, max)] = struct{}{}
+		if len(seen) >= 2 {
+			return
+		}
 	}
+	t.Errorf("50 次采样全部相同, seen=%v", seen)
 }

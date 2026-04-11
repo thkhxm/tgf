@@ -604,13 +604,28 @@ func (a *autoCacheManager[Key, Val]) toLongevity() {
 
 	// Phase 2: 逐批落库。成功才清 data_update；失败打 ERROR 日志并保留脏标志，
 	// 下一轮 timer 会重新捡起来重试。这样任何单批失败都不会导致丢数据。
+	//
+	// C4/A1b：如果业务注入了 FailureQueue，失败 batch 也会序列化一份进补偿队列，
+	// 业务启动阶段可以 ReplayFailureQueue 重放。脏标志依然保留（队列是补救通道，
+	// 不是替代通道），下一轮 timer 还会重试。重试成功时 queue 里的重复条目靠
+	// SQL 的 UPSERT 幂等性兜底。
 	successCount, failCount := 0, 0
+	failureQueue := a.resolveFailureQueue()
 	for _, b := range batches {
 		if err := a.flushBatch(b.values, len(b.dirty)); err != nil {
 			log.ErrorTag("orm",
 				"longevity batch failed, keeping dirty flag for next round, table=%s size=%d err=%v",
 				a.sb.tableName, len(b.dirty), err)
 			failCount += len(b.dirty)
+			// 补偿队列降级——即便 enqueue 失败也不影响下一轮 timer 重试。
+			if failureQueue != nil {
+				payload, perr := encodeFailurePayload(a.sb.tableName, b.values, len(b.dirty))
+				if perr != nil {
+					log.WarnTag("orm", "longevity failure encode error table=%s err=%v", a.sb.tableName, perr)
+				} else if eerr := failureQueue.Enqueue(payload); eerr != nil {
+					log.WarnTag("orm", "longevity failure enqueue error table=%s err=%v", a.sb.tableName, eerr)
+				}
+			}
 			continue
 		}
 		for _, c := range b.dirty {

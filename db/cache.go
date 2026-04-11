@@ -344,6 +344,9 @@ type AutoCacheBuilder[Key cacheKey, Val any] struct {
 	longevityGroupSize int
 	// 单批落库失败时的最大重试次数（含首次），<=0 表示使用 defaultLongevityRetry
 	longevityRetry int
+	// C4/A1b：落库失败补偿队列。零值（nil）自动 fallback 到 NoopFailureQueue，
+	// 保持 A1 行为不变。业务可通过 WithLongevityFailureQueue 注入 file / redis 等持久化实现。
+	longevityFailureQueue FailureQueue
 	//
 	//是否自动清除过期数据
 	autoClear        bool
@@ -462,6 +465,17 @@ func (a *AutoCacheBuilder[Key, Val]) WithLongevityRetry(attempts int) *AutoCache
 	if attempts > 0 {
 		a.longevityRetry = attempts
 	}
+	return a
+}
+
+// WithLongevityFailureQueue C4 / A1b
+//
+//	@Description: 注入一个落库失败补偿队列。toLongevity 里 flushBatch 在内部
+//	重试耗尽后会把当次 batch 序列化进 queue，业务在启动阶段用 db.ReplayFailureQueue
+//	读出来重放。
+//	传 nil 恢复默认的 NoopFailureQueue（和 A1 行为一致）。
+func (a *AutoCacheBuilder[Key, Val]) WithLongevityFailureQueue(q FailureQueue) *AutoCacheBuilder[Key, Val] {
+	a.longevityFailureQueue = q
 	return a
 }
 

@@ -465,10 +465,12 @@ func (s *Server) Run() <-chan bool {
 	//注册rpcx服务
 	op := make([]server.OptionFn, 0)
 	for _, ss := range s.service {
-		if ss.GetLogicSyncMethod() == nil {
+		// C2: GetLogicSyncMethod 重命名为 LogicSyncMethods
+		methods := ss.LogicSyncMethods()
+		if methods == nil {
 			continue
 		}
-		for _, lm := range ss.GetLogicSyncMethod() {
+		for _, lm := range methods {
 			op = append(op, server.WithLogicSync(lm))
 		}
 	}
@@ -730,6 +732,21 @@ func SendRPCMessage[Req any, Res any](ct context.Context, api *ServiceAPI[Req, R
 	startTime := time.Now()
 	defer func() {
 		observeRPCCall(api.ModuleName, api.Name, startTime, err)
+	}()
+
+	// C6 策略化：查 per-method 策略，触发限流/熔断/并发控制。
+	// 命中快速失败时直接返回对应的 error，不进入 rpcx Go。
+	var policyRelease func(error) = noopRelease
+	if mr := resolveMethodPolicy(api.ModuleName, api.Name); mr != nil {
+		var perr error
+		policyRelease, perr = mr.beforeCall()
+		if perr != nil {
+			err = perr
+			return
+		}
+	}
+	defer func() {
+		policyRelease(err)
 	}()
 
 	if xclient == nil {
