@@ -19,6 +19,7 @@ import (
 	util2 "github.com/smallnest/rpcx/util"
 	"github.com/thkhxm/tgf"
 	"github.com/thkhxm/tgf/log"
+	"github.com/thkhxm/tgf/metrics"
 	"github.com/thkhxm/tgf/rpc/internal"
 	"github.com/thkhxm/tgf/util"
 	"github.com/valyala/bytebufferpool"
@@ -47,6 +48,28 @@ type RequestHeader []byte
 type ResponseHeader []byte
 
 type HeaderMessageType byte
+
+// B4 埋点：网关活跃连接数。
+// 通过包级 var 延迟到首次使用时再问 Provider 要 Gauge——避免包 init 阶段
+// 固定到启动时的 Noop Provider，让 WithMetrics(...) 在 Run 之前切换 Provider
+// 的场景仍然有效。使用 sync.Once 保证跨 goroutine 幂等。
+var (
+	gateConnGaugeOnce sync.Once
+	gateConnGauge     metrics.Gauge
+)
+
+func getGateConnGauge() metrics.Gauge {
+	gateConnGaugeOnce.Do(func() {
+		gateConnGauge = metrics.NewGauge("tgf_gate_connections", "网关当前活跃连接数")
+	})
+	return gateConnGauge
+}
+
+// resetGateConnGaugeOnceForTest 只用于单测，允许切换 Provider 后重新绑定 gauge。
+func resetGateConnGaugeOnceForTest() {
+	gateConnGaugeOnce = sync.Once{}
+	gateConnGauge = nil
+}
 
 var upGrader = websocket.Upgrader{
 	ReadBufferSize:  1024,
@@ -451,6 +474,10 @@ func (t *TCPServer) handleConn(conn IConn) {
 	log.DebugTag("tcp", "接收到一条新的连接 addr=%v templateUserId=%v ws=%v",
 		conn.RemoteAddr(), templateUserId, conn.IsWebSocket())
 
+	// B4 埋点：活跃连接数 gauge +1；defer -1 保证任何退出路径都配对。
+	gauge := getGateConnGauge()
+	gauge.Inc()
+
 	// 统一的 reqChan 缓冲策略：原来 WS=10 / TCP=0 两套，phase2 统一为 16（平衡吞吐与背压）。
 	reqChan := make(chan *RequestData, 16)
 
@@ -465,6 +492,7 @@ func (t *TCPServer) handleConn(conn IConn) {
 			}
 		}
 		connectData.Offline(false)
+		gauge.Dec()
 	}()
 
 	// logic goroutine

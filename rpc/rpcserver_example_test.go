@@ -1,3 +1,6 @@
+//go:build integration
+// +build integration
+
 package rpc_test
 
 import "github.com/thkhxm/tgf/rpc"

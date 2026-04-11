@@ -1,0 +1,55 @@
+# golangci-lint 配置 —— v2 档首版。
+#
+# 策略：首次跑预期存量告警很多，本轮只开门槛级 linter（vet/staticcheck/errcheck/
+# ineffassign/unused），保证新代码无告警即可；风格类（revive/gocritic）与安全类
+# （gosec）留给 B 档后续阶段分批打开，避免一次铺太大改动。
+#
+# 已知存量豁免：
+#   - util/code_test.go 的生成器路径 bug（A8 已 Skip）
+#   - common/ 目录是上游生成产物，排除
+
+run:
+  timeout: 5m
+  tests: true
+  modules-download-mode: readonly
+
+issues:
+  max-issues-per-linter: 0
+  max-same-issues: 0
+  exclude-dirs:
+    - common
+    - util/generated
+    - exp
+  exclude-rules:
+    # 生成代码不做检查
+    - path: \.pb\.go$
+      linters:
+        - all
+    # 测试里允许无 error check 的便捷写法
+    - path: _test\.go
+      linters:
+        - errcheck
+        - unused
+
+linters:
+  disable-all: true
+  enable:
+    - govet
+    - staticcheck
+    - errcheck
+    - ineffassign
+    - unused
+    - gosimple
+    - typecheck
+    - misspell
+
+linters-settings:
+  govet:
+    enable:
+      - shadow
+      - nilness
+  errcheck:
+    check-type-assertions: false
+    check-blank: false
+  misspell:
+    locale: US

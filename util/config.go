@@ -559,7 +559,7 @@ func convertToStringSlice(input string) string {
 	// Convert the string array to json
 	jsonData, err := sonic.Marshal(splitInput)
 	if err != nil {
-		fmt.Sprintf("string array error %v", err)
+		fmt.Printf("string array error %v\n", err)
 	}
 	return string(jsonData)
 }

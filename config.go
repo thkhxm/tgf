@@ -50,8 +50,7 @@ func initMapping() {
 	//初始化配置数据
 	for _, m := range mapping {
 		m.initVal()
-		fmt.Sprintf("env=%v val=%v", m.env, m.val)
-		fmt.Println()
+		fmt.Printf("env=%v val=%v\n", m.env, m.val)
 	}
 }
 
@@ -87,8 +86,7 @@ func (c *config) initVal() *config {
 		res = os.Getenv(string(c.env))
 	)
 	if res != "" {
-		fmt.Sprintf("[init] 配置 env=%v 从 %v 修改为 %v", c.env, c.val, res)
-		fmt.Println()
+		fmt.Printf("[init] 配置 env=%v 从 %v 修改为 %v\n", c.env, c.val, res)
 		c.val = res
 	}
 	return c

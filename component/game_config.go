@@ -87,13 +87,20 @@ func RangeGameConf[Val any](f func(s string, i Val) bool) {
 }
 
 func getCacheGameConfData[Val any](key string) *hashmap.Map[string, interface{}] {
-	data, _ := cacheDataManager.Get(key)
-	if data == nil {
-		newLock.Lock()
-		defer newLock.Unlock()
-		data = LoadGameConf[Val]()
+	// Fast path：无锁读。
+	if data, _ := cacheDataManager.Get(key); data != nil {
+		return data
 	}
-	return data
+	// Slow path：取锁后 double-check，避免首次并发触发多次 LoadGameConf。
+	// B6 修复：原实现虽然有 newLock.Lock 但是锁内没有 re-check，第一个 goroutine
+	// 拿锁调完 LoadGameConf 后释放，第二个 goroutine 拿到锁还会再 Load 一遍。
+	// 加上 re-check 之后并发首次访问只触发一次加载。
+	newLock.Lock()
+	defer newLock.Unlock()
+	if data, _ := cacheDataManager.Get(key); data != nil {
+		return data
+	}
+	return LoadGameConf[Val]()
 }
 
 // LoadGameConf [Val any]

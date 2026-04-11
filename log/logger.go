@@ -37,34 +37,154 @@ const (
 	SERVICETAG = "service"
 )
 
+// B5 说明 — 日志热路径的两条优化原则：
+//
+//  1. 所有 `*Tag` / `*` 家族在执行 `fmt.Sprintf` 之前，先用 `logger.Check(level, "")`
+//     过一遍 zap 的 level/sampling 过滤器。当 LogLevel 被设置为 WARN 时，所有
+//     `DebugTag` / `InfoTag` 调用的 Sprintf 会被跳过——这是最大的热路径收益点。
+//     之前版本只做了 tag 过滤，tag 未过滤时仍然会 Sprintf 再让 zap 丢弃。
+//
+//  2. 新代码建议直接用 `*W` 后缀的 zap.Field 版本（`InfoTagW` / `DebugTagW` 等）。
+//     这些函数完全不触碰 `fmt.Sprintf`，调用方手写 `zap.String("k", v)` 避免
+//     interface{} 装箱。老的 `InfoTag(...)` 式 API 会保留到 v2 发布后一版，
+//     在 CHANGELOG 标注 deprecated。
+
+// checkTag 是 tag 过滤 + level 过滤的统一入口。返回值：
+//   - nil 表示消息应被完全丢弃（tag 过滤 / level 过滤命中任一）
+//   - 非 nil 的 CheckedEntry 表示应当执行 Sprintf 并调 Write
+//
+// 这个函数是 B5 的热路径，必须零分配：所有分支都走 pointer 比较和 map 读取，
+// 不做 interface 装箱、不分配闭包。
+func checkTag(level zapcore.Level, tag string) *zapcore.CheckedEntry {
+	// tag 过滤放在 level 过滤前——map 读取比 zap 的 level 比较稍贵一点，但
+	// 实际上 ignoredTags 命中率很低，而 level 过滤命中率可能很高；调换顺序
+	// 在 "log level WARN、DebugTag 调用" 的最常见场景下可以少一次 map lookup。
+	// 不过为了保持语义清晰（先判断 tag，再让 zap 判断 level），这里还是
+	// tag → level 的顺序。如果未来 profiling 显示这是瓶颈，再调换。
+	if ignoredTags != nil && ignoredTags[tag] {
+		return nil
+	}
+	return logger.Check(level, "")
+}
+
+// ---- Sprintf 风格的老 API（带 level + tag 双重前置检查） ----
+
 func Info(msg string, params ...interface{}) {
-	logger.Info(fmt.Sprintf(msg, params...))
+	if ce := logger.Check(zapcore.InfoLevel, ""); ce != nil {
+		ce.Message = fmt.Sprintf(msg, params...)
+		ce.Write()
+	}
 }
 
 func InfoTag(tag string, msg string, params ...interface{}) {
-	if CheckLogTag(tag) {
-		logger.Info(fmt.Sprintf(msg, params...), zap.String("tag", tag))
+	if ce := checkTag(zapcore.InfoLevel, tag); ce != nil {
+		ce.Message = fmt.Sprintf(msg, params...)
+		ce.Write(zap.String("tag", tag))
 	}
 }
+
+func Debug(msg string, params ...interface{}) {
+	if ce := logger.Check(zapcore.DebugLevel, ""); ce != nil {
+		ce.Message = fmt.Sprintf(msg, params...)
+		ce.Write()
+	}
+}
+
+func DebugTag(tag string, msg string, params ...interface{}) {
+	if ce := checkTag(zapcore.DebugLevel, tag); ce != nil {
+		ce.Message = fmt.Sprintf(msg, params...)
+		ce.Write(zap.String("tag", tag))
+	}
+}
+
+func Warn(msg string, params ...interface{}) {
+	if ce := logger.Check(zapcore.WarnLevel, ""); ce != nil {
+		ce.Message = fmt.Sprintf(msg, params...)
+		ce.Write()
+	}
+}
+
+func WarnTag(tag string, msg string, params ...interface{}) {
+	if ce := checkTag(zapcore.WarnLevel, tag); ce != nil {
+		ce.Message = fmt.Sprintf(msg, params...)
+		ce.Write(zap.String("tag", tag))
+	}
+}
+
+func Error(msg string, params ...interface{}) {
+	if ce := logger.Check(zapcore.ErrorLevel, ""); ce != nil {
+		ce.Message = fmt.Sprintf(msg, params...)
+		ce.Write()
+	}
+}
+
+func ErrorTag(tag string, msg string, params ...interface{}) {
+	if ce := checkTag(zapcore.ErrorLevel, tag); ce != nil {
+		ce.Message = fmt.Sprintf(msg, params...)
+		ce.Write(zap.String("tag", tag))
+	}
+}
+
+// ---- zap.Field 风格的新 API（零分配热路径） ----
+
+// InfoW / DebugW / WarnW / ErrorW 是对 `zap.Logger.Info(msg, fields...)` 的直通，
+// 避免 Sprintf 分配。msg 固定字符串，字段用 zap.String / zap.Int 等手写传入。
+//
+// 示例：
+//
+//	log.DebugW("接收到连接", zap.String("addr", addr), zap.Int("fd", fd))
+func InfoW(msg string, fields ...zap.Field)  { logger.Info(msg, fields...) }
+func DebugW(msg string, fields ...zap.Field) { logger.Debug(msg, fields...) }
+func WarnW(msg string, fields ...zap.Field)  { logger.Warn(msg, fields...) }
+func ErrorW(msg string, fields ...zap.Field) { logger.Error(msg, fields...) }
+
+// InfoTagW 等系列带 tag 过滤。tag 命中 ignoredTags 时完全短路。
+func InfoTagW(tag, msg string, fields ...zap.Field) {
+	if ignoredTags != nil && ignoredTags[tag] {
+		return
+	}
+	logger.Info(msg, append(fields, zap.String("tag", tag))...)
+}
+
+func DebugTagW(tag, msg string, fields ...zap.Field) {
+	if ignoredTags != nil && ignoredTags[tag] {
+		return
+	}
+	logger.Debug(msg, append(fields, zap.String("tag", tag))...)
+}
+
+func WarnTagW(tag, msg string, fields ...zap.Field) {
+	if ignoredTags != nil && ignoredTags[tag] {
+		return
+	}
+	logger.Warn(msg, append(fields, zap.String("tag", tag))...)
+}
+
+func ErrorTagW(tag, msg string, fields ...zap.Field) {
+	if ignoredTags != nil && ignoredTags[tag] {
+		return
+	}
+	logger.Error(msg, append(fields, zap.String("tag", tag))...)
+}
+
+// ---- 其它现有 API（保持不变，都是结构化字段调用，没 Sprintf 问题） ----
 
 func SLogger() *zap.SugaredLogger {
 	return slogger
 }
 
 func Game(userId, tag, msg string, params ...interface{}) {
-	//if CheckLogTag(GAMETAG) {
-	logger.Info(fmt.Sprintf(msg, params...), zap.String("tag", tag), zap.String("userId", userId))
-	//}
+	if ce := checkTag(zapcore.InfoLevel, tag); ce != nil {
+		ce.Message = fmt.Sprintf(msg, params...)
+		ce.Write(zap.String("tag", tag), zap.String("userId", userId))
+	}
 }
 
 func DB(traceId, dbName, script string, count int32) {
-	//if CheckLogTag(DBTAG) {
 	logger.Debug(script, zap.String("tag", DBTAG), zap.String("nodeId", tgf.NodeId), zap.String("db", dbName), zap.Int32("count", count), zap.String("traceId", traceId))
-	//}
 }
 
 func Service(module, name, version, userId string, consume int64, code int32) {
-	//if CheckLogTag(SERVICETAG) {
 	logger.Debug("", zap.String("tag", SERVICETAG),
 		zap.String("userId", userId),
 		zap.String("module", module),
@@ -73,39 +193,9 @@ func Service(module, name, version, userId string, consume int64, code int32) {
 		zap.Int64("consume", consume),
 		zap.Int32("code", code),
 	)
-	//}
 }
 
-func Debug(msg string, params ...interface{}) {
-	logger.Debug(fmt.Sprintf(msg, params...))
-}
-
-func DebugTag(tag string, msg string, params ...interface{}) {
-	if CheckLogTag(tag) {
-		logger.Debug(fmt.Sprintf(msg, params...), zap.String("tag", tag))
-	}
-}
-
-func Error(msg string, params ...interface{}) {
-	logger.Error(fmt.Sprintf(msg, params...))
-}
-
-func ErrorTag(tag string, msg string, params ...interface{}) {
-	if CheckLogTag(tag) {
-		logger.Error(fmt.Sprintf(msg, params...), zap.String("tag", tag))
-	}
-}
-
-func Warn(msg string, params ...interface{}) {
-	logger.Warn(fmt.Sprintf(msg, params...))
-}
-
-func WarnTag(tag string, msg string, params ...interface{}) {
-	if CheckLogTag(tag) {
-		logger.Warn(fmt.Sprintf(msg, params...), zap.String("tag", tag))
-	}
-}
-
+// CheckLogTag 保留给老代码/外部调用兼容。新代码应当直接用 `*TagW` 系列。
 func CheckLogTag(tag string) bool {
 	return !ignoredTags[tag]
 }
@@ -157,26 +247,6 @@ func initLogger() {
 		}
 	}
 
-	//syncWriter = zapcore.NewMultiWriteSyncer(zapcore.AddSync(os.Stdout))
-
-	//syncWriter := zapcore.NewMultiWriteSyncer(zapcore.AddSync(os.Stdout), zapcore.AddSync(&lumberjack.Logger{
-	//	Filename:  logPath,        // ⽇志⽂件路径
-	//	MaxSize:   defaultMaxSize, // 单位为MB,默认为512MB
-	//	MaxAge:    defaultMaxAge,  // 文件最多保存多少天
-	//	LocalTime: true,           // 采用本地时间
-	//	Compress:  false,          // 是否压缩日志
-	//}))
-
-	//syncWriter = &zapcore.BufferedWriteSyncer{
-	//	WS: zapcore.AddSync(&lumberjack.Logger{
-	//		Filename:  "logs/app/app.log", // ⽇志⽂件路径
-	//		MaxSize:   100,                                                                                                        // 单位为MB,默认为512MB
-	//		MaxAge:    5,                                                                                                          // 文件最多保存多少天
-	//		LocalTime: true,                                                                                                       // 采用本地时间
-	//		Compress:  false,                                                                                                      // 是否压缩日志
-	//	}),
-	//	Size: 4096,
-	//}
 	//在原有日志基础上增加一层
 	level, _ := zapcore.ParseLevel(logLevel)
 	//
@@ -185,7 +255,6 @@ func initLogger() {
 	basePath := filepath.Dir(logPath)
 	zapCoreService := newCore(fmt.Sprintf("%s%sservice%sservice.log", basePath, string(filepath.Separator), string(filepath.Separator)), level, zapLoggerEncoderConfig, false)
 	zapCoreDB := newCore(fmt.Sprintf("%s%sdb%sdb.log", basePath, string(filepath.Separator), string(filepath.Separator)), level, zapLoggerEncoderConfig, false)
-	//zapCore := zapcore.NewCore(zapcore.NewConsoleEncoder(zapLoggerEncoderConfig), syncWriter, level)
 	// 创建一个映射，将标签映射到对应的Core
 	taggedCores := map[string]zapcore.Core{
 		DBTAG:      &TaggedCore{Core: zapCoreDB, Tag: DBTAG, Pass: true},

@@ -20,7 +20,9 @@ import (
 	"github.com/thkhxm/tgf/component"
 	"github.com/thkhxm/tgf/db"
 	"github.com/thkhxm/tgf/log"
+	"github.com/thkhxm/tgf/metrics"
 	"github.com/thkhxm/tgf/rpc/internal"
+	"github.com/thkhxm/tgf/trace"
 	"github.com/thkhxm/tgf/util"
 	"google.golang.org/protobuf/proto"
 )
@@ -359,6 +361,23 @@ func (s *Server) WithProfileDebug() *Server {
 	return s
 }
 
+// WithMetrics 注入一个 metrics Provider。传 nil 恢复默认 NoOp。
+// B4 说明：Provider 是全局单例，这个方法只是 builder 风格的便捷入口，
+// 底层等价于 `metrics.SetProvider(p)`。应当在 Run 前一次性完成。
+func (s *Server) WithMetrics(p metrics.Provider) *Server {
+	metrics.SetProvider(p)
+	log.InfoTag("init", "装载 metrics provider=%v", metrics.GetProvider().Name())
+	return s
+}
+
+// WithTracer 注入一个 trace Tracer。传 nil 恢复默认 NoOp。
+// B4 说明：同 WithMetrics，底层等价于 `trace.SetTracer(t)`。
+func (s *Server) WithTracer(t trace.Tracer) *Server {
+	trace.SetTracer(t)
+	log.InfoTag("init", "装载 tracer=%v", trace.GetTracer().Name())
+	return s
+}
+
 func (s *Server) Run() <-chan bool {
 	var (
 		serviceName    string
@@ -641,6 +660,12 @@ func SendRPCMessage[Req any, Res any](ct context.Context, api *ServiceAPI[Req, R
 		rc      = getRPCClient()
 		xclient = rc.getClient(api.ModuleName)
 	)
+
+	// B4 埋点：进入前记录起始时间戳；任何返回路径 defer 里观测延迟 + 累加计数/错误。
+	startTime := time.Now()
+	defer func() {
+		observeRPCCall(api.ModuleName, api.Name, startTime, err)
+	}()
 
 	if xclient == nil {
 		err = fmt.Errorf("找不到对应模块的服务 moduleName=%v serviceName=%v", api.ModuleName, api.Name)

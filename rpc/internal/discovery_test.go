@@ -4,7 +4,6 @@ package internal
 
 import (
 	"sync"
-	"sync/atomic"
 	"testing"
 )
 
@@ -99,9 +98,6 @@ func TestConsulDiscovery_ConcurrentRegisterNoLeak(t *testing.T) {
 	const N = 100
 	var wg sync.WaitGroup
 	wg.Add(N)
-	var firstPtr atomic.Pointer[struct{}]
-	_ = firstPtr
-
 	results := make([]uintptr, N)
 	for i := 0; i < N; i++ {
 		i := i

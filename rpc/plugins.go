@@ -42,17 +42,28 @@ type ConsulServerInfo struct {
 }
 
 func newConsulServerInfo(data string) *ConsulServerInfo {
-	if q, a := url.ParseQuery(data); a == nil {
-		v, _ := util.StrToAny[int32](strings.Split(q.Get("version"), ".")[0])
-		subv, _ := util.StrToAny[int32](strings.Split(q.Get("version"), ".")[1])
-		return &ConsulServerInfo{
-			State:      q.Get("state"),
-			Version:    v,
-			SubVersion: subv,
-			NodeId:     q.Get("nodeId"),
-		}
+	// version 字段期望格式 "major.sub"，但 Consul 注册串可能被外部篡改或
+	// 测试里喂进残缺数据（历史 plugins_test.go 就这么跑），直接 Split 再取
+	// [1] 会 panic。这里做显式边界检查：缺 sub 时回落为 0，缺 major 时直接
+	// 返回空 info 让调用方丢弃条目。
+	q, err := url.ParseQuery(data)
+	if err != nil {
+		return nil
 	}
-	return nil
+	parts := strings.Split(q.Get("version"), ".")
+	var v, subv int32
+	if len(parts) >= 1 && parts[0] != "" {
+		v, _ = util.StrToAny[int32](parts[0])
+	}
+	if len(parts) >= 2 && parts[1] != "" {
+		subv, _ = util.StrToAny[int32](parts[1])
+	}
+	return &ConsulServerInfo{
+		State:      q.Get("state"),
+		Version:    v,
+		SubVersion: subv,
+		NodeId:     q.Get("nodeId"),
+	}
 }
 
 type CustomSelector struct {

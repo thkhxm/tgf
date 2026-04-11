@@ -15,6 +15,7 @@ import (
 	"runtime"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 )
 
@@ -39,10 +40,20 @@ const (
 	data_update  = 1 << 2
 )
 
+// cacheData 是写回缓存的最小数据单元。
+//
+// B6 修复：`state` 从裸 uint8 升级为 atomic.Uint32。
+// 原因：autoCacheManager 的读路径（Get / Range / GetAll）与写路径（Set / toLongevity /
+// del）可能并发访问同一个 cacheData，而 state 同时被 checkState / removeState / update
+// 读写。A1 重写 toLongevity 时只解决了"落库一致性"，没解决 state 字段本身的 data race。
+// B6 在 component 并发测试中被 race detector 抓出。
+//
+// 升级到 atomic.Uint32 而不是 uint8 是因为 Go stdlib 没有 atomic.Uint8——额外 3 字节
+// 对每个 cache 条目可忽略。
 type cacheData[Val any] struct {
 	data      Val
 	clearTime int64
-	state     uint8
+	state     atomic.Uint32
 }
 
 var defaultUpdateGroupSize = 500
@@ -299,22 +310,24 @@ func (c *cacheData[Val]) checkTimeOut(now int64) bool {
 	return c.clearTime != 0 && now > c.clearTime
 }
 
+// state 标志位的原子操作：用 Or / And 避免读-改-写的窗口。
+// 注意 Go 1.19 才加入 `atomic.Uint32.Or/And`，当前工具链是 1.24.7 所以可用。
 func (c *cacheData[Val]) del(second int64) {
 	c.clearTime = time.Now().Unix() + second
-	c.state = c.state | data_del
-	c.update()
+	c.state.Or(data_del)
+	c.state.Or(data_update) // 等价于原先 del 里 c.update() 的语义
 }
 
 func (c *cacheData[Val]) update() {
-	c.state = c.state | data_update
+	c.state.Or(data_update)
 }
 
-func (c *cacheData[Val]) checkState(state uint8) bool {
-	return c.state&state == state
+func (c *cacheData[Val]) checkState(state uint32) bool {
+	return c.state.Load()&state == state
 }
 
-func (c *cacheData[Val]) removeState(state uint8) {
-	c.state = c.state &^ state
+func (c *cacheData[Val]) removeState(state uint32) {
+	c.state.And(^state)
 }
 
 func (c *cacheData[Val]) getData(second int64) Val {
