@@ -120,6 +120,20 @@ func (s *Server) WithoutServiceClient() *Server {
 	return s
 }
 
+// WithStandalone 是 `WithoutConsul().WithoutServiceClient()` 的语义糖。
+// C1 新增：用于单机 / 本地开发 / 单元测试场景——不依赖 Consul 也不启动 RPC
+// client watch。典型用法：
+//
+//	rpc.NewRPCServer().
+//	    WithStandalone().
+//	    WithService(myService).
+//	    Run()
+//
+// 内部只是同时置上两个 disable 标志位，不做额外配置。
+func (s *Server) WithStandalone() *Server {
+	return s.WithoutConsul().WithoutServiceClient()
+}
+
 // WithHealthCheck 开启进程级健康心跳。interval 指定每次心跳的间隔；传 0 或负数
 // 视为禁用（默认行为就是禁用）。
 //
@@ -274,44 +288,95 @@ func (s *Server) buildPostServeHooks() []Optional {
 	return hooks
 }
 
+// GatewayOptions 是 C1 引入的统一网关配置入口。
+// 它把 v1 的 `WithGateway` / `WithGatewayWS` / `WithGatewayWSS` / `WithGatewayKCP`
+// 四个方法合并到单一 builder 点，减少 builder 表面积并消除"能不能同时开 TCP+WS+KCP"
+// 的语义歧义（答案是可以，这个 struct 给出清晰的表达方式）。
+//
+// 零值语义：
+//   - `TCPPort == ""` → tcpBuilder 走默认端口（newTCPBuilder() 里定义）
+//   - `WSPath == ""`  → 不启动 WebSocket listener
+//   - WSTLSKey / WSTLSCert 同时非空 → 启用 WSS（带 TLS 的 WS）
+//   - `KCP == nil`    → 不启动 KCP listener
+//
+// 典型用法：
+//
+//	rpc.NewRPCServer().
+//	    WithGatewayOptions(rpc.GatewayOptions{
+//	        TCPPort:   "8082",
+//	        WSPath:    "/ws",
+//	        KCP:       rpc.NewKCPBuilder("8300").WithAEADKey(key),
+//	    }).
+//	    Run()
+type GatewayOptions struct {
+	// TCPPort 是 TCP listener 端口。v1 语义一致。
+	TCPPort string
+	// WSPath 是 WebSocket 路径。为空时不启动 WS。
+	WSPath string
+	// WSTLSCert / WSTLSKey 同时非空时启用 WSS（WS over TLS）。
+	// 注意 v1 的 WithGatewayWSS 参数顺序是 (port, path, key, cert)，字段名方向是
+	// cert 在前 key 在后——这里的命名沿用 builder.WithWss(key, cert) 的方向。
+	WSTLSKey  string
+	WSTLSCert string
+	// KCP 非 nil 时挂 KCP listener 到 GateService，和 TCP/WS 共享生命周期。
+	KCP IKCPBuilder
+}
+
+// WithGatewayOptions 是 C1 统一的网关装载入口。
+// 如果同时调了老的 `WithGateway*` 家族和本方法，会生成多个 GateService，
+// 它们竞争 users 表——**不要混用**。新代码统一走 WithGatewayOptions。
+func (s *Server) WithGatewayOptions(opt GatewayOptions) *Server {
+	s.beforeOptionals = append(s.beforeOptionals, func(server *Server) {
+		builder := newTCPBuilder()
+		if opt.TCPPort != "" {
+			builder.WithPort(opt.TCPPort)
+		}
+		if opt.WSPath != "" {
+			builder.WithWSPath(opt.WSPath)
+		}
+		if opt.WSTLSKey != "" && opt.WSTLSCert != "" {
+			builder.WithWss(opt.WSTLSKey, opt.WSTLSCert)
+		}
+
+		var gateway IService
+		if opt.KCP != nil {
+			gateway = GatewayServiceWithKCP(builder, opt.KCP)
+		} else {
+			gateway = GatewayService(builder)
+		}
+		s.service = append(s.service, gateway)
+		log.InfoTag("init", "装载逻辑服务[%v@%v] tcp=%v ws=%v kcp=%v",
+			gateway.GetName(), gateway.GetVersion(),
+			opt.TCPPort != "", opt.WSPath != "", opt.KCP != nil)
+	})
+	return s
+}
+
+// WithGateway 老式单 TCP 网关入口。
+//
+// Deprecated: 使用 `WithGatewayOptions(GatewayOptions{TCPPort: port})`
+// 或 `WithStandalone()` + `WithGatewayOptions(...)`。v2 后续小版本会删。
 func (s *Server) WithGateway(port string) *Server {
-	var ()
-	s.beforeOptionals = append(s.beforeOptionals, func(server *Server) {
-		builder := newTCPBuilder()
-		builder.WithPort(port)
-		gateway := GatewayService(builder)
-		s.service = append(s.service, gateway)
-		log.InfoTag("init", "装载逻辑服务[%v@%v]", gateway.GetName(), gateway.GetVersion())
-	})
-	return s
+	return s.WithGatewayOptions(GatewayOptions{TCPPort: port})
 }
 
+// WithGatewayWSS 老式 WSS 网关入口。
+//
+// Deprecated: 使用 WithGatewayOptions。
 func (s *Server) WithGatewayWSS(port, path, key, cert string) *Server {
-	var ()
-	s.beforeOptionals = append(s.beforeOptionals, func(server *Server) {
-		builder := newTCPBuilder()
-		builder.WithPort(port)
-		builder.WithWSPath(path)
-		builder.WithWss(key, cert)
-		gateway := GatewayService(builder)
-		s.service = append(s.service, gateway)
-		log.InfoTag("init", "装载逻辑服务[%v@%v]", gateway.GetName(), gateway.GetVersion())
+	return s.WithGatewayOptions(GatewayOptions{
+		TCPPort:   port,
+		WSPath:    path,
+		WSTLSKey:  key,
+		WSTLSCert: cert,
 	})
-	return s
 }
 
+// WithGatewayWS 老式 WS 网关入口。
+//
+// Deprecated: 使用 WithGatewayOptions。
 func (s *Server) WithGatewayWS(port, path string) *Server {
-	var ()
-	s.beforeOptionals = append(s.beforeOptionals, func(server *Server) {
-		builder := newTCPBuilder()
-		builder.WithPort(port)
-		builder.WithWSPath(path)
-
-		gateway := GatewayService(builder)
-		s.service = append(s.service, gateway)
-		log.InfoTag("init", "装载逻辑服务[%v@%v]", gateway.GetName(), gateway.GetVersion())
-	})
-	return s
+	return s.WithGatewayOptions(GatewayOptions{TCPPort: port, WSPath: path})
 }
 
 // WithGatewayKCP 装载 KCP 网关作为 GateService 的副 listener。

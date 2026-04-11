@@ -53,6 +53,7 @@ require (
 	github.com/dgryski/go-rendezvous v0.0.0-20200823014737-9f7001d12a5f // indirect
 	github.com/facebookgo/clock v0.0.0-20150410010913-600d898af40a // indirect
 	github.com/fatih/color v1.18.0 // indirect
+	github.com/fsnotify/fsnotify v1.9.0 // indirect
 	github.com/go-echarts/go-echarts/v2 v2.4.6 // indirect
 	github.com/go-ole/go-ole v1.2.4 // indirect
 	github.com/go-ping/ping v1.2.0 // indirect
