@@ -108,33 +108,15 @@ func (d *dispatcherT) Call(ctx context.Context, moduleName, methodName string, a
 	// 升级 ctx 为 share.Context（保留 trace id / user id 等 meta）
 	ctx = ensureShareContext(ctx)
 
-	// reply 可能为 nil——对应 SendNoReplyRPCMessage 的场景
-	var replyVal reflect.Value
-	if reply != nil {
-		replyVal = reflect.ValueOf(reply)
-	} else {
-		// 构造一个 reply 类型的零值指针，匹配方法签名的第三个参数
-		replyType := mt.In(2)
-		replyVal = reflect.New(replyType).Elem()
-		// 如果方法签名要求指针，reflect.New 给出的是 *T，Elem 会拿到 T；
-		// 此路径是最保守的——宁可浪费一点分配也不崩溃
-		if replyType.Kind() == reflect.Ptr {
-			replyVal = reflect.New(replyType.Elem())
-		}
-	}
+	// reply 处理：
+	//   - nil → 用方法签名第三个参数类型构造一个零值（SendNoReplyRPCMessage 场景）
+	//   - typed nil pointer（如 (*GiveGiftRes)(nil)）→ 分配一个真正的结构体
+	//     这是 ServiceAPI.NewRPC 的常见行为——对指针类型它会生成 typed nil
+	//   - 非 nil 的正常指针 → 直接用
+	replyVal := ensureAllocated(reply, mt.In(2))
 
-	// 如果 args 为 nil，用方法签名的第二个参数类型构造一个零值
-	var argsVal reflect.Value
-	if args != nil {
-		argsVal = reflect.ValueOf(args)
-	} else {
-		argsType := mt.In(1)
-		if argsType.Kind() == reflect.Ptr {
-			argsVal = reflect.New(argsType.Elem())
-		} else {
-			argsVal = reflect.Zero(argsType)
-		}
-	}
+	// args 处理：同理
+	argsVal := ensureAllocated(args, mt.In(1))
 
 	out := m.Call([]reflect.Value{
 		reflect.ValueOf(ctx),
@@ -206,6 +188,40 @@ func (s *Server) registerLocalServices() {
 		localDispatcher.Register(svc.GetName(), svc)
 	}
 	localDispatchEnabled.Store(true)
+}
+
+// allocateIfNilPtr 在 v 是 typed nil pointer（如 (*T)(nil)）时分配一个
+// 真正的 *T。用于 SendRPCMessage 的 local dispatch 路径——ServiceAPI.NewRPC
+// 对指针类型生成的 reply 是 typed nil，需要在调 method 之前分配好。
+func allocateIfNilPtr(v any) any {
+	if v == nil {
+		return v
+	}
+	rv := reflect.ValueOf(v)
+	if rv.Kind() == reflect.Ptr && rv.IsNil() {
+		return reflect.New(rv.Type().Elem()).Interface()
+	}
+	return v
+}
+
+// ensureAllocated 把一个 args/reply 值转成 reflect.Value。
+// 处理三种情况：
+//   - nil（interface nil）→ 用 paramType 构造零值（指针类型则 reflect.New）
+//   - typed nil pointer（如 (*T)(nil)）→ 分配一个 *T 指向的真实结构体
+//   - 正常非 nil 值 → 直接 reflect.ValueOf
+func ensureAllocated(v any, paramType reflect.Type) reflect.Value {
+	if v == nil {
+		if paramType.Kind() == reflect.Ptr {
+			return reflect.New(paramType.Elem())
+		}
+		return reflect.Zero(paramType)
+	}
+	rv := reflect.ValueOf(v)
+	// typed nil pointer：rv.Kind()==Ptr && rv.IsNil()
+	if rv.Kind() == reflect.Ptr && rv.IsNil() {
+		return reflect.New(rv.Type().Elem())
+	}
+	return rv
 }
 
 // ---- 测试辅助 ----

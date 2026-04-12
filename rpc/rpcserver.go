@@ -771,11 +771,22 @@ func SendRPCMessage[Req any, Res any](ct context.Context, api *ServiceAPI[Req, R
 
 	// 单进程模式 fast path：如果开启了 in-process dispatch 且 module 在本地
 	// 注册，直接反射调用。绕开 rpcx + Consul 的全部网络路径。
+	//
+	// 注意 reply 的分配问题：ServiceAPI.NewRPC 对指针类型的 Res 会生成一个
+	// typed nil pointer（如 (*GiveGiftRes)(nil)）。dispatcher.Call 内部的
+	// ensureAllocated 会给它分配真正的 struct，但分配出来的对象是 Call 内部
+	// 的局部变量——api.reply 本身仍然是 nil。解决方式：在调 Call 之前就在这里
+	// 用反射分配好真正的 reply 对象，传给 Call 让 method 写入，然后用 type
+	// assertion 转回 Res 返回。
 	if localDispatchEnabled.Load() {
 		if _, ok := localDispatcher.Lookup(api.ModuleName); ok {
-			if derr := localDispatcher.Call(ct, api.ModuleName, api.Name, api.args, api.reply); derr != nil {
+			replyObj := allocateIfNilPtr(api.reply)
+			if derr := localDispatcher.Call(ct, api.ModuleName, api.Name, api.args, replyObj); derr != nil {
 				err = derr
 				return
+			}
+			if typed, ok := replyObj.(Res); ok {
+				return typed, nil
 			}
 			return api.reply, nil
 		}
