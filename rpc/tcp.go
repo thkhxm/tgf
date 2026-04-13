@@ -149,16 +149,32 @@ const (
 	defaultWriteBuffer = 8 * 1024
 	//默认tcp监听的地址
 	defaultIp             = "0.0.0.0"
-	defaultDeadLineTime   = time.Second * 60
 	defaultMaxConnections = 10000
-	// A2-phase3: 网关连接的写入级超时
-	// defaultWriteDeadline —— 底层 conn.WriteFrame 调用前设置的 write deadline
-	defaultWriteDeadline = time.Second * 5
 )
 
-// defaultSendChanTimeout 是 Send 把数据推入 writeChan 时的最大等待时间。
-// 做成 var 而非 const 是为了让单测能临时缩短它（测试里把它替成 100ms）。
-var defaultSendChanTimeout = time.Second * 3
+// 网关连接的几个 deadline 默认值——v2 改为 var + init 从环境变量读取，
+// 业务可通过 EnvironmentTCPDeadLineSec / EnvironmentTCPWriteTimeoutMs /
+// EnvironmentTCPSendChanTimeoutMs 在启动时覆盖。零配置时仍然是历史默认值。
+var (
+	defaultDeadLineTime    = time.Second * 60 // 读 idle 超时
+	defaultWriteDeadline   = time.Second * 5  // A2-phase3: WriteFrame 前的 write deadline
+	defaultSendChanTimeout = time.Second * 3  // Send 推入 writeChan 的最大等待
+)
+
+func init() {
+	// v2: 从环境变量加载网关连接默认超时。
+	// 直接用 tgf.GetStrConfig——init 顺序：tgf.InitConfig (init.go) 先于
+	// rpc 包的 init，所以 mapping 已经就绪。
+	if v := tgf.GetStrConfig[int](tgf.EnvironmentTCPDeadLineSec); v > 0 {
+		defaultDeadLineTime = time.Duration(v) * time.Second
+	}
+	if v := tgf.GetStrConfig[int](tgf.EnvironmentTCPWriteTimeoutMs); v > 0 {
+		defaultWriteDeadline = time.Duration(v) * time.Millisecond
+	}
+	if v := tgf.GetStrConfig[int](tgf.EnvironmentTCPSendChanTimeoutMs); v > 0 {
+		defaultSendChanTimeout = time.Duration(v) * time.Millisecond
+	}
+}
 
 type IUserConnectData interface {
 	UpdateUserNodeId(servicePath, nodeId string)

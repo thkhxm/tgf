@@ -491,8 +491,8 @@ func NewDefaultAutoCacheManager[Key cacheKey, Val any](cacheKey string) IAutoCac
 	builder.plugins = make([]IAutoCacheClearPlugin, 0)
 	builder.autoClear = true
 	builder.cache = true
-	builder.cacheTimeOut = time.Hour * 24 * 3
-	builder.memTimeOutSecond = 60 * 60 * 3
+	builder.cacheTimeOut = defaultCacheTimeOut
+	builder.memTimeOutSecond = defaultMemTimeOutSecond
 	builder.longevity = false
 	return builder.New()
 }
@@ -510,8 +510,8 @@ func NewLongevityAutoCacheManager[Key cacheKey, Val IModel](cacheKey string) IAu
 	builder.plugins = make([]IAutoCacheClearPlugin, 0)
 	builder.autoClear = true
 	builder.cache = true
-	builder.cacheTimeOut = time.Hour * 24 * 3
-	builder.memTimeOutSecond = 60 * 60 * 3
+	builder.cacheTimeOut = defaultCacheTimeOut
+	builder.memTimeOutSecond = defaultMemTimeOutSecond
 	builder.longevity = true
 	return builder.New()
 }
@@ -533,7 +533,7 @@ func NewAutoCacheBuilder[Key cacheKey, Val any]() *AutoCacheBuilder[Key, Val] {
 	builder := &AutoCacheBuilder[Key, Val]{}
 	builder.plugins = make([]IAutoCacheClearPlugin, 0)
 	builder.mem = true
-	builder.memTimeOutSecond = 60 * 60 * 3
+	builder.memTimeOutSecond = defaultMemTimeOutSecond
 	return builder
 }
 
@@ -541,12 +541,34 @@ func NewHashAutoCacheBuilder[Val IHashModel]() *HashAutoCacheBuilder[Val] {
 	builder := &HashAutoCacheBuilder[Val]{}
 	builder.plugins = make([]IAutoCacheClearPlugin, 0)
 	builder.mem = true
-	builder.memTimeOutSecond = 60 * 60 * 3
+	builder.memTimeOutSecond = defaultMemTimeOutSecond
 	return builder
 }
 
 func WithCacheModule(module tgf.CacheModule) {
 	cacheModule = module
+}
+
+// ---- v2 默认 cache 超时（启动时从环境变量读取，未配置时回落到历史硬编码） ----
+//
+// 业务可通过：
+//
+//	DBCacheTimeoutSec=86400   # Redis 缓存默认 TTL，秒
+//	DBMemTimeoutSec=3600      # 内存缓存默认 TTL，秒
+//
+// 调整。零配置时为 Redis 3 天 / 内存 3 小时（v1 行为一致）。
+var (
+	defaultCacheTimeOut     = time.Hour * 24 * 3 // 3 天
+	defaultMemTimeOutSecond = int64(60 * 60 * 3) // 3 小时
+)
+
+func init() {
+	if v := tgf.GetStrConfig[int64](tgf.EnvironmentDBCacheTimeoutSec); v > 0 {
+		defaultCacheTimeOut = time.Duration(v) * time.Second
+	}
+	if v := tgf.GetStrConfig[int64](tgf.EnvironmentDBMemTimeoutSec); v > 0 {
+		defaultMemTimeOutSecond = v
+	}
 }
 
 func run() {

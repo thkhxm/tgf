@@ -10,6 +10,28 @@
 架构图：`doc/architecture.md`
 可观测性接入：`doc/observability.md`
 
+### C9 · 配置参数暴露 + 硬编码审计
+
+针对用户反馈 log 包参数无法配置的问题，全面审计框架硬编码点并暴露
+高优先级的 11 个新环境变量到 v1 老 API + v2 新 config struct 双系统。
+
+**log 包**（8 个新 env，覆盖之前包私有的 lumberjack 参数）：
+- `LogMaxSize` / `LogMaxAge` / `LogMaxBackups` / `LogCompress` / `LogLocalTime`
+- `LogTimeFormat` / `LogServiceFile` / `LogDBFile`
+
+**MySQL 连接池**（3 个新 env）：
+- `MySqlMaxIdleConns` / `MySqlMaxOpenConns` / `MySqlConnMaxLifetimeSec`
+
+**RPC / 网关运行参数**（4 个新 env）：
+- `RPCDefaultTimeoutMs` / `TCPDeadLineSec` / `TCPWriteTimeoutMs` / `TCPSendChanTimeoutMs`
+
+**DB 默认缓存超时**（2 个新 env）：
+- `DBCacheTimeoutSec` / `DBMemTimeoutSec`
+
+`tgf/config/config.go` 对应新增 `RPCConfig` / `DBConfig` 子 struct 并扩展
+`LoggerConfig` / `MySQLConfig`。零配置时所有行为和 v1 完全一致。
+新增 7 个测试。详细审计报告见 `reports/C9-config-exposure-and-audit.md`。
+
 ### C8 · 单进程模式 / In-Process RPC 直通
 
 - 新增 `rpc.WithInProcessDispatch()` / `rpc.WithSingleProcess()` builder 方法

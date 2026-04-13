@@ -102,9 +102,22 @@ func initMySql() {
 	dataSourceName := fmt.Sprintf("%v:%v@tcp(%v:%v)/%v?charset=utf8mb4&parseTime=True&loc=Local", userName, password, hostName, port, database)
 	// 创建数据库连接池
 	d, err = sql.Open("mysql", dataSourceName)
-	d.SetMaxIdleConns(10)
-	d.SetMaxOpenConns(200)
-	d.SetConnMaxLifetime(300 * time.Second)
+	// v2: 连接池参数从硬编码改为环境变量驱动，零配置时仍用 10/200/300s
+	maxIdle := tgf.GetStrConfig[int](tgf.EnvironmentMySqlMaxIdleConns)
+	if maxIdle <= 0 {
+		maxIdle = 10
+	}
+	maxOpen := tgf.GetStrConfig[int](tgf.EnvironmentMySqlMaxOpenConns)
+	if maxOpen <= 0 {
+		maxOpen = 200
+	}
+	maxLifetime := tgf.GetStrConfig[int](tgf.EnvironmentMySqlConnMaxLifetimeSec)
+	if maxLifetime <= 0 {
+		maxLifetime = 300
+	}
+	d.SetMaxIdleConns(maxIdle)
+	d.SetMaxOpenConns(maxOpen)
+	d.SetConnMaxLifetime(time.Duration(maxLifetime) * time.Second)
 	if err != nil {
 		log.WarnTag("init", "mysql dataSourceName is wrong")
 		return

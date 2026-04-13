@@ -18,15 +18,24 @@ import (
 	"sync"
 	"sync/atomic"
 	"time"
+
+	"github.com/thkhxm/tgf"
 )
 
 // defaultRPCTimeoutNanos 以纳秒保存全局默认 RPC 超时；用 atomic.Int64 保证
 // 并发读写安全（WithDefaultRPCTimeout 可以在 Server.Run() 之后动态改）。
-// 初始值对应 5 秒，保持和 A7 之前的行为完全一致。
+//
+// v2: 启动时从 EnvironmentRPCDefaultTimeoutMs 读取，找不到时回退到 5 秒。
+// 这意味着零配置行为仍然是 5 秒（和 A7 之前一致），同时业务可以通过
+// 环境变量 RPCDefaultTimeoutMs=2000 全局调整为 2 秒。
 var defaultRPCTimeoutNanos atomic.Int64
 
 func init() {
-	defaultRPCTimeoutNanos.Store(int64(5 * time.Second))
+	timeoutMs := tgf.GetStrConfig[int](tgf.EnvironmentRPCDefaultTimeoutMs)
+	if timeoutMs <= 0 {
+		timeoutMs = 5000
+	}
+	defaultRPCTimeoutNanos.Store(int64(time.Duration(timeoutMs) * time.Millisecond))
 }
 
 // rpcMethodTimeouts 存每方法的覆盖。key 格式 "module.method"，和 ServiceAPI.MessageType

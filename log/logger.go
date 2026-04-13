@@ -8,6 +8,7 @@ import (
 	"gopkg.in/natefinch/lumberjack.v2"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"time"
 )
@@ -24,10 +25,25 @@ import (
 var logger *zap.Logger
 var slogger *zap.SugaredLogger
 
+// ---- lumberjack 滚动参数（initLogger 时从环境变量读取，无配置走硬编码默认） ----
+//
+// v2 暴露前这些都是 private 硬编码。现在通过 EnvironmentLogger* 环境变量可配置：
+//
+//	LogMaxSize      单个文件最大 MB         默认 512
+//	LogMaxAge       最多保留天数            默认 0（不按时间删）
+//	LogMaxBackups   最多保留文件数          默认 100
+//	LogCompress     滚动后是否 gzip 压缩    默认 false
+//	LogLocalTime    归档文件名是否本地时间  默认 true
+//	LogTimeFormat   日志时间戳格式          默认 "2006-01-02 15:04:05.000"
+//	LogServiceFile  service tag 专用文件名  默认 "service/service.log"
+//	LogDBFile       db tag 专用文件名       默认 "db/db.log"
 var (
-	defaultMaxSize    = 512
-	defaultMaxAge     = 0
-	defaultMaxBackups = 100
+	runtimeMaxSize    = 512
+	runtimeMaxAge     = 0
+	runtimeMaxBackups = 100
+	runtimeCompress   = false
+	runtimeLocalTime  = true
+	runtimeTimeFormat = "2006-01-02 15:04:05.000"
 	ignoredTags       map[string]bool
 )
 
@@ -200,11 +216,62 @@ func CheckLogTag(tag string) bool {
 	return !ignoredTags[tag]
 }
 
+// loadLumberjackConfig 从环境变量拉取 v2 新增的 log 配置项。
+//
+// 注意：直接走 os.Getenv 而不是 tgf.GetStrConfig——后者是 init 时一次性快照
+// 的，运行时 os.Setenv 不会更新它。直接读 os.Getenv 让运行期 reload 也能生效。
+//
+// 找不到对应环境变量 / 解析失败时退回到硬编码默认值，保证零配置情况下行为不变。
+//
+// 该函数由 initLogger 调用一次。如果业务有运行时调整需求，可以在配置热更回调里
+// 重新调用 initLogger（C5 / C3 配合）。
+func loadLumberjackConfig() {
+	if v := os.Getenv(string(tgf.EnvironmentLoggerMaxSize)); v != "" {
+		if n, err := strconv.Atoi(v); err == nil && n > 0 {
+			runtimeMaxSize = n
+		}
+	}
+	if v := os.Getenv(string(tgf.EnvironmentLoggerMaxAge)); v != "" {
+		if n, err := strconv.Atoi(v); err == nil && n >= 0 {
+			runtimeMaxAge = n
+		}
+	}
+	if v := os.Getenv(string(tgf.EnvironmentLoggerMaxBackups)); v != "" {
+		if n, err := strconv.Atoi(v); err == nil && n > 0 {
+			runtimeMaxBackups = n
+		}
+	}
+	if s := os.Getenv(string(tgf.EnvironmentLoggerCompress)); s != "" {
+		runtimeCompress = parseBoolEnv(s, false)
+	}
+	if s := os.Getenv(string(tgf.EnvironmentLoggerLocalTime)); s != "" {
+		runtimeLocalTime = parseBoolEnv(s, true)
+	}
+	if s := os.Getenv(string(tgf.EnvironmentLoggerTimeFormat)); s != "" {
+		runtimeTimeFormat = s
+	}
+}
+
+// parseBoolEnv 宽松 bool 解析，与 tgf/config 包行为对齐。
+func parseBoolEnv(s string, def bool) bool {
+	switch strings.ToLower(strings.TrimSpace(s)) {
+	case "1", "true", "yes", "y", "on":
+		return true
+	case "0", "false", "no", "n", "off":
+		return false
+	}
+	return def
+}
+
 func initLogger() {
+	// 从环境变量拉取所有可配置的 lumberjack 参数（v2 新增）
+	loadLumberjackConfig()
+
 	var (
+		timeFormat = runtimeTimeFormat
 		/*自定义时间格式*/
 		customTimeEncoder = func(t time.Time, enc zapcore.PrimitiveArrayEncoder) {
-			enc.AppendString(t.Format("2006-01-02 15:04:05.000"))
+			enc.AppendString(t.Format(timeFormat))
 		}
 		/*自定义日志级别显示*/
 		customLevelEncoder = func(level zapcore.Level, enc zapcore.PrimitiveArrayEncoder) {
@@ -253,8 +320,18 @@ func initLogger() {
 	st := newCore(logPath, level, zapLoggerEncoderConfig, true)
 	zapCoreGame := newCore(logPath, level, zapLoggerEncoderConfig, false)
 	basePath := filepath.Dir(logPath)
-	zapCoreService := newCore(fmt.Sprintf("%s%sservice%sservice.log", basePath, string(filepath.Separator), string(filepath.Separator)), level, zapLoggerEncoderConfig, false)
-	zapCoreDB := newCore(fmt.Sprintf("%s%sdb%sdb.log", basePath, string(filepath.Separator), string(filepath.Separator)), level, zapLoggerEncoderConfig, false)
+	// 子 tag 专用文件路径——可配置，默认 service/service.log 和 db/db.log
+	// 直接读 os.Getenv 避免被 GetStrConfig 的 init 时快照拦截
+	serviceFile := os.Getenv(string(tgf.EnvironmentLoggerServiceFile))
+	if serviceFile == "" {
+		serviceFile = "service/service.log"
+	}
+	dbFile := os.Getenv(string(tgf.EnvironmentLoggerDBFile))
+	if dbFile == "" {
+		dbFile = "db/db.log"
+	}
+	zapCoreService := newCore(filepath.Join(basePath, filepath.FromSlash(serviceFile)), level, zapLoggerEncoderConfig, false)
+	zapCoreDB := newCore(filepath.Join(basePath, filepath.FromSlash(dbFile)), level, zapLoggerEncoderConfig, false)
 	// 创建一个映射，将标签映射到对应的Core
 	taggedCores := map[string]zapcore.Core{
 		DBTAG:      &TaggedCore{Core: zapCoreDB, Tag: DBTAG, Pass: true},
@@ -282,11 +359,11 @@ func newCore(logPath string, level zapcore.Level, zapLoggerEncoderConfig zapcore
 	}
 	wy := zapcore.AddSync(&lumberjack.Logger{
 		Filename:   logPath,           // ⽇志⽂件路径
-		MaxBackups: defaultMaxBackups, // 单位为MB,默认为512MB
-		MaxSize:    defaultMaxSize,    // 单位为MB,默认为512MB
-		MaxAge:     defaultMaxAge,     // 文件最多保存多少天
-		LocalTime:  true,              // 采用本地时间
-		Compress:   false,             // 是否压缩日志
+		MaxBackups: runtimeMaxBackups, // 最多保留文件数（v2 可配置）
+		MaxSize:    runtimeMaxSize,    // 单个文件最大 MB（v2 可配置）
+		MaxAge:     runtimeMaxAge,     // 文件最多保存多少天（v2 可配置）
+		LocalTime:  runtimeLocalTime,  // 归档文件名是否本地时间（v2 可配置）
+		Compress:   runtimeCompress,   // 是否 gzip 压缩滚动文件（v2 可配置）
 	})
 	wys = append(wys, wy)
 	syncWriter := zapcore.NewMultiWriteSyncer(wys...)

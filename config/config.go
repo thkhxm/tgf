@@ -54,12 +54,25 @@ type Config struct {
 	Service ServiceConfig
 	Gate    GateConfig
 	Runtime RuntimeConfig
+	// v2 新增子配置
+	RPC RPCConfig
+	DB  DBConfig
 }
 
 type LoggerConfig struct {
 	Path        string `env:"LogPath" default:"./log/tgf.log"`
 	Level       string `env:"LogLevel" default:"debug"`
 	IgnoredTags string `env:"LogIgnoredTags" default:""`
+
+	// v2 新增：lumberjack 滚动切割参数（之前是 log 包内部硬编码）
+	MaxSize     int    `env:"LogMaxSize" default:"512"`             // 单个文件最大 MB
+	MaxAge      int    `env:"LogMaxAge" default:"0"`                // 最多保留天数（0=不按时间删）
+	MaxBackups  int    `env:"LogMaxBackups" default:"100"`          // 最多保留文件数
+	Compress    bool   `env:"LogCompress" default:"false"`          // 滚动后是否 gzip 压缩
+	LocalTime   bool   `env:"LogLocalTime" default:"true"`          // 归档文件名是否本地时间
+	TimeFormat  string `env:"LogTimeFormat" default:"2006-01-02 15:04:05.000"`
+	ServiceFile string `env:"LogServiceFile" default:"service/service.log"` // service tag 专用文件
+	DBFile      string `env:"LogDBFile" default:"db/db.log"`                // db tag 专用文件
 }
 
 type RedisConfig struct {
@@ -75,6 +88,31 @@ type MySQLConfig struct {
 	Addr     string `env:"MySqlAddr" default:"127.0.0.1"`
 	Port     string `env:"MySqlPort" default:"3306"`
 	DB       string `env:"MySqlDB" default:"tgf"`
+
+	// v2 新增：连接池参数（之前是 db/mysql.go 硬编码 10/200/300s）
+	MaxIdleConns       int `env:"MySqlMaxIdleConns" default:"10"`
+	MaxOpenConns       int `env:"MySqlMaxOpenConns" default:"200"`
+	ConnMaxLifetimeSec int `env:"MySqlConnMaxLifetimeSec" default:"300"`
+}
+
+// RPCConfig v2 新增：RPC / 网关层运行参数。
+type RPCConfig struct {
+	// DefaultTimeoutMs 默认 RPC 调用超时（毫秒），原 5 秒硬编码
+	DefaultTimeoutMs int `env:"RPCDefaultTimeoutMs" default:"5000"`
+	// TCPDeadLineSec TCP/WS 连接读 idle 超时（秒），原 60 秒硬编码
+	TCPDeadLineSec int `env:"TCPDeadLineSec" default:"60"`
+	// TCPWriteTimeoutMs 网关连接写超时（毫秒），原 5 秒硬编码
+	TCPWriteTimeoutMs int `env:"TCPWriteTimeoutMs" default:"5000"`
+	// TCPSendChanTimeoutMs Send 推 writeChan 的最大等待时间（毫秒），原 3 秒硬编码
+	TCPSendChanTimeoutMs int `env:"TCPSendChanTimeoutMs" default:"3000"`
+}
+
+// DBConfig v2 新增：DB 层默认参数。
+type DBConfig struct {
+	// CacheTimeoutSec Redis 缓存默认 TTL（秒），原 3 天硬编码
+	CacheTimeoutSec int64 `env:"DBCacheTimeoutSec" default:"259200"`
+	// MemTimeoutSec 内存缓存默认 TTL（秒），原 3 小时硬编码
+	MemTimeoutSec int64 `env:"DBMemTimeoutSec" default:"10800"`
 }
 
 type ConsulConfig struct {

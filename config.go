@@ -30,6 +30,27 @@ func initMapping() {
 	mapping[EnvironmentLoggerPath] = &config{env: EnvironmentLoggerPath, val: defaultLogPath}
 	mapping[EnvironmentLoggerLevel] = &config{env: EnvironmentLoggerLevel, val: defaultLogLevel}
 	mapping[EnvironmentLoggerIgnoredTags] = &config{env: EnvironmentLoggerIgnoredTags, val: defaultIgnoredTags}
+	// v2 新增 log 配置项
+	mapping[EnvironmentLoggerMaxSize] = &config{env: EnvironmentLoggerMaxSize, val: defaultLogMaxSize}
+	mapping[EnvironmentLoggerMaxAge] = &config{env: EnvironmentLoggerMaxAge, val: defaultLogMaxAge}
+	mapping[EnvironmentLoggerMaxBackups] = &config{env: EnvironmentLoggerMaxBackups, val: defaultLogMaxBackups}
+	mapping[EnvironmentLoggerCompress] = &config{env: EnvironmentLoggerCompress, val: defaultLogCompress}
+	mapping[EnvironmentLoggerLocalTime] = &config{env: EnvironmentLoggerLocalTime, val: defaultLogLocalTime}
+	mapping[EnvironmentLoggerTimeFormat] = &config{env: EnvironmentLoggerTimeFormat, val: defaultLogTimeFormat}
+	mapping[EnvironmentLoggerServiceFile] = &config{env: EnvironmentLoggerServiceFile, val: defaultLogServiceFile}
+	mapping[EnvironmentLoggerDBFile] = &config{env: EnvironmentLoggerDBFile, val: defaultLogDBFile}
+	// v2 新增：MySQL 连接池
+	mapping[EnvironmentMySqlMaxIdleConns] = &config{env: EnvironmentMySqlMaxIdleConns, val: defaultMySqlMaxIdleConns}
+	mapping[EnvironmentMySqlMaxOpenConns] = &config{env: EnvironmentMySqlMaxOpenConns, val: defaultMySqlMaxOpenConns}
+	mapping[EnvironmentMySqlConnMaxLifetimeSec] = &config{env: EnvironmentMySqlConnMaxLifetimeSec, val: defaultMySqlConnMaxLifetimeSec}
+	// v2 新增：RPC / 网关运行参数
+	mapping[EnvironmentRPCDefaultTimeoutMs] = &config{env: EnvironmentRPCDefaultTimeoutMs, val: defaultRPCDefaultTimeoutMs}
+	mapping[EnvironmentTCPDeadLineSec] = &config{env: EnvironmentTCPDeadLineSec, val: defaultTCPDeadLineSec}
+	mapping[EnvironmentTCPWriteTimeoutMs] = &config{env: EnvironmentTCPWriteTimeoutMs, val: defaultTCPWriteTimeoutMs}
+	mapping[EnvironmentTCPSendChanTimeoutMs] = &config{env: EnvironmentTCPSendChanTimeoutMs, val: defaultTCPSendChanTimeoutMs}
+	// v2 新增：DB 默认缓存超时
+	mapping[EnvironmentDBCacheTimeoutSec] = &config{env: EnvironmentDBCacheTimeoutSec, val: defaultDBCacheTimeoutSec}
+	mapping[EnvironmentDBMemTimeoutSec] = &config{env: EnvironmentDBMemTimeoutSec, val: defaultDBMemTimeoutSec}
 	mapping[EnvironmentRuntimeModule] = &config{env: EnvironmentRuntimeModule, val: defaultRuntimeModule}
 	mapping[EnvironmentConsulAddress] = &config{env: EnvironmentConsulAddress, val: defaultConsulAddress}
 	mapping[EnvironmentConsulPath] = &config{env: EnvironmentConsulPath, val: defaultConsulPath}
@@ -65,6 +86,30 @@ const (
 	defaultLogPath     = "./log/tgf.log"
 	defaultLogLevel    = "debug"
 	defaultIgnoredTags = ""
+	// v2 新增：lumberjack 滚动切割参数
+	defaultLogMaxSize     = "512" // 单个文件最大 MB
+	defaultLogMaxAge      = "0"   // 最多保留天数，0 = 不按时间删除
+	defaultLogMaxBackups  = "100" // 最多保留文件数
+	defaultLogCompress    = "0"   // 是否启用 gzip 压缩滚动后的文件（0=false, 1=true）
+	defaultLogLocalTime   = "1"   // 归档文件名使用本地时间（0=UTC, 1=本地）
+	defaultLogTimeFormat  = "2006-01-02 15:04:05.000"
+	defaultLogServiceFile = "service/service.log"
+	defaultLogDBFile      = "db/db.log"
+
+	// v2 新增：MySQL 连接池
+	defaultMySqlMaxIdleConns       = "10"
+	defaultMySqlMaxOpenConns       = "200"
+	defaultMySqlConnMaxLifetimeSec = "300"
+
+	// v2 新增：RPC / 网关运行参数
+	defaultRPCDefaultTimeoutMs   = "5000" // 5 秒
+	defaultTCPDeadLineSec        = "60"
+	defaultTCPWriteTimeoutMs     = "5000" // 5 秒
+	defaultTCPSendChanTimeoutMs  = "3000" // 3 秒
+
+	// v2 新增：DB 默认缓存超时
+	defaultDBCacheTimeoutSec = "259200" // 3 天
+	defaultDBMemTimeoutSec   = "10800"  // 3 小时
 
 	defaultRuntimeModule = "dev"
 
