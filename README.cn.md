@@ -1,43 +1,61 @@
-# 关于 tgf
-    tgf框架是使用golang开发的一套游戏分布式框架.
+# tgf
 
-    属于开箱即用的项目框架,目前适用于中小型团队,独立开发者,快速开发使用.
+> 中文主文档见 [`README.md`](README.md)，本文件是简要中文概览。
 
-    框架提供了一整套开发工具,并且定义了模块开发规范.
+**tgf** 是一套基于 Go 的分布式游戏服务器框架。v2 聚焦稳定性、工程化、
+可观测性与 API 一致性，让中小型团队和独立开发者可以**只关注业务逻辑**。
 
-    开发者只需要关注业务逻辑即可,无需关心用户并发和节点状态等复杂情况.
+## 一句话看 tgf v2
 
+```go
+rpc.NewRPCServer().
+    WithSingleProcess().                              // 零 Consul 单进程模式
+    WithService(new(UserService)).
+    WithService(new(ShopService)).
+    WithGatewayOptions(rpc.GatewayOptions{TCPPort: "8082"}).
+    Run()
+```
 
-[项目地址](https://github.com/thkhxm/tgf)  
-[项目文档](https://thkhxm.github.io/tgf_writerside/starter-topic.html)
+业务代码 `SendRPCMessage(ctx, Shop.Buy.NewRPC(req))` 自动走**进程内反射调用**，
+从单进程原型迁移到分布式部署只需要去掉 `WithSingleProcess()` 一行。
 
+## 主要能力
+
+- 🛡️ **稳定性**：网关 `IConn` 统一抽象、跨节点登录原子化、write-behind 落库可靠性、KCP+AEAD 网关
+- 🔧 **工程化**：Makefile / golangci / CI / Dockerfile / CHANGELOG / 依赖升级
+- 📊 **可观测性**：`tgf/metrics` + `tgf/trace` 零依赖接口，按需接 Prometheus / OpenTelemetry
+- 🎯 **策略化 RPC**：限流 / 熔断 / 并发 / 超时一套 `MethodPolicy`
+- 🔄 **热更**：`component.ReloadGameConf` + `config.Reload` + fsnotify
+- 🏗️ **Builder 统一**：`WithGatewayOptions` / `WithStandalone` / `WithSingleProcess`
+
+## 快速上手
+
+见主文档 [`README.md`](README.md) 的"5 分钟快速上手"章节。
+可以直接跑 [`example/`](example/) 下的 9 个示例项目：
+
+```bash
+cd example/single_process && go run .
+```
+
+## 文档
+
+- [`README.md`](README.md) — 主文档（中文）
+- [`doc/architecture.md`](doc/architecture.md) — v2 架构总览
+- [`doc/migration-v1-to-v2.md`](doc/migration-v1-to-v2.md) — v1 → v2 迁移指南
+- [`doc/observability.md`](doc/observability.md) — 可观测性接入
+- [`CHANGELOG.md`](CHANGELOG.md) — 变更日志
+
+## 外部链接
+
+- 项目地址：[github.com/thkhxm/tgf](https://github.com/thkhxm/tgf)
+- API 参考：[pkg.go.dev/github.com/thkhxm/tgf](https://pkg.go.dev/github.com/thkhxm/tgf)
+- 项目文档：[thkhxm.github.io/tgf_writerside](https://thkhxm.github.io/tgf_writerside/starter-topic.html)
+- 国内镜像：[tgf.yamigame.net:8080](http://tgf.yamigame.net:8080/)
 
 ## 交流群
-    QQ群:7400585
 
-## 技术选型
-    Golang开发版本:  1.21.1
+**QQ 群：7400585**
 
-| 技术       | 说明           | 仓库地址                                 |
-| ---------- | -------------- | ---------------------------------------- |
-| rpcx       | 底层rpc的实现  | https://github.com/smallnest/rpcx        |
-| redis      | 提供数据缓存   | https://redis.io/                        |
-| hashmap    | 线程安全的集合 | https://github.com/cornelk/hashmap       |
-| ants       | 高性能go协程池 | https://github.com/panjf2000/ants        |
-| redislock  | 分布式redis锁  | https://github.com/bsm/redislock         |
-| snowflake  | 雪花算法       | https://github.com/bwmarrin/snowflake    |
-| doublejump | 一致性hash     | https://github.com/edwingeng/doublejump  |
-| godotenv   | 环境变量工具   | https://github.com/joho/godotenv         |
-| zap        | 日志框架       | https://go.uber.org/zap                  |
-| lumberjack | 日志切割工具   | https://gopkg.in/natefinch/lumberjack.v2 |
-| excelize   | Excel工具      | https://github.com/qax-os/excelize       |
-| sonic      | json高性能工具 | https://github.com/bytedance/sonic/      |
+## License
 
-
-## 基础架构图
-
-![image-20230228031100624](http://oss.yamigame.net/picgo/image-20230228031100624.png)
-
-## 规划
-    项目后续会更新系列教程文章和视频教程,并且开源项目案例.也会不断的更新和优化项目框架.
-    欢迎大家加入qq群一起交流和探讨.
+MIT License — 见 [LICENSE](LICENSE)。
