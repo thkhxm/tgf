@@ -11,9 +11,10 @@ replace (
 require (
 	github.com/bsm/redislock v0.9.4
 	github.com/bwmarrin/snowflake v0.3.0
-	github.com/bytedance/sonic v1.12.7
+	github.com/bytedance/sonic v1.15.0
 	github.com/cornelk/hashmap v1.0.8
 	github.com/edwingeng/doublejump v1.0.1
+	github.com/fsnotify/fsnotify v1.9.0
 	github.com/go-sql-driver/mysql v1.9.3
 	github.com/gorilla/websocket v1.5.3
 	github.com/joho/godotenv v1.5.1
@@ -44,16 +45,16 @@ require (
 	github.com/alitto/pond v1.9.2 // indirect
 	github.com/apache/thrift v0.21.0 // indirect
 	github.com/armon/go-metrics v0.3.6 // indirect
-	github.com/bytedance/sonic/loader v0.2.2 // indirect
+	github.com/bytedance/gopkg v0.1.3 // indirect
+	github.com/bytedance/sonic/loader v0.5.0 // indirect
 	github.com/cenk/backoff v2.2.1+incompatible // indirect
 	github.com/cenkalti/backoff v2.2.1+incompatible // indirect
 	github.com/cespare/xxhash/v2 v2.2.0 // indirect
-	github.com/cloudwego/base64x v0.1.5 // indirect
+	github.com/cloudwego/base64x v0.1.6 // indirect
 	github.com/dgryski/go-jump v0.0.0-20170409065014-e1f439676b57 // indirect
 	github.com/dgryski/go-rendezvous v0.0.0-20200823014737-9f7001d12a5f // indirect
 	github.com/facebookgo/clock v0.0.0-20150410010913-600d898af40a // indirect
 	github.com/fatih/color v1.18.0 // indirect
-	github.com/fsnotify/fsnotify v1.9.0 // indirect
 	github.com/go-echarts/go-echarts/v2 v2.4.6 // indirect
 	github.com/go-ole/go-ole v1.2.4 // indirect
 	github.com/go-ping/ping v1.2.0 // indirect
