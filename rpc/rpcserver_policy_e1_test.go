@@ -12,7 +12,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/thkhxm/rpcx/client"
+	"github.com/thkhxm/rpcx/v2/client"
 	"github.com/thkhxm/tgf"
 )
 

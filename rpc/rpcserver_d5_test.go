@@ -14,8 +14,8 @@ import (
 	"testing"
 
 	"github.com/cornelk/hashmap"
-	"github.com/thkhxm/rpcx/client"
-	"github.com/thkhxm/rpcx/protocol"
+	"github.com/thkhxm/rpcx/v2/client"
+	"github.com/thkhxm/rpcx/v2/protocol"
 )
 
 // nilCallXClient 是 client.XClient 的最小桩：Go 返回 (nil, goErr)，

@@ -36,7 +36,7 @@ import (
 	"github.com/rcrowley/go-metrics"
 	"github.com/testcontainers/testcontainers-go"
 	"github.com/testcontainers/testcontainers-go/wait"
-	"github.com/thkhxm/rpcx-consul/serverplugin"
+	"github.com/thkhxm/rpcx-consul/v2/serverplugin"
 	tgfconfig "github.com/thkhxm/tgf/config"
 )
 

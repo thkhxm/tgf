@@ -27,8 +27,8 @@ import (
 	"testing"
 	"time"
 
-	consulclient "github.com/thkhxm/rpcx-consul/client"
-	rpcxclient "github.com/thkhxm/rpcx/client"
+	consulclient "github.com/thkhxm/rpcx-consul/v2/client"
+	rpcxclient "github.com/thkhxm/rpcx/v2/client"
 	"golang.org/x/net/context"
 )
 

@@ -11,7 +11,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/thkhxm/rpcx/server"
+	"github.com/thkhxm/rpcx/v2/server"
 	"github.com/thkhxm/tgf"
 )
 

@@ -8,7 +8,7 @@ import (
 	"time"
 
 	"github.com/rs/cors"
-	"github.com/thkhxm/rpcx/client"
+	"github.com/thkhxm/rpcx/v2/client"
 	"github.com/thkhxm/tgf"
 	tgfconfig "github.com/thkhxm/tgf/config"
 	"github.com/thkhxm/tgf/exp/admin"

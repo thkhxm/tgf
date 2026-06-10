@@ -3,8 +3,8 @@ package internal
 import (
 	"sync"
 
-	"github.com/thkhxm/rpcx-consul/client"
-	"github.com/thkhxm/rpcx/server"
+	"github.com/thkhxm/rpcx-consul/v2/client"
+	"github.com/thkhxm/rpcx/v2/server"
 	"github.com/thkhxm/tgf/log"
 )
 

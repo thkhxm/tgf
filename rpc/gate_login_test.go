@@ -9,7 +9,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/thkhxm/rpcx/client"
+	"github.com/thkhxm/rpcx/v2/client"
 	"golang.org/x/net/context"
 )
 

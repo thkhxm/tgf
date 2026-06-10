@@ -14,9 +14,9 @@ import (
 
 	"github.com/cornelk/hashmap"
 	"github.com/gorilla/websocket"
-	"github.com/thkhxm/rpcx/client"
-	"github.com/thkhxm/rpcx/share"
-	util2 "github.com/thkhxm/rpcx/util"
+	"github.com/thkhxm/rpcx/v2/client"
+	"github.com/thkhxm/rpcx/v2/share"
+	util2 "github.com/thkhxm/rpcx/v2/util"
 	"github.com/thkhxm/tgf"
 	tgfconfig "github.com/thkhxm/tgf/config"
 	"github.com/thkhxm/tgf/log"

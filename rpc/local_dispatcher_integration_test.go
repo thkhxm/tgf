@@ -8,7 +8,7 @@ import (
 	"errors"
 	"testing"
 
-	"github.com/thkhxm/rpcx/share"
+	"github.com/thkhxm/rpcx/v2/share"
 	"golang.org/x/net/context"
 )
 

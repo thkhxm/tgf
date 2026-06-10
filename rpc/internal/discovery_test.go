@@ -14,7 +14,7 @@ import (
 	"testing"
 
 	libkvstore "github.com/rpcxio/libkv/store"
-	"github.com/thkhxm/rpcx-consul/client"
+	"github.com/thkhxm/rpcx-consul/v2/client"
 )
 
 // TestGetDiscovery_ReturnsNilBeforeUse 验证 A6 的行为变更：

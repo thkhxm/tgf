@@ -13,7 +13,7 @@ import (
 	"context"
 	"testing"
 
-	"github.com/thkhxm/rpcx/client"
+	"github.com/thkhxm/rpcx/v2/client"
 )
 
 // stubService 是一个不嵌入 Module 的极简 IService 实现。

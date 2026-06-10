@@ -21,7 +21,7 @@ import (
 	"sync"
 	"testing"
 
-	util2 "github.com/thkhxm/rpcx/util"
+	util2 "github.com/thkhxm/rpcx/v2/util"
 	"google.golang.org/protobuf/proto"
 )
 
