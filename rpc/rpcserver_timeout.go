@@ -19,23 +19,35 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/thkhxm/tgf"
+	tgfconfig "github.com/thkhxm/tgf/config"
 )
 
 // defaultRPCTimeoutNanos 以纳秒保存全局默认 RPC 超时；用 atomic.Int64 保证
 // 并发读写安全（WithDefaultRPCTimeout 可以在 Server.Run() 之后动态改）。
 //
-// v2: 启动时从 EnvironmentRPCDefaultTimeoutMs 读取，找不到时回退到 5 秒。
+// v2: 启动时从 RPCDefaultTimeoutMs 读取，找不到时回退到 5 秒。
 // 这意味着零配置行为仍然是 5 秒（和 A7 之前一致），同时业务可以通过
 // 环境变量 RPCDefaultTimeoutMs=2000 全局调整为 2 秒。
+//
+// E 档配置迁移 + 热更接线：读取改走新配置系统的类型化字段；本值是"可热更项"
+// （本就是 atomic），init 注册 OnReload 订阅者——业务改 .env.<module> 后经
+// admin POST /config/reload 或显式 tgfconfig.Reload() 触发，新超时原子生效。
+// 注意：Reload 会以"配置值"覆盖 SetDefaultRPCTimeout 设置的运行态值（配置为准）。
 var defaultRPCTimeoutNanos atomic.Int64
 
-func init() {
-	timeoutMs := tgf.GetStrConfig[int](tgf.EnvironmentRPCDefaultTimeoutMs)
+// applyDefaultRPCTimeoutFromConfig 把配置中的默认 RPC 超时原子写入运行态。
+// 既是 init 的启动装载，也是 OnReload 的热更订阅者。
+func applyDefaultRPCTimeoutFromConfig(c *tgfconfig.Config) {
+	timeoutMs := c.RPC.DefaultTimeoutMs
 	if timeoutMs <= 0 {
 		timeoutMs = 5000
 	}
 	defaultRPCTimeoutNanos.Store(int64(time.Duration(timeoutMs) * time.Millisecond))
+}
+
+func init() {
+	applyDefaultRPCTimeoutFromConfig(tgfconfig.Current())
+	tgfconfig.OnReload(applyDefaultRPCTimeoutFromConfig)
 }
 
 // rpcMethodTimeouts 存每方法的覆盖。key 格式 "module.method"，和 ServiceAPI.MessageType

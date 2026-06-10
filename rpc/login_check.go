@@ -37,10 +37,10 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"os"
 	"sync/atomic"
 	"time"
 
+	tgfconfig "github.com/thkhxm/tgf/config"
 	"github.com/thkhxm/tgf/log"
 	"github.com/thkhxm/tgf/rpc/internal"
 )
@@ -113,13 +113,18 @@ func (s *Server) WithLoginTokenSecret(secret string) *Server {
 	return s
 }
 
-// resolveLoginTokenSecret 按优先级解析密钥：显式注入 > 环境变量。没有则返回 nil。
+// resolveLoginTokenSecret 按优先级解析密钥：显式注入 > 配置系统。没有则返回 nil。
+//
+// E 档配置读点迁移：原 os.Getenv 直读改走 tgfconfig.Current().Security
+// （env 名 LoginTokenSecret 与 D 档常量逐字一致，存量部署不受影响；该 key 已
+// 登记 tgf/config.go sensitiveEnvKeys，启动日志脱敏）。每次调用读 Current()
+// 快照——经 tgfconfig.Reload()（admin POST /config/reload）可热轮换密钥。
 func resolveLoginTokenSecret() []byte {
 	if v, ok := loginTokenSecret.Load().(string); ok && v != "" {
 		return []byte(v)
 	}
-	if env := os.Getenv(EnvLoginTokenSecret); env != "" {
-		return []byte(env)
+	if v := tgfconfig.Current().Security.LoginTokenSecret; v != "" {
+		return []byte(v)
 	}
 	return nil
 }

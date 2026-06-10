@@ -18,6 +18,7 @@ import (
 	"github.com/thkhxm/rpcx/share"
 	"github.com/thkhxm/tgf"
 	"github.com/thkhxm/tgf/component"
+	tgfconfig "github.com/thkhxm/tgf/config"
 	"github.com/thkhxm/tgf/db"
 	"github.com/thkhxm/tgf/log"
 	"github.com/thkhxm/tgf/metrics"
@@ -533,14 +534,16 @@ func (s *Server) Run() <-chan bool {
 	op = append(op, server.WithPool(s.maxWorkers, s.maxCapacity))
 	s.rpcServer = server.NewServer(op...)
 	s.rpcServer.EnableProfile = s.enableProfile
-	port := tgf.GetStrConfig[string](tgf.EnvironmentServicePort)
+	// E 档配置读点迁移：启动期一次性项统一走新配置系统的类型化字段
+	// （tgf.InitConfig 在 tgf 包 init 已执行，Current() 保证非零值）。
+	port := tgfconfig.Current().Service.Port
 	if s.minPort > 0 && s.maxPort > s.minPort {
 		port = fmt.Sprintf("%v", rand.Int31n(s.maxPort-s.minPort)+s.minPort)
 	}
 	//rpcx加入服务发现组件
 	local := util.GetLocalHost()
 	if s.customServiceAddress {
-		local = tgf.GetStrConfig[string](tgf.EnvironmentServiceAddress)
+		local = tgfconfig.Current().Service.Address
 	}
 	ip = fmt.Sprintf("%v:%v", local, port)
 	if s.rpcServer.EnableProfile {
@@ -933,11 +936,21 @@ func getRPCClient() *Client {
 
 type Call struct {
 	rpcxCall *client.Call
+	// release 是策略管道的释放闭包（E1）：异步调用的并发信号量/熔断计数要等
+	// 结果出来才能释放，挂在 Done() 上执行。同步路径构造时为 noopRelease。
+	release     func(error)
+	releaseOnce sync.Once
 }
 
 func newCall(rpcxCall *client.Call) (call *Call) {
+	return newCallWithRelease(rpcxCall, noopRelease)
+}
+
+// newCallWithRelease 构造一个携带策略释放闭包的 Call（E1：SendAsyncRPCMessage 用）。
+func newCallWithRelease(rpcxCall *client.Call, release func(error)) (call *Call) {
 	call = &Call{}
 	call.rpcxCall = rpcxCall
+	call.release = release
 	return
 }
 
@@ -949,42 +962,110 @@ func newCall(rpcxCall *client.Call) (call *Call) {
 func (this *Call) Done() error {
 	var ()
 	cal := <-this.rpcxCall.Done
+	// E1：消费结果时释放策略资源（并发信号量/熔断计数）。Once 保证幂等。
+	this.releaseOnce.Do(func() {
+		this.release(cal.Error)
+	})
 	return cal.Error
 }
 
-func sendMessage(ct IUserConnectData, moduleName, serviceName string, args, reply interface{}) error {
-	// D4 / P0-2 修复：单进程模式（WithSingleProcess / WithStandalone+WithInProcessDispatch）
-	// 下 discovery 为 nil 且 rpcClient 不启动，原实现首条客户端消息走 getRPCClient()
-	// → startup() → 对 nil discovery 调方法直接 panic，网关 100% 不可用。
-	// 现在：本地 dispatcher 命中时走进程内直通（登录态/白名单语义与分布式路径一致），
-	// 见 gateway_local_dispatch.go。
+// sendMessage 是网关主链路（tcp.go doLogic → 这里）的统一发送入口——所有客户端
+// 请求都从这条路抵达后端 service。
+//
+// D4 / P0-2 修复：单进程模式（WithSingleProcess / WithStandalone+WithInProcessDispatch）
+// 下 discovery 为 nil 且 rpcClient 不启动，原实现首条客户端消息走 getRPCClient()
+// → startup() → 对 nil discovery 调方法直接 panic，网关 100% 不可用。
+// 现在：本地 dispatcher 命中时走进程内直通（登录态/白名单语义与分布式路径一致），
+// 见 gateway_local_dispatch.go。
+//
+// E1（v3）：本路径接入策略管道（限流/熔断/并发）+ 超时 + metrics——
+// 审计指出 C6/A7 只挂在 SendRPCMessage（service 间调用），"客户端→网关→后端"
+// 的主流量完全裸奔：无策略、无 deadline 的同步 xclient.Call 会让慢后端无限期
+// 阻塞该连接的 logic goroutine（reqChan 容量 16 满后开始丢请求）。
+//
+// 执行顺序（刻意安排）：
+//  1. 登录态/白名单检查——本地拒绝不消耗策略配额、不计熔断（未登录请求风暴
+//     不应把后端方法限流配额吃光）；
+//  2. applyMethodPolicy（与 SendRPCMessage 完全相同的限流/熔断/并发语义）；
+//  3. 本地直通 or 远程 Go+select 超时。
+//
+// 超时实现说明：连接级 ctx 是 *share.Context，不能用 context.WithTimeout 包装
+// （rpcx CustomSelector 等依赖 `ctx.(*share.Context)` 类型断言，包装即断链），
+// 所以与 SendRPCMessage 一致采用 xclient.Go + select 模式；超时分支用本地 err
+// 而不写 call.Error（避免与 rpcx client 完成路径的写入构成 data race）。
+// 本地直通分支保持同步反射调用、不加超时——与 SendRPCMessage 的 local fast path
+// 语义一致（单进程模式无网络，超时保护交由 handler 自身负责）。
+func sendMessage(ct IUserConnectData, moduleName, serviceName string, args, reply interface{}) (err error) {
+	// E3-rpc 埋点：网关主链路与 SendRPCMessage 共用 RPC 时延/调用量/错误率指标。
+	startTime := time.Now()
+	defer func() {
+		observeRPCCall(moduleName, serviceName, startTime, err)
+	}()
+
+	messageType := moduleName + "." + serviceName
+
+	useLocal := false
 	if localDispatchEnabled.Load() {
 		if _, ok := localDispatcher.Lookup(moduleName); ok {
-			if !ct.IsLogin() && !checkLocalGateWhiteList(moduleName+"."+serviceName) {
-				return errors.New(fmt.Sprintf("用户未登录 非白名单请求无法抵达 moduleName=%v serviceName=%v", moduleName, serviceName))
-			}
-			return localGateDispatch(ct.GetContextData(), moduleName, serviceName, args, reply)
+			useLocal = true
 		}
 	}
 
+	// 1. 登录态/白名单（先于策略管道，见函数头注释）
 	var (
-		rc      = getRPCClient()
+		rc      *Client
 		xclient client.XClient
 	)
-	// D4: rpcClient 不可用（单进程/Standalone 模式、或 discovery 创建失败）时
-	// 返回明确错误而非 panic。
-	if rc == nil {
-		return errors.New(fmt.Sprintf("RPC client 不可用(单进程模式下模块未注册到本地 dispatcher,或 discovery 未初始化) moduleName=%v serviceName=%v", moduleName, serviceName))
+	if useLocal {
+		if !ct.IsLogin() && !checkLocalGateWhiteList(messageType) {
+			return errors.New(fmt.Sprintf("用户未登录 非白名单请求无法抵达 moduleName=%v serviceName=%v", moduleName, serviceName))
+		}
+	} else {
+		rc = getRPCClient()
+		// D4: rpcClient 不可用（单进程/Standalone 模式、或 discovery 创建失败）时
+		// 返回明确错误而非 panic。
+		if rc == nil {
+			return errors.New(fmt.Sprintf("RPC client 不可用(单进程模式下模块未注册到本地 dispatcher,或 discovery 未初始化) moduleName=%v serviceName=%v", moduleName, serviceName))
+		}
+		xclient = rc.getClient(moduleName)
+		if xclient == nil {
+			return errors.New(fmt.Sprintf("找不到对应模块的服务 moduleName=%v serviceName=%v ", moduleName, serviceName))
+		}
+		if !ct.IsLogin() && !rc.CheckWhiteList(messageType) {
+			return errors.New(fmt.Sprintf("用户未登录 非白名单请求无法抵达 moduleName=%v serviceName=%v", moduleName, serviceName))
+		}
 	}
-	xclient = rc.getClient(moduleName)
-	if xclient == nil {
-		return errors.New(fmt.Sprintf("找不到对应模块的服务 moduleName=%v serviceName=%v ", moduleName, serviceName))
+
+	// 2. 策略管道（E1：网关主链路与 SendRPCMessage 同语义）
+	release, perr := applyMethodPolicy(moduleName, serviceName)
+	if perr != nil {
+		return perr
 	}
-	if ct.IsLogin() || rc.CheckWhiteList(moduleName+"."+serviceName) {
-		err := xclient.Call(ct.GetContextData(), serviceName, args, reply)
-		return err
+	defer func() {
+		release(err)
+	}()
+
+	// 3a. 单进程直通
+	if useLocal {
+		return localGateDispatch(ct.GetContextData(), moduleName, serviceName, args, reply)
 	}
-	return errors.New(fmt.Sprintf("用户未登录 非白名单请求无法抵达 moduleName=%v serviceName=%v", moduleName, serviceName))
+
+	// 3b. 远程调用 + 超时（resolveRPCTimeout：per-method 覆盖 → 全局默认）
+	done := make(chan *client.Call, 1)
+	call, gerr := xclient.Go(ct.GetContextData(), serviceName, args, reply, done)
+	if gerr != nil {
+		return fmt.Errorf("rpc请求异常 moduleName=%v serviceName=%v error=%w", moduleName, serviceName, gerr)
+	}
+	if call == nil {
+		return fmt.Errorf("rpc请求异常 moduleName=%v serviceName=%v error=无可用服务节点", moduleName, serviceName)
+	}
+	select {
+	case <-time.After(resolveRPCTimeout(moduleName, serviceName)):
+		// 不写 call.Error（与 rpcx client 完成路径 race）；in-flight 结果直接放弃。
+		return tgf.ErrorRPCTimeOut
+	case <-call.Done:
+		return call.Error
+	}
 }
 
 // SendRPCMessage [Req, Res any]
@@ -1006,14 +1087,11 @@ func SendRPCMessage[Req any, Res any](ct context.Context, api *ServiceAPI[Req, R
 	// 命中快速失败时直接返回对应的 error，不进入 rpcx Go。
 	// 注意：策略检查放在 dispatch 分支之前，本地调用和远程调用走完全相同的
 	// 限流/熔断/并发语义——对业务代码透明。
-	var policyRelease func(error) = noopRelease
-	if mr := resolveMethodPolicy(api.ModuleName, api.Name); mr != nil {
-		var perr error
-		policyRelease, perr = mr.beforeCall()
-		if perr != nil {
-			err = perr
-			return
-		}
+	// E1：统一走 applyMethodPolicy 入口（与网关 sendMessage 等全部发送路径共用）。
+	policyRelease, perr := applyMethodPolicy(api.ModuleName, api.Name)
+	if perr != nil {
+		err = perr
+		return
 	}
 	defer func() {
 		policyRelease(err)
@@ -1060,7 +1138,9 @@ func SendRPCMessage[Req any, Res any](ct context.Context, api *ServiceAPI[Req, R
 	// call==nil 时 return 触发 defer 即 nil 指针 panic，杀死调用方 goroutine。
 	// 现在：先检查 err / call==nil 并返回干净 error，defer 挪到检查之后。
 	if err != nil {
-		err = fmt.Errorf("rpc请求异常 moduleName=%v serviceName=%v error=%v", api.ModuleName, api.Name, err)
+		// E1：用 %w 保留错误链——熔断错误分类（isCircuitFailure）与上层
+		// errors.Is/As 都依赖未被 %v 摊平的原始错误。
+		err = fmt.Errorf("rpc请求异常 moduleName=%v serviceName=%v error=%w", api.ModuleName, api.Name, err)
 		log.WarnTag("tcp", "%s", err.Error())
 		return
 	}
@@ -1070,56 +1150,100 @@ func SendRPCMessage[Req any, Res any](ct context.Context, api *ServiceAPI[Req, R
 		return
 	}
 	defer func() {
-		if call.Error != nil {
-			log.WarnTag("tcp", "RPC module=%v serviceName=%v userId=%s error=%v", api.ModuleName, api.Name, GetUserId(ct), call.Error)
+		if err != nil {
+			log.WarnTag("tcp", "RPC module=%v serviceName=%v userId=%s error=%v", api.ModuleName, api.Name, GetUserId(ct), err)
 		}
 	}()
 	//这里需要处理超时，避免channel的内存泄漏
 	// A7: 原先硬编码 5 秒，现在走 resolveRPCTimeout 查 per-method 覆盖 → 全局默认。
 	// 业务可通过 Server.WithMethodTimeout("gate.Login", 10*time.Second) 配置。
+	// E1/P2 修复：超时分支原先写 call.Error，与 rpcx client 完成路径对同一字段的
+	// 写入构成 data race（-race 可检出）——改用本地 err，in-flight 结果直接放弃。
 	select {
 	case <-time.After(resolveRPCTimeout(api.ModuleName, api.Name)):
-		call.Error = tgf.ErrorRPCTimeOut
+		err = tgf.ErrorRPCTimeOut
 	case <-call.Done:
+		err = call.Error
 	}
-	return api.reply, call.Error
+	return api.reply, err
 }
 
 // SendAsyncRPCMessage [Req, Res any]
 // @Description:  异步rpc请求,使用该接口时,需要确保call中的chan被消费, 避免chan的泄露
+// E1：本路径接入策略管道。release 在 Call.Done() 消费结果时执行——本 API 的契约
+// 本就要求消费 Done（避免 chan 泄漏），并发信号量/熔断计数的释放搭同一约定；
+// 不消费 Done 的后果从"chan 泄漏"扩展为"并发配额泄漏"，语义一致。
+// 另修：原实现在 xclient.Go 返回 err（call 可能为 nil）时仍包一层 newCall 返回，
+// 调用方 Done() 会 nil 解引用 panic——现在错误路径明确返回 (nil, err)。
 // @param ct
 // @param api
-// @return *client.Call
+// @return *Call
 // @return error
 func SendAsyncRPCMessage[Req any, Res any](ct context.Context, api *ServiceAPI[Req, Res]) (*Call, error) {
+	release, perr := applyMethodPolicy(api.ModuleName, api.Name)
+	if perr != nil {
+		return nil, perr
+	}
 	var (
 		done    = make(chan *client.Call, 1)
 		rc      = getRPCClient()
 		xclient = rc.getClient(api.ModuleName)
 	)
 	if xclient == nil {
-		return nil, errors.New(fmt.Sprintf("找不到对应模块的服务 moduleName=%v", api.ModuleName))
+		err := errors.New(fmt.Sprintf("找不到对应模块的服务 moduleName=%v", api.ModuleName))
+		release(err)
+		return nil, err
 	}
 	call, err := xclient.Go(ct, api.Name, api.args, api.reply, done)
-	return newCall(call), err
+	if err != nil {
+		release(err)
+		return nil, fmt.Errorf("rpc请求异常 moduleName=%v serviceName=%v error=%w", api.ModuleName, api.Name, err)
+	}
+	if call == nil {
+		err = fmt.Errorf("rpc请求异常 moduleName=%v serviceName=%v error=无可用服务节点", api.ModuleName, api.Name)
+		release(err)
+		return nil, err
+	}
+	return newCallWithRelease(call, release), nil
+}
+
+// localNoReplyDispatch 是 SendNoReplyRPCMessage(ByAddress) 本地 fast path 的统一
+// 后台执行体（E1）：
+//   - 用 util.Go + 自带 recover 替代裸 `go func()`——分布式路径 rpcx service.call
+//     有 recover，原实现里业务 handler panic 在单进程 no-reply 路径=整个进程崩溃；
+//   - release 在调用结束（含 panic 转 error）后执行，策略资源不泄漏。
+func localNoReplyDispatch(ct context.Context, moduleName, serviceName string, args, reply any, release func(error)) {
+	util.Go(func() {
+		var cerr error
+		defer func() {
+			if r := recover(); r != nil {
+				cerr = fmt.Errorf("tgf/rpc: local no-reply dispatch panic %s.%s: %v", moduleName, serviceName, r)
+				log.ErrorTag("rpc", "%s", cerr.Error())
+			}
+			release(cerr)
+		}()
+		cerr = localDispatcher.Call(ct, moduleName, serviceName, args, reply)
+	})
 }
 
 // SendNoReplyRPCMessage [Req any, Res any]
 //
 //	@Description: 发送无需等待返回的rpc消息
+//	E1：接入策略管道；Oneshot 的发送错误计入熔断（节点不可达正是要隔离的故障）。
 //	@param ct
 //	@param api
 //	@param Res
 //	@return error
 func SendNoReplyRPCMessage[Req any, Res any](ct context.Context, api *ServiceAPI[Req, Res]) error {
+	release, perr := applyMethodPolicy(api.ModuleName, api.Name)
+	if perr != nil {
+		return perr
+	}
 	// 单进程模式 fast path：同 SendRPCMessage 的逻辑，命中 local dispatcher 就
 	// 直接反射调用（忽略 reply——no reply 语义）。
 	if localDispatchEnabled.Load() {
 		if _, ok := localDispatcher.Lookup(api.ModuleName); ok {
-			// 后台执行避免阻塞调用方——和 rpcx Oneshot 的语义保持一致
-			go func() {
-				_ = localDispatcher.Call(ct, api.ModuleName, api.Name, api.args, api.reply)
-			}()
+			localNoReplyDispatch(ct, api.ModuleName, api.Name, api.args, api.reply, release)
 			return nil
 		}
 	}
@@ -1129,20 +1253,25 @@ func SendNoReplyRPCMessage[Req any, Res any](ct context.Context, api *ServiceAPI
 		xclient = rc.getClient(api.ModuleName)
 	)
 	if xclient == nil {
-		return errors.New(fmt.Sprintf("找不到对应模块的服务 moduleName=%v", api.ModuleName))
+		err := errors.New(fmt.Sprintf("找不到对应模块的服务 moduleName=%v", api.ModuleName))
+		release(err)
+		return err
 	}
 	err := xclient.Oneshot(ct, api.Name, api.args)
+	release(err)
 	return err
 }
 
 func SendNoReplyRPCMessageByAddress(moduleName, address, serviceName string, args interface{}) error {
+	release, perr := applyMethodPolicy(moduleName, serviceName)
+	if perr != nil {
+		return perr
+	}
 	// 单进程模式 fast path：地址参数在单进程下没意义，命中即本地调用。
 	// reply 为 nil，Call 内部会构造零值对象占位。
 	if localDispatchEnabled.Load() {
 		if _, ok := localDispatcher.Lookup(moduleName); ok {
-			go func() {
-				_ = localDispatcher.Call(context.Background(), moduleName, serviceName, args, nil)
-			}()
+			localNoReplyDispatch(context.Background(), moduleName, serviceName, args, nil, release)
 			return nil
 		}
 	}
@@ -1152,59 +1281,109 @@ func SendNoReplyRPCMessageByAddress(moduleName, address, serviceName string, arg
 		xclient = rc.getClient(moduleName)
 	)
 	if xclient == nil {
-		return errors.New(fmt.Sprintf("找不到对应模块的服务 moduleName=%v", moduleName))
+		err := errors.New(fmt.Sprintf("找不到对应模块的服务 moduleName=%v", moduleName))
+		release(err)
+		return err
 	}
 	err := xclient.Oneshot(newRPCNodeContext(moduleName, address), serviceName, args)
+	release(err)
 	return err
 }
 
-func SendRPCMessageByStr(ct context.Context, moduleName, serviceName string, args, reply interface{}) error {
+// SendRPCMessageByStr 按字符串 module/method 发送同步 RPC（LoginHook/OfflineHook
+// 等内部钩子走本路径）。
+// E1：接入策略管道 + 超时。原实现是无 deadline 的同步 xclient.Call——慢节点会
+// 卡死调用方 goroutine（登录/下线钩子在网关连接的关键路径上）。ct 多为连接级
+// *share.Context，不能 context.WithTimeout 包装（破坏 rpcx 类型断言），与
+// sendMessage 一致采用 Go + select 模式。
+func SendRPCMessageByStr(ct context.Context, moduleName, serviceName string, args, reply interface{}) (err error) {
+	release, perr := applyMethodPolicy(moduleName, serviceName)
+	if perr != nil {
+		return perr
+	}
+	defer func() {
+		release(err)
+	}()
 	var (
 		rc      = getRPCClient()
 		xclient = rc.getClient(moduleName)
 	)
 	if xclient == nil {
-		return tgf.ServiceNotFound
+		err = tgf.ServiceNotFound
+		return err
 	}
-	err := xclient.Call(ct, serviceName, args, reply)
+	done := make(chan *client.Call, 1)
+	call, gerr := xclient.Go(ct, serviceName, args, reply, done)
+	if gerr != nil {
+		err = fmt.Errorf("rpc请求异常 moduleName=%v serviceName=%v error=%w", moduleName, serviceName, gerr)
+		return err
+	}
+	if call == nil {
+		err = fmt.Errorf("rpc请求异常 moduleName=%v serviceName=%v error=无可用服务节点", moduleName, serviceName)
+		return err
+	}
+	select {
+	case <-time.After(resolveRPCTimeout(moduleName, serviceName)):
+		err = tgf.ErrorRPCTimeOut
+	case <-call.Done:
+		err = call.Error
+	}
 	return err
 }
 
 // BorderRPCMessage [Req any, Res any]
 //
 //	@Description: 推送消息到所有服务节点
+//	E1 修复：原实现对 rc.getClient 的返回值不判空——单进程模式 / 目标模块无节点
+//	（滚动发布常态）时 xclient 为 nil 直接 panic。现在判空走日志告警路径；
+//	同时接入策略管道（Broadcast 的失败计入熔断）。
 //	@param ct
 //	@param api
 //	@param Res]
 func BorderRPCMessage[Req any, Res any](ct context.Context, api *ServiceAPI[Req, Res]) {
+	release, perr := applyMethodPolicy(api.ModuleName, api.Name)
+	if perr != nil {
+		log.WarnTag("rpc", "broadcast 被策略拒绝 module=%v method=%v err=%v", api.ModuleName, api.Name, perr)
+		return
+	}
+	var err error
+	defer func() {
+		release(err)
+	}()
 	var (
 		rc      = getRPCClient()
 		xclient = rc.getClient(api.ModuleName)
 	)
-	xclient.Broadcast(ct, api.Name, api.args, api.reply)
+	if xclient == nil {
+		err = tgf.ServiceNotFound
+		log.WarnTag("rpc", "broadcast 找不到对应模块的服务 moduleName=%v", api.ModuleName)
+		return
+	}
+	if err = xclient.Broadcast(ct, api.Name, api.args, api.reply); err != nil {
+		log.WarnTag("rpc", "broadcast 失败 module=%v method=%v err=%v", api.ModuleName, api.Name, err)
+	}
 }
 
 func BorderAllServiceRPCMessageByContext[Req any, Res any](ct context.Context, api *ServiceAPI[Req, Res]) {
-	var (
-		rc = getRPCClient()
-		//xclient = rc.getClient(api.ModuleName)
-	)
-	//nodeMap := ct.Value(share.ReqMetaDataKey)
-	//if m, h := nodeMap.(map[string]string); h {
+	rc := getRPCClient()
+	// E1 修复：单进程模式 / client 未初始化时 rc 为 nil，原实现直接 Range panic。
+	if rc == nil || rc.clients == nil {
+		log.WarnTag("rpc", "broadcast-all 跳过：RPC client 不可用(单进程模式或 discovery 未初始化)")
+		return
+	}
 	rc.clients.Range(func(s string, xClient client.XClient) bool {
-		//if m[s] != "" {
 		xClient.Oneshot(ct, api.Name, api.args)
-		//}
 		return true
 	})
-	//}
 }
 
 func BorderAllServiceRPCMessageByContextNotCheck[Req any, Res any](ct context.Context, api *ServiceAPI[Req, Res]) {
-	var (
-		rc = getRPCClient()
-		//xclient = rc.getClient(api.ModuleName)
-	)
+	rc := getRPCClient()
+	// E1 修复：同 BorderAllServiceRPCMessageByContext 的 nil 防御。
+	if rc == nil || rc.clients == nil {
+		log.WarnTag("rpc", "broadcast-all 跳过：RPC client 不可用(单进程模式或 discovery 未初始化)")
+		return
+	}
 	rc.clients.Range(func(s string, xClient client.XClient) bool {
 		if s == tgf.MonitorServiceModuleName || s == tgf.AdminServiceModuleName {
 			return true
@@ -1303,6 +1482,13 @@ func UserLogin(ctx context.Context, userId string) (*LoginRes, error) {
 	}, &LoginRes{}))
 }
 
+// E6 死代码清理（v3 审计 P3）：下方 NewRPCContext 家族原各有一行
+// `ct.SetValue(share.ServerTimeout, 5)`——rpcx 客户端只从 ctx.Deadline() 生成
+// wire 的 ServerTimeout 元数据（xclient.go setServerTimeout），服务端从
+// req.Metadata 按毫秒解析，全代码库无人读 ctx.Value(share.ServerTimeout)；
+// 即便哪天被读，5 也会被按 5 毫秒而非 5 秒解释。已整组删除；
+// RPC 超时统一由 resolveRPCTimeout（A7/E1 管道）控制。
+
 func newUserContext(userId string) context.Context {
 	ct := share.NewContext(context.Background())
 	initData := make(map[string]string)
@@ -1325,7 +1511,6 @@ func NewCacheUserContext(userId string) context.Context {
 		initData[tgf.ContextKeyRPCType] = tgf.RPCTip
 		ct.SetValue(share.ReqMetaDataKey, initData)
 	}
-	ct.SetValue(share.ServerTimeout, 5)
 	return ct
 }
 
@@ -1334,7 +1519,6 @@ func NewRPCContext() context.Context {
 	initData := make(map[string]string)
 	initData[tgf.ContextKeyRPCType] = tgf.RPCTip
 	ct.SetValue(share.ReqMetaDataKey, initData)
-	ct.SetValue(share.ServerTimeout, 5)
 	return ct
 }
 
@@ -1344,7 +1528,6 @@ func newRPCNodeContext(moduleName, address string) context.Context {
 	initData[tgf.ContextKeyRPCType] = tgf.RPCTip
 	initData[moduleName] = address
 	ct.SetValue(share.ReqMetaDataKey, initData)
-	ct.SetValue(share.ServerTimeout, 5)
 	return ct
 }
 
@@ -1359,7 +1542,6 @@ func NewUserRPCContext(userId string) context.Context {
 	initData[tgf.ContextKeyUserId] = userId
 	initData[tgf.ContextKeyHash] = userId
 	ct.SetValue(share.ReqMetaDataKey, initData)
-	ct.SetValue(share.ServerTimeout, 5)
 	return ct
 }
 
@@ -1374,6 +1556,5 @@ func NewBindRPCContext(userId ...string) context.Context {
 	ids := strings.Join(userId, ",")
 	initData[tgf.ContextKeyBroadcastUserIds] = ids
 	ct.SetValue(share.ReqMetaDataKey, initData)
-	ct.SetValue(share.ServerTimeout, 5)
 	return ct
 }

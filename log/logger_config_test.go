@@ -2,13 +2,16 @@ package log
 
 // log 包配置项的测试。
 //
-// 验证 v2 新增的 LogMaxSize / LogMaxAge / LogMaxBackups / LogCompress /
-// LogLocalTime / LogTimeFormat 这些环境变量能被 loadLumberjackConfig 正确读取
-// 并落到包级 runtime* 变量上。
+// E3 收敛后：loadLumberjackConfig 不再裸读 os.Getenv，而是从统一配置系统
+// （tgf/config，CONFIG 契约）读 Current().Logger 的类型化字段。本测试通过
+// 设置环境变量 + tgfconfig.Load() 建立快照，再调用 loadLumberjackConfig
+// 验证 v2 新增的 LogMaxSize / LogMaxAge / ... 能正确落到包级 runtime* 变量。
 
 import (
 	"os"
 	"testing"
+
+	tgfconfig "github.com/thkhxm/tgf/config"
 )
 
 // 保存/恢复 runtime 变量，让多个测试之间不互相干扰
@@ -41,34 +44,60 @@ func restoreLumberjack(s lumberjackSnapshot) {
 	runtimeTimeFormat = s.timeFormat
 }
 
+// loggerEnvKeys 是本测试组会改动的所有 log 相关环境变量；测试前后保存/恢复，
+// 避免污染包级单例（log 包 init 已建立过一份快照）。
+var loggerEnvKeys = []string{
+	"LogMaxSize", "LogMaxAge", "LogMaxBackups",
+	"LogCompress", "LogLocalTime", "LogTimeFormat",
+	"LogLevel", "LogIgnoredTags",
+}
+
+// withLoggerEnv 保存现有 env、应用 set、Load 建立快照，返回的 cleanup 恢复一切。
+func withLoggerEnv(t *testing.T, set map[string]string) {
+	t.Helper()
+	saved := make(map[string]*string, len(loggerEnvKeys))
+	for _, k := range loggerEnvKeys {
+		if v, ok := os.LookupEnv(k); ok {
+			vv := v
+			saved[k] = &vv
+		} else {
+			saved[k] = nil
+		}
+		_ = os.Unsetenv(k)
+	}
+	for k, v := range set {
+		_ = os.Setenv(k, v)
+	}
+	// 重新解析，建立 tgfconfig 快照（loadLumberjackConfig 的读取源）
+	if _, err := tgfconfig.Load(); err != nil {
+		t.Fatalf("tgfconfig.Load 失败: %v", err)
+	}
+	t.Cleanup(func() {
+		for k, v := range saved {
+			if v == nil {
+				_ = os.Unsetenv(k)
+			} else {
+				_ = os.Setenv(k, *v)
+			}
+		}
+		// 恢复后再 Load 一次，让快照回到与进程 env 一致的状态
+		_, _ = tgfconfig.Load()
+	})
+}
+
 func TestLumberjackConfig_Defaults(t *testing.T) {
 	defer restoreLumberjack(snapshotLumberjack())
 
-	// 清掉所有相关环境变量
-	envs := []string{
-		"LogMaxSize", "LogMaxAge", "LogMaxBackups",
-		"LogCompress", "LogLocalTime", "LogTimeFormat",
-	}
-	saved := make(map[string]string)
-	for _, k := range envs {
-		saved[k] = os.Getenv(k)
-		_ = os.Unsetenv(k)
-	}
-	defer func() {
-		for k, v := range saved {
-			if v != "" {
-				_ = os.Setenv(k, v)
-			}
-		}
-	}()
+	// 全部清空相关环境变量 → 走 struct tag 默认值
+	withLoggerEnv(t, nil)
 
-	// 重置为初始默认值
-	runtimeMaxSize = 512
-	runtimeMaxAge = 0
-	runtimeMaxBackups = 100
-	runtimeCompress = false
-	runtimeLocalTime = true
-	runtimeTimeFormat = "2006-01-02 15:04:05.000"
+	// 故意把 runtime 变量设成异常值，验证 loadLumberjackConfig 会用默认值覆盖
+	runtimeMaxSize = -1
+	runtimeMaxAge = -1
+	runtimeMaxBackups = -1
+	runtimeCompress = true
+	runtimeLocalTime = false
+	runtimeTimeFormat = "x"
 
 	loadLumberjackConfig()
 
@@ -87,17 +116,22 @@ func TestLumberjackConfig_Defaults(t *testing.T) {
 	if !runtimeLocalTime {
 		t.Errorf("默认 LocalTime 应为 true")
 	}
+	if runtimeTimeFormat != "2006-01-02 15:04:05.000" {
+		t.Errorf("默认 TimeFormat 错: %q", runtimeTimeFormat)
+	}
 }
 
 func TestLumberjackConfig_EnvOverrides(t *testing.T) {
 	defer restoreLumberjack(snapshotLumberjack())
 
-	t.Setenv("LogMaxSize", "256")
-	t.Setenv("LogMaxAge", "7")
-	t.Setenv("LogMaxBackups", "50")
-	t.Setenv("LogCompress", "true")
-	t.Setenv("LogLocalTime", "false")
-	t.Setenv("LogTimeFormat", "2006/01/02 15:04:05")
+	withLoggerEnv(t, map[string]string{
+		"LogMaxSize":    "256",
+		"LogMaxAge":     "7",
+		"LogMaxBackups": "50",
+		"LogCompress":   "true",
+		"LogLocalTime":  "false",
+		"LogTimeFormat": "2006/01/02 15:04:05",
+	})
 
 	loadLumberjackConfig()
 
@@ -121,24 +155,52 @@ func TestLumberjackConfig_EnvOverrides(t *testing.T) {
 	}
 }
 
+// TestLumberjackConfig_BoolParseTolerance 验证 bool 类配置（LogCompress）的宽松
+// 解析在 CONFIG 契约下依然成立——解析由 tgf/config 包统一负责，规范化快照把
+// "true"/"yes"/"1"/"on" 统一为 true。
 func TestLumberjackConfig_BoolParseTolerance(t *testing.T) {
-	cases := []struct {
-		in   string
-		want bool
-	}{
-		{"true", true}, {"True", true}, {"TRUE", true},
-		{"1", true}, {"yes", true}, {"y", true}, {"on", true},
-		{"false", false}, {"0", false}, {"no", false},
-		{"n", false}, {"off", false}, {"  ", false}, // " " trim 后为空
-	}
-	for _, c := range cases {
-		got := parseBoolEnv(c.in, false)
-		if got != c.want {
-			t.Errorf("parseBoolEnv(%q) = %v, want %v", c.in, got, c.want)
+	defer restoreLumberjack(snapshotLumberjack())
+
+	trueCases := []string{"true", "True", "TRUE", "1", "yes", "y", "on"}
+	for _, c := range trueCases {
+		withLoggerEnv(t, map[string]string{"LogCompress": c})
+		loadLumberjackConfig()
+		if !runtimeCompress {
+			t.Errorf("LogCompress=%q 应解析为 true", c)
 		}
 	}
-	// 默认值 fallback
-	if parseBoolEnv("garbage", true) != true {
-		t.Error("无法识别的值应返回默认值")
+
+	falseCases := []string{"false", "0", "no", "n", "off"}
+	for _, c := range falseCases {
+		withLoggerEnv(t, map[string]string{"LogCompress": c})
+		loadLumberjackConfig()
+		if runtimeCompress {
+			t.Errorf("LogCompress=%q 应解析为 false", c)
+		}
+	}
+}
+
+// TestSanitizeLoggerConfig_ZeroValueFallback 验证 sanitizeLoggerConfig 对全零值
+// LoggerConfig（典型场景：未导入 tgf 包导致 Current() 返回空 Config）回退到硬编码
+// 默认，保证零配置行为不变。
+func TestSanitizeLoggerConfig_ZeroValueFallback(t *testing.T) {
+	lc := sanitizeLoggerConfig(tgfconfig.LoggerConfig{})
+	if lc.MaxSize != 512 {
+		t.Errorf("零值 MaxSize 应回退 512, got %d", lc.MaxSize)
+	}
+	if lc.MaxBackups != 100 {
+		t.Errorf("零值 MaxBackups 应回退 100, got %d", lc.MaxBackups)
+	}
+	if lc.TimeFormat != "2006-01-02 15:04:05.000" {
+		t.Errorf("零值 TimeFormat 应回退默认, got %q", lc.TimeFormat)
+	}
+	if lc.ServiceFile != "service/service.log" {
+		t.Errorf("零值 ServiceFile 应回退默认, got %q", lc.ServiceFile)
+	}
+	if lc.DBFile != "db/db.log" {
+		t.Errorf("零值 DBFile 应回退默认, got %q", lc.DBFile)
+	}
+	if lc.Path != "./log/tgf.log" {
+		t.Errorf("零值 Path 应回退默认, got %q", lc.Path)
 	}
 }

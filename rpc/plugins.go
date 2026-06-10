@@ -11,6 +11,7 @@ import (
 	"github.com/thkhxm/rpcx/server"
 	"github.com/thkhxm/rpcx/share"
 	"github.com/thkhxm/tgf"
+	tgfconfig "github.com/thkhxm/tgf/config"
 	"github.com/thkhxm/tgf/db"
 	"github.com/thkhxm/tgf/exp/admin"
 	"github.com/thkhxm/tgf/log"
@@ -240,7 +241,9 @@ func (c *CustomSelector) initStruct(moduleName string) {
 	c.servers = hashmap.New[string, *ConsulServerInfo]()
 	c.h = doublejump.NewHash()
 	c.moduleName = moduleName
-	c.pushGate = tgf.GetStrConfig[int32](tgf.EnvironmentGatePush) == 1
+	// E 档配置读点迁移：bool 项直接读类型化字段（原 GetStrConfig[int32]==1 旧读法，
+	// 新配置系统对 "true"/"yes" 等宽松写法的解析两套 API 同源同值）。
+	c.pushGate = tgfconfig.Current().Gate.Push
 	c.cacheManager = db.NewAutoCacheManager[string, string](localNodeCacheTimeout)
 }
 

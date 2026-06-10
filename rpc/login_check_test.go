@@ -284,11 +284,12 @@ func TestGenerateLoginToken_NoSecret(t *testing.T) {
 	}
 }
 
-// TestWithLoginTokenSecret_PriorityOverEnv 验证显式注入密钥优先于环境变量。
+// TestWithLoginTokenSecret_PriorityOverEnv 验证显式注入密钥优先于环境变量
+// （E 档迁移后环境变量经配置快照读取，改 env 需同步重建快照）。
 func TestWithLoginTokenSecret_PriorityOverEnv(t *testing.T) {
 	resetLoginCheckForTest()
 	defer resetLoginCheckForTest()
-	t.Setenv(EnvLoginTokenSecret, "env-secret")
+	setEnvConfigForTest(t, EnvLoginTokenSecret, "env-secret")
 
 	(&Server{}).WithLoginTokenSecret("explicit-secret")
 	if got := string(resolveLoginTokenSecret()); got != "explicit-secret" {

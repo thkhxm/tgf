@@ -48,6 +48,7 @@ import (
 	"sync/atomic"
 	"time"
 
+	"github.com/thkhxm/rpcx/client"
 	"github.com/thkhxm/tgf/metrics"
 )
 
@@ -174,19 +175,32 @@ func (s *Server) WithMethodPolicy(method string, p MethodPolicy) *Server {
 // 检查顺序：熔断器 → 限流 → 并发。理由是"便宜的拒绝"放在前面——熔断器是
 // 几个原子 load，限流是一次 mutex，并发是 chan send。依次递增。
 //
+// E1 修复（HalfOpen 探测名额泄漏）：HalfOpen 状态下 breaker.allow() 经 CAS 消费
+// 掉唯一探测名额；原实现里若紧接着被令牌桶/信号量拒绝，名额永不归还——此后
+// probeAllow 恒 false，该方法**永久** ErrRPCCircuitOpen，只能重启进程恢复。
+// 现在被后续策略拒绝时立即调用 releaseProbe 归还名额，熔断器可自动恢复。
+//
 // 返回 err != nil 时 release 仍然被调用（内部闭包直接 no-op），调用方不需要
 // 特判——但 err 本身不会再被计到断路器，因为是"本地拒绝"而非"远端失败"。
 func (mr *methodRuntime) beforeCall() (release func(err error), err error) {
 	release = noopRelease
 
 	// 1. 断路器
-	if mr.breaker != nil && !mr.breaker.allow() {
-		policyCounter("tgf_rpc_policy_reject_circuit_total").Inc()
-		return release, ErrRPCCircuitOpen
+	var breakerProbe bool
+	if mr.breaker != nil {
+		ok, probe := mr.breaker.allow()
+		if !ok {
+			policyCounter("tgf_rpc_policy_reject_circuit_total").Inc()
+			return release, ErrRPCCircuitOpen
+		}
+		breakerProbe = probe
 	}
 
 	// 2. 限流
 	if mr.tokenBkt != nil && !mr.tokenBkt.allow() {
+		if breakerProbe {
+			mr.breaker.releaseProbe()
+		}
 		policyCounter("tgf_rpc_policy_reject_ratelimit_total").Inc()
 		return release, ErrRPCRateLimited
 	}
@@ -196,6 +210,9 @@ func (mr *methodRuntime) beforeCall() (release func(err error), err error) {
 		select {
 		case mr.sem <- struct{}{}:
 		default:
+			if breakerProbe {
+				mr.breaker.releaseProbe()
+			}
 			policyCounter("tgf_rpc_policy_reject_concurrency_total").Inc()
 			return release, ErrRPCOverload
 		}
@@ -210,10 +227,11 @@ func (mr *methodRuntime) beforeCall() (release func(err error), err error) {
 			}
 		}
 		if mr.breaker != nil {
-			if callErr == nil {
-				mr.breaker.markSuccess()
-			} else {
+			// E1 熔断错误分类：业务错误不计失败（见 isCircuitFailure）。
+			if isCircuitFailure(callErr) {
 				mr.breaker.markFailure()
+			} else {
+				mr.breaker.markSuccess()
 			}
 		}
 	}
@@ -221,6 +239,39 @@ func (mr *methodRuntime) beforeCall() (release func(err error), err error) {
 }
 
 func noopRelease(_ error) {}
+
+// applyMethodPolicy 是策略管道的统一入口（E1 全覆盖）：所有发送路径——
+// SendRPCMessage、网关主链路 sendMessage（doLogic→sendMessage）、
+// SendAsyncRPCMessage、SendNoReplyRPCMessage(ByAddress)、SendRPCMessageByStr、
+// BorderRPCMessage——共用本函数做限流/熔断/并发检查。
+// 未配置策略时只有一次 sync.Map.Load，零分配返回 noopRelease（fast path）。
+func applyMethodPolicy(module, method string) (release func(error), err error) {
+	if mr := resolveMethodPolicy(module, method); mr != nil {
+		return mr.beforeCall()
+	}
+	return noopRelease, nil
+}
+
+// isCircuitFailure 判定一次调用错误是否计入熔断失败（E1 熔断错误分类）。
+//
+// 分类原则：熔断器隔离的是"节点/链路故障"，不是"业务拒绝"。远端 handler 正常
+// 返回的业务 error（参数校验失败、『余额不足』等）说明节点健康，高频业务拒绝
+// 不应熔断一个完全健康的服务：
+//   - nil → 成功；
+//   - rpcx ServiceError（远端 handler 返回值经 rpcx 协议带回，节点收到请求且
+//     正常处理）→ 不计失败（按成功处理，同时重置失败计数）；
+//   - 其余（tgf.ErrorRPCTimeOut、client.ErrXClientNoServer、连接/网络层错误）
+//     → 计失败。
+func isCircuitFailure(err error) bool {
+	if err == nil {
+		return false
+	}
+	var se client.ServiceError
+	if errors.As(err, &se) && se.IsServiceError() {
+		return false
+	}
+	return true
+}
 
 // ---- policyCounter：延迟初始化的 metrics counter ----
 
@@ -300,13 +351,17 @@ const (
 	cbHalfOpen int32 = 2
 )
 
-// allow 返回 true 表示允许调用。内部也处理 Open→HalfOpen 的过渡。
+// allow 返回 (是否允许调用, 本次放行是否消费了 HalfOpen 探测名额)。
+// 内部也处理 Open→HalfOpen 的过渡。
 // 所有 state 字段读写都走 atomic，避免和 markSuccess/markFailure 的写入 race。
-func (c *circuitState) allow() bool {
+//
+// E1：probe 返回值供 beforeCall 在"探测请求被后续策略（限流/并发）拒绝"时
+// 调用 releaseProbe 归还名额——否则熔断器永久卡死在 HalfOpen。
+func (c *circuitState) allow() (ok bool, probe bool) {
 	s := atomic.LoadInt32(&c.state)
 	switch s {
 	case cbClosed:
-		return true
+		return true, false
 	case cbOpen:
 		c.mu.Lock()
 		// 到期进入 HalfOpen。用 atomic.Store 保证和 allow 的 Load 同步。
@@ -314,19 +369,28 @@ func (c *circuitState) allow() bool {
 			atomic.StoreInt32(&c.state, cbHalfOpen)
 			c.halfProbeSet.Store(false)
 			c.mu.Unlock()
-			return c.probeAllow()
+			p := c.probeAllow()
+			return p, p
 		}
 		c.mu.Unlock()
-		return false
+		return false, false
 	case cbHalfOpen:
-		return c.probeAllow()
+		p := c.probeAllow()
+		return p, p
 	}
-	return true
+	return true, false
 }
 
 // probeAllow 只允许一次探测通过。CAS 保证多 goroutine 并发时只有一个拿到放行。
 func (c *circuitState) probeAllow() bool {
 	return c.halfProbeSet.CompareAndSwap(false, true)
+}
+
+// releaseProbe 归还 HalfOpen 的探测名额（E1 修复）。
+// 仅在名额仍被占用时归还（CAS true→false）；探测已完成（markSuccess/markFailure
+// 已迁移状态并重置名额）后调用是安全的 no-op。
+func (c *circuitState) releaseProbe() {
+	c.halfProbeSet.CompareAndSwap(true, false)
 }
 
 func (c *circuitState) markSuccess() {

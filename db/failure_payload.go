@@ -6,9 +6,9 @@ package db
 //   - payload 可跨进程 replay，需要包含"是哪张表的哪批 values"——但不能包含
 //     Val 具体类型（泛型擦除后已经是 []any，只能依赖调用方的 DDL 约定做解码）
 //   - 当前只支持最小元数据：表名 + values 数量 + values JSON 序列化
-//   - replay 侧由业务决定怎么根据 tableName 找到对应 autoCacheManager 再执行
-//     flushFn。框架不自动做 dispatch——因为泛型实例化在启动时已经完成，
-//     一个进程里可能有多个 sqlBuilder[Val]，映射逻辑留给业务方自己管理
+//   - replay 侧 dispatch（E4 起为框架内置）：每个 longevity 管理器在 InitStruct
+//     时按表名注册 replay flusher（failure_replay.go），ReplayPayload /
+//     启动重放据此把 payload 分发到对应管理器的 flushBatch 真实落库。
 //
 // 格式：sonic.Marshal 的 JSON
 //
@@ -63,11 +63,13 @@ func DecodeFailurePayload(p FailurePayload) (*FailurePayloadDoc, error) {
 	return doc, nil
 }
 
-// resolveFailureQueue 返回 builder 里配置的 FailureQueue，nil 回落到 Noop。
-// 把 nil check 抽成方法方便 toLongevity 内直接用。
+// resolveFailureQueue 返回 builder 里配置的 FailureQueue。
+// E4：未配置（nil）时不再回落 Noop，而是回落到进程级默认 FileFailureQueue——
+// 开箱即得"落库失败跨重启可恢复"。业务可用 WithLongevityFailureQueue 注入
+// 自定义实现覆盖；显式传 NoopFailureQueue{} 可关闭补偿队列。
 func (a *autoCacheManager[Key, Val]) resolveFailureQueue() FailureQueue {
 	if a.builder == nil || a.builder.longevityFailureQueue == nil {
-		return NoopFailureQueue{}
+		return defaultFailureQueue()
 	}
 	return a.builder.longevityFailureQueue
 }

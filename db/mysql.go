@@ -6,7 +6,7 @@ import (
 	"errors"
 	"fmt"
 	_ "github.com/go-sql-driver/mysql"
-	"github.com/thkhxm/tgf"
+	tgfconfig "github.com/thkhxm/tgf/config"
 	"github.com/thkhxm/tgf/log"
 	"time"
 )
@@ -62,9 +62,8 @@ type IModel interface {
 }
 
 type mysqlService struct {
-	running     bool
-	db          *sql.DB
-	executeChan chan string
+	running bool
+	db      *sql.DB
 }
 
 // isRunning 对 nil receiver 安全：dbService 未初始化（如 CacheModuleClose 或测试环境）
@@ -97,30 +96,44 @@ func getMysqlConn() (*sql.Conn, error) {
 	return conn, nil
 }
 
-func (m *mysqlService) AsyncExecuteUpdateOrCreate(sqlScript string) {
-	var ()
-	dbService.executeChan <- sqlScript
-}
-
 func GetConn() *sql.Conn {
 	return dbService.getConnection()
 }
 
+// mysqlDSNFromConfig E4/E2 配置读点迁移：从统一配置系统组装 DSN
+// （旧 tgf.GetStrConfig 适配层与此读同一份解析结果）。抽成独立函数便于表驱动单测。
+func mysqlDSNFromConfig(cfg *tgfconfig.Config) string {
+	return fmt.Sprintf("%v:%v@tcp(%v:%v)/%v?charset=utf8mb4&parseTime=True&loc=Local",
+		cfg.MySQL.User, cfg.MySQL.Password, cfg.MySQL.Addr, cfg.MySQL.Port, cfg.MySQL.DB)
+}
+
+// mysqlPoolFromConfig 连接池参数：统一配置驱动，<=0 时回落历史默认 10/200/300s。
+func mysqlPoolFromConfig(cfg *tgfconfig.Config) (maxIdle, maxOpen, maxLifetimeSec int) {
+	maxIdle = cfg.MySQL.MaxIdleConns
+	if maxIdle <= 0 {
+		maxIdle = 10
+	}
+	maxOpen = cfg.MySQL.MaxOpenConns
+	if maxOpen <= 0 {
+		maxOpen = 200
+	}
+	maxLifetimeSec = cfg.MySQL.ConnMaxLifetimeSec
+	if maxLifetimeSec <= 0 {
+		maxLifetimeSec = 300
+	}
+	return
+}
+
 func initMySql() {
 	var (
-		err      error
-		d        *sql.DB
-		userName = tgf.GetStrConfig[string](tgf.EnvironmentMySqlUser)
-		password = tgf.GetStrConfig[string](tgf.EnvironmentMySqlPwd)
-		hostName = tgf.GetStrConfig[string](tgf.EnvironmentMySqlAddr)
-		port     = tgf.GetStrConfig[string](tgf.EnvironmentMySqlPort)
-		database = tgf.GetStrConfig[string](tgf.EnvironmentMySqlDB)
+		err error
+		d   *sql.DB
+		cfg = tgfconfig.Current()
 	)
 
 	dbService = new(mysqlService)
-	dbService.executeChan = make(chan string)
 	// 定义 MySQL 数据库连接信息
-	dataSourceName := fmt.Sprintf("%v:%v@tcp(%v:%v)/%v?charset=utf8mb4&parseTime=True&loc=Local", userName, password, hostName, port, database)
+	dataSourceName := mysqlDSNFromConfig(cfg)
 	// 创建数据库连接池
 	d, err = sql.Open("mysql", dataSourceName)
 	// D5: err 检查必须紧跟 sql.Open——DSN 畸形时 d 为 nil，
@@ -129,19 +142,8 @@ func initMySql() {
 		log.WarnTag("init", "mysql dataSourceName is wrong err=%v", err)
 		return
 	}
-	// v2: 连接池参数从硬编码改为环境变量驱动，零配置时仍用 10/200/300s
-	maxIdle := tgf.GetStrConfig[int](tgf.EnvironmentMySqlMaxIdleConns)
-	if maxIdle <= 0 {
-		maxIdle = 10
-	}
-	maxOpen := tgf.GetStrConfig[int](tgf.EnvironmentMySqlMaxOpenConns)
-	if maxOpen <= 0 {
-		maxOpen = 200
-	}
-	maxLifetime := tgf.GetStrConfig[int](tgf.EnvironmentMySqlConnMaxLifetimeSec)
-	if maxLifetime <= 0 {
-		maxLifetime = 300
-	}
+	// v2: 连接池参数统一配置驱动，零配置时仍用 10/200/300s
+	maxIdle, maxOpen, maxLifetime := mysqlPoolFromConfig(cfg)
 	d.SetMaxIdleConns(maxIdle)
 	d.SetMaxOpenConns(maxOpen)
 	d.SetConnMaxLifetime(time.Duration(maxLifetime) * time.Second)
@@ -152,5 +154,5 @@ func initMySql() {
 	}
 	dbService.running = true
 	dbService.db = d
-	log.InfoTag("init", "mysql is running hostName=%v port=%v database=%v", hostName, port, database)
+	log.InfoTag("init", "mysql is running hostName=%v port=%v database=%v", cfg.MySQL.Addr, cfg.MySQL.Port, cfg.MySQL.DB)
 }

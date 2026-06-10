@@ -32,28 +32,37 @@ type cacheKey interface {
 	~int | ~int8 | ~int16 | ~int32 | ~int64 | ~uint | ~uint8 | ~uint16 | ~uint32 | ~uint64 | ~uintptr | ~float32 | ~float64 | ~string
 }
 
-type cacheDataState uint8
-
 const (
 	data_default = 0
 	data_del     = 1 << 1
 	data_update  = 1 << 2
+
+	// stateFlagBits 是 state 字段低位标志区的宽度（容纳 data_del / data_update），
+	// 其余高位是单调递增的版本号（见 cacheData 注释）。
+	stateFlagBits = 3
 )
 
 // cacheData 是写回缓存的最小数据单元。
 //
-// B6 修复：`state` 从裸 uint8 升级为 atomic.Uint32。
-// 原因：autoCacheManager 的读路径（Get / Range / GetAll）与写路径（Set / toLongevity /
-// del）可能并发访问同一个 cacheData，而 state 同时被 checkState / removeState / update
-// 读写。A1 重写 toLongevity 时只解决了"落库一致性"，没解决 state 字段本身的 data race。
-// B6 在 component 并发测试中被 race detector 抓出。
+// B6 修复：state 原子化（原裸 uint8），消除 checkState / removeState / update
+// 之间的 data race。
 //
-// 升级到 atomic.Uint32 而不是 uint8 是因为 Go stdlib 没有 atomic.Uint8——额外 3 字节
-// 对每个 cache 条目可忽略。
+// E4 修复（lost-update 逻辑竞态）：toLongevity 的"快照 → 落库 → 清脏标志"序列
+// 本身不是原子的——flush 含重试退避，窗口可达数百毫秒，期间业务原地修改 Val
+// 并调 Push/update 标上的新脏标志会被旧实现的无条件 removeState(data_update)
+// 一并清掉，该次修改永不落库（Redis 与 MySQL 永久分叉直到 TTL 回档）。
+// 方案：把"标志位 + 单调版本号"合并进一个 atomic.Uint64——低 stateFlagBits 位
+// 是标志，高位是版本。每次 update()/del() 版本 +1；flush 快照阶段记录版本，
+// 落库成功后用 CAS 仅在版本未变时清除 data_update。任何并发修改都会让 CAS
+// 失败，脏标志保留交给下一轮重刷（方向安全：至多多刷一轮，绝不丢更新）。
+//
+// E4 同步修复：clearTime 改为 atomic.Int64。读路径 getData 每次 Get 都在写它
+// （滑动续期），与 autoClear 的 checkTimeOut 读形成 data race（B6 漏修，
+// 审计 manager.go:308-339 指出）。
 type cacheData[Val any] struct {
 	data      Val
-	clearTime int64
-	state     atomic.Uint32
+	clearTime atomic.Int64
+	state     atomic.Uint64
 }
 
 var defaultUpdateGroupSize = 500
@@ -216,9 +225,18 @@ func (h *hashAutoCacheManager[Val]) loadCache(key ...string) (keys []string, err
 
 		//从db获取
 		if h.longevity() {
-			d := make([]any, len(key))
-			for i, k := range key {
-				d[i] = k
+			// E5（真实 MySQL 集成测试暴露）：queryListSql 的占位符只对应 pkList
+			// 主键字段，而 Get/Set 的 key 形如 [pk键..., field键]（如 ["uid","propId"]）。
+			// 旧实现把全部 key 透传给 queryList，真实驱动会校验占位符个数，
+			// 冷缓存下复合 key 的 Get 必报 "sql: expected N arguments, got M"。
+			// 修复：按占位符个数取 key 前缀——与 GetAll 只传 pkList 键的约定一致。
+			argc := strings.Count(h.sb.queryListSql, "?")
+			if argc > len(key) {
+				argc = len(key)
+			}
+			d := make([]any, argc)
+			for i := 0; i < argc; i++ {
+				d[i] = key[i]
 			}
 			val, qerr := h.sb.queryList(d...)
 			if qerr != nil {
@@ -312,6 +330,17 @@ func (h *hashAutoCacheManager[Val]) Push(key ...string) {
 	}
 }
 
+// Remove E4 修复"删除数据双路复活"：
+//  1. Redis 侧旧实现删的是字符串 key "keyFun:mKey:fieldKey"——这个 key 根本不存在，
+//     数据真实存放在 hash key "keyFun:mKey" 的 field=fieldKey 里，原 Del 等于没删。
+//     改为 HDEL 命中真正的 hash field。
+//  2. DB 侧旧实现从不把模型 State 置 0，落库 upsert 写回的仍是 state=1 的行，
+//     本地缓存过期/进程重启后 loadCache 会把"已删除"的数据原样复活。
+//     现在通过 markModelRemoved 把删除态写进待落库数据（querySql 过滤 state=1，
+//     重载不再命中）。
+//
+// 注意：Remove 会原地把模型 State 置 0；删除后请勿对同一指针调用 Push
+// （会把 state=0 重新写进 Redis），重新写入请使用新构造的模型。
 func (h *hashAutoCacheManager[Val]) Remove(key ...string) (success bool) {
 	mKey := h.image.HashCachePkKey(key...)
 	fieldKey := h.image.HashCacheFieldByKeys(key...)
@@ -324,16 +353,16 @@ func (h *hashAutoCacheManager[Val]) Remove(key ...string) (success bool) {
 	}
 	keys = util.RemoveOneKey(keys, localKey)
 
-	//h.cacheMap.Del(localKey)
-	//设置过期时间，不直接删除
+	//删除真正的 hash field（E4：原实现 Del 错 key，详见函数注释）
 	if h.cache() {
-		Del(h.getCacheKey(localKey))
+		DelMapField(h.getCacheKey(mKey), fieldKey)
 	}
 
 	if h.longevity() {
 		if localCacheData, ok := h.cacheMap.Get(localKey); ok {
+			//E4：把删除态写进待落库模型（State=0），del 内部已置 data_del+data_update
+			markModelRemoved(any(localCacheData.data))
 			h.del(localKey)
-			localCacheData.update()
 		}
 	} else {
 		h.cacheMap.Del(localKey)
@@ -378,40 +407,83 @@ func newCacheData[Val any](data Val, second int64) *cacheData[Val] {
 	res := &cacheData[Val]{}
 	res.data = data
 	if second > 0 {
-		res.clearTime = time.Now().Unix() + second
+		res.clearTime.Store(time.Now().Unix() + second)
 	}
 	return res
 }
 
 func (c *cacheData[Val]) checkTimeOut(now int64) bool {
-	var ()
-	return c.clearTime != 0 && now > c.clearTime
+	ct := c.clearTime.Load()
+	return ct != 0 && now > ct
 }
 
-// state 标志位的原子操作：用 Or / And 避免读-改-写的窗口。
-// 注意 Go 1.19 才加入 `atomic.Uint32.Or/And`，当前工具链是 1.24.7 所以可用。
+// del 标记删除：置 data_del + data_update（删除事实同样要落库），版本 +1，
+// 并设置本地 tombstone 的过期时间（单位：秒）。
 func (c *cacheData[Val]) del(second int64) {
-	c.clearTime = time.Now().Unix() + second
-	c.state.Or(data_del)
-	c.state.Or(data_update) // 等价于原先 del 里 c.update() 的语义
+	c.clearTime.Store(time.Now().Unix() + second)
+	for {
+		old := c.state.Load()
+		nw := (old + (1 << stateFlagBits)) | data_del | data_update
+		if c.state.CompareAndSwap(old, nw) {
+			return
+		}
+	}
 }
 
+// update 标脏：置 data_update 并使版本 +1（CAS 保证版本递增与标志置位原子完成）。
 func (c *cacheData[Val]) update() {
-	c.state.Or(data_update)
+	for {
+		old := c.state.Load()
+		nw := (old + (1 << stateFlagBits)) | data_update
+		if c.state.CompareAndSwap(old, nw) {
+			return
+		}
+	}
 }
 
-func (c *cacheData[Val]) checkState(state uint32) bool {
+func (c *cacheData[Val]) checkState(state uint64) bool {
 	return c.state.Load()&state == state
 }
 
-func (c *cacheData[Val]) removeState(state uint32) {
-	c.state.And(^state)
+func (c *cacheData[Val]) removeState(state uint64) {
+	for {
+		old := c.state.Load()
+		nw := old &^ state
+		if old == nw || c.state.CompareAndSwap(old, nw) {
+			return
+		}
+	}
+}
+
+// dirtySnapshot 原子读取一次状态：带 data_update 时返回（当前版本, true）。
+// flush 快照阶段用它保证"脏标志判断"与"版本记录"来自同一次 Load。
+func (c *cacheData[Val]) dirtySnapshot() (ver uint64, dirty bool) {
+	st := c.state.Load()
+	if st&data_update != data_update {
+		return 0, false
+	}
+	return st >> stateFlagBits, true
+}
+
+// clearUpdateIfVersion 仅当版本与 flush 快照一致时清除 data_update。
+// 返回 false 表示快照之后发生过并发修改（update/del 使版本递增），
+// 脏标志被保留，交给下一轮落库——E4 lost-update 竞态修复的核心。
+func (c *cacheData[Val]) clearUpdateIfVersion(ver uint64) bool {
+	for {
+		old := c.state.Load()
+		if old>>stateFlagBits != ver {
+			return false
+		}
+		nw := old &^ uint64(data_update)
+		if c.state.CompareAndSwap(old, nw) {
+			return true
+		}
+	}
 }
 
 func (c *cacheData[Val]) getData(second int64) Val {
-	var ()
 	if second > 0 {
-		c.clearTime = time.Now().Unix() + second
+		c.clearTime.Store(time.Now().Unix() + second)
 	}
 	return c.data
 }
@@ -525,12 +597,17 @@ func (a *autoCacheManager[Key, Val]) Push(key ...Key) {
 	}
 }
 
+// Remove E4：除本地 tombstone 与 Redis 过期外，还会把模型 State 置 0
+// （markModelRemoved），使删除事实随下一轮 flush 写进 DB——否则落库 upsert
+// 写回的仍是 state=1 的行，进程重启后数据从 DB"复活"。
+// 删除后请勿对同一指针调用 Push，重新写入请使用新构造的模型。
 func (a *autoCacheManager[Key, Val]) Remove(key ...Key) (success bool) {
 	localKey := a.getLocalKey(key...)
 	if a.longevity() {
 		if localCacheData, ok := a.cacheMap.Get(localKey); ok {
+			//E4：把删除态写进待落库模型；del 内部已置 data_del+data_update
+			markModelRemoved(any(localCacheData.data))
 			a.del(localKey)
-			localCacheData.update()
 		}
 	} else {
 		a.cacheMap.Del(localKey)
@@ -543,6 +620,15 @@ func (a *autoCacheManager[Key, Val]) Remove(key ...Key) (success bool) {
 	//延迟删除本地数据
 	success = true
 	return
+}
+
+// markModelRemoved E4：若值实现了 Remove()（内嵌 db.Model 即满足），把模型状态
+// 置为删除（State=0），让落库路径把删除事实写进 DB。未实现时静默跳过
+// （非 IModel 的值类型本就不会走 longevity 落库）。
+func markModelRemoved(v any) {
+	if rm, ok := v.(interface{ Remove() }); ok {
+		rm.Remove()
+	}
 }
 
 func (a *autoCacheManager[Key, Val]) Reset() IAutoCacheService[Key, Val] {
@@ -607,7 +693,9 @@ func (a *autoCacheManager[Key, Val]) autoClear() {
 	//初始化1/5的容量
 	removeKeys := make([]string, 0, a.cacheMap.Len()/5)
 	a.cacheMap.Range(func(k string, c *cacheData[Val]) bool {
-		if c.checkTimeOut(now) {
+		// E4 脏数据驱逐保护：data_update 未清（尚未成功落库）的条目绝不驱逐，
+		// 否则未落库的修改随驱逐丢失。flush 成功清脏后的下一轮 autoClear 会回收。
+		if c.checkTimeOut(now) && !c.checkState(data_update) {
 			removeKeys = append(removeKeys, k)
 		}
 		return true
@@ -677,19 +765,28 @@ func (a *autoCacheManager[Key, Val]) flushDirtyLocked() (successCount, failCount
 	}
 
 	// Phase 1: 收集脏数据。每个 batch 同时记录 values（用于 SQL）与对应 cacheData 指针
-	// （用于事务成功后再清标志——失败时必须保留 data_update，交给下一轮补偿）。
+	// + 快照版本号（用于事务成功后做版本校验再清标志——失败或版本变化时必须保留
+	// data_update，交给下一轮补偿。E4 lost-update 竞态修复）。
+	type dirtyRef struct {
+		cd  *cacheData[Val]
+		ver uint64
+	}
 	type pendingBatch struct {
 		values []any
-		dirty  []*cacheData[Val]
+		dirty  []dirtyRef
 	}
 	var batches []pendingBatch
 	var current pendingBatch
 	a.cacheMap.Range(func(s string, c *cacheData[Val]) bool {
-		if !c.checkState(data_update) {
+		ver, dirty := c.dirtySnapshot()
+		if !dirty {
 			return true
 		}
+		// 顺序敏感：先取版本快照、后取值快照。若取值期间发生并发修改，
+		// 落库的是更"新"的数据而版本校验失败 → 脏标志保留下一轮重刷，
+		// 方向安全（至多多刷一轮，绝不丢更新）。反过来则会丢更新。
 		current.values = append(current.values, a.sb.toValueSql(c.getData(0))...)
-		current.dirty = append(current.dirty, c)
+		current.dirty = append(current.dirty, dirtyRef{cd: c, ver: ver})
 		if len(current.dirty) >= groupSize {
 			batches = append(batches, current)
 			current = pendingBatch{}
@@ -704,22 +801,26 @@ func (a *autoCacheManager[Key, Val]) flushDirtyLocked() (successCount, failCount
 		return 0, 0, nil
 	}
 
-	// Phase 2: 逐批落库。成功才清 data_update；失败打 ERROR 日志并保留脏标志，
-	// 下一轮 timer 会重新捡起来重试。这样任何单批失败都不会导致丢数据。
+	// Phase 2: 逐批落库。成功才清 data_update（且仅在版本未变时清——见
+	// clearUpdateIfVersion）；失败打 ERROR 日志并保留脏标志，下一轮 timer 会
+	// 重新捡起来重试。这样任何单批失败都不会导致丢数据。
 	//
-	// C4/A1b：如果业务注入了 FailureQueue，失败 batch 也会序列化一份进补偿队列，
-	// 业务启动阶段可以 ReplayFailureQueue 重放。脏标志依然保留（队列是补救通道，
-	// 不是替代通道），下一轮 timer 还会重试。重试成功时 queue 里的重复条目靠
-	// SQL 的 UPSERT 幂等性兜底。
+	// C4/A1b/E4：失败 batch 同时序列化进补偿队列（E4 起默认 File 实现，开箱即
+	// 跨重启可恢复；启动阶段由 wireFailureReplay 自动重放）。脏标志依然保留
+	// （队列是补救通道，不是替代通道），下一轮 timer 还会重试。重试成功时
+	// queue 里的重复条目靠 SQL 的 UPSERT 幂等性兜底。
 	var errs []error
 	failureQueue := a.resolveFailureQueue()
 	for _, b := range batches {
+		mcFlushBatchTotal().Inc()
 		if ferr := a.flushBatch(b.values, len(b.dirty)); ferr != nil {
 			log.ErrorTag("orm",
 				"longevity batch failed, keeping dirty flag for next round, table=%s size=%d err=%v",
 				a.sb.tableName, len(b.dirty), ferr)
 			failCount += len(b.dirty)
 			errs = append(errs, ferr)
+			mcFlushBatchFailTotal().Inc()
+			mcFlushRowsFailTotal().Add(float64(len(b.dirty)))
 			// 补偿队列降级——即便 enqueue 失败也不影响下一轮 timer 重试。
 			if failureQueue != nil {
 				payload, perr := encodeFailurePayload(a.sb.tableName, b.values, len(b.dirty))
@@ -727,14 +828,27 @@ func (a *autoCacheManager[Key, Val]) flushDirtyLocked() (successCount, failCount
 					log.WarnTag("orm", "longevity failure encode error table=%s err=%v", a.sb.tableName, perr)
 				} else if eerr := failureQueue.Enqueue(payload); eerr != nil {
 					log.WarnTag("orm", "longevity failure enqueue error table=%s err=%v", a.sb.tableName, eerr)
+				} else {
+					mcFailureEnqueueTotal().Inc()
 				}
+				mgFailureQueueDepth().Set(float64(failureQueue.Len()))
 			}
 			continue
 		}
-		for _, c := range b.dirty {
-			c.removeState(data_update)
+		kept := 0
+		for _, d := range b.dirty {
+			// E4：仅当版本未变时清脏。flush 窗口内被并发修改的条目保留
+			// data_update，下一轮重刷最新值。
+			if !d.cd.clearUpdateIfVersion(d.ver) {
+				kept++
+			}
+		}
+		if kept > 0 {
+			log.DebugTag("orm",
+				"flush 窗口内发生并发修改, 保留脏标志待下一轮 table=%s kept=%d", a.sb.tableName, kept)
 		}
 		successCount += len(b.dirty)
+		mcFlushRowsSuccessTotal().Add(float64(len(b.dirty)))
 	}
 	return successCount, failCount, errors.Join(errs...)
 }
@@ -765,6 +879,27 @@ func (a *autoCacheManager[Key, Val]) FlushNow() (res FlushResult) {
 	return
 }
 
+// wireFailureReplay E4：把当前管理器接进补偿队列 replay 链路（InitStruct 内调用）：
+//  1. 按表名注册 payload flusher——指向本管理器的 flushBatch，真实执行
+//     INSERT ... ON DUPLICATE KEY UPDATE 落库（替代旧版"业务自己手写 SQL"的半成品）；
+//  2. 立刻对解析到的补偿队列做一轮启动重放：上次进程崩溃 / MySQL 宕机期间
+//     留下的失败批次，在对应管理器创建完成的此刻重新落库。
+//     表尚未注册的 payload（属于其它管理器）重新入队，等它的管理器创建时再重放。
+func (a *autoCacheManager[Key, Val]) wireFailureReplay() {
+	table := a.sb.tableName
+	registerReplayFlusher(table, func(values []any, count int) error {
+		return a.flushBatch(values, count)
+	})
+	q := a.resolveFailureQueue()
+	replayed, requeued, err := replayQueueForKnownTables(q)
+	if err != nil {
+		log.WarnTag("orm", "补偿队列启动 replay 存在失败批次(已重新入队等待下次重放) table=%s err=%v", table, err)
+	}
+	if replayed > 0 || requeued > 0 {
+		log.InfoTag("orm", "补偿队列启动 replay 完成 table=%s replayed=%d requeued=%d", table, replayed, requeued)
+	}
+}
+
 func (a *autoCacheManager[Key, Val]) longevityInterval() time.Duration {
 	var ()
 	if a.builder.longevityInterval == 0 {
@@ -775,7 +910,15 @@ func (a *autoCacheManager[Key, Val]) longevityInterval() time.Duration {
 }
 func (a *autoCacheManager[Key, Val]) del(key string) bool {
 	if val, ok := a.cacheMap.Get(key); ok {
-		val.del(int64(a.longevityInterval() * 5))
+		// E4 修复：longevityInterval 是 time.Duration（纳秒），旧实现直接转 int64
+		// 当"秒"用，tombstone 过期时间被放大 1e9 倍（默认 5s 间隔 → 约 792 年）：
+		// 被删条目永远占着内存，且该 key 在本进程内永久返回"not found"。
+		// 按秒换算并保底 1 秒。
+		seconds := int64((a.longevityInterval() * 5) / time.Second)
+		if seconds <= 0 {
+			seconds = 1
+		}
+		val.del(seconds)
 		return true
 	}
 	return false
@@ -845,7 +988,12 @@ func (a *autoCacheManager[Key, Val]) initField(rf reflect.Type, pkFields, pkList
 		if isTableField {
 			newFieldName = append(newFieldName, name)
 			newTableFieldNum = append(newTableFieldNum, field.Name)
-			if name == StateName {
+			// E5（真实 MySQL 集成测试暴露）：ConvertCamelToSnake 返回的列名带反引号
+			// （"`state`"），直接与裸名 StateName（"state"）比较永远为假——hasState
+			// 从未置位，querySql/queryListSql 不会追加 "and state = 1"，已删除
+			//（state=0）的行在重载时原样复活（E4 宣称的删除过滤实际未生效）。
+			// 这里按去反引号后的列名比较。
+			if strings.Trim(name, "`") == StateName {
 				a.sb.hasState = true
 			}
 		}
@@ -861,6 +1009,9 @@ func (a *autoCacheManager[Key, Val]) InitStruct() {
 	a.clearPlugins = a.builder.plugins
 	a.longevityLock = &sync.Mutex{}
 	a.sb = &sqlBuilder[Val]{}
+	// E6：WithLongevityRetry 接线——把 builder 配置透传给 sqlBuilder.flushBatch，
+	// <=0（未配置）时 flushBatch 内部回退 defaultLongevityRetry。
+	a.sb.retryAttempts = a.builder.longevityRetry
 	a.sf = &singleflight.Group{}
 	a.flushBatch = a.sb.flushBatch
 	var k Val
@@ -942,6 +1093,9 @@ func (a *autoCacheManager[Key, Val]) InitStruct() {
 		// D 档停机钩子：注册进 flushRegistry，停机流程通过 db.FlushAll()
 		// 把全部 longevity 管理器的脏数据可靠落库。
 		registerFlushable(a)
+		// E4：补偿队列 replay 接线——按表名注册 payload flusher，并立刻对
+		// 补偿队列做一轮启动重放（上次进程留下的失败批次在此真实落库）。
+		a.wireFailureReplay()
 	}
 	tgf.AddDestroyHandler(a)
 }
@@ -976,12 +1130,11 @@ type sqlBuilder[Val any] struct {
 	updateEndSql       string
 	updateValueBaseSql string
 	updateAsSql        string
-	//mongo
-	collection string
-	//chan
-	updateChan chan Val
 	//
 	hasState bool
+	// E6：单批落库失败的最大重试次数（含首次），由 AutoCacheBuilder.WithLongevityRetry
+	// 经 InitStruct 透传；<=0 回退 defaultLongevityRetry。
+	retryAttempts int
 }
 
 func (s *sqlBuilder[Val]) initStruct() {
@@ -1016,7 +1169,6 @@ func (s *sqlBuilder[Val]) initStruct() {
 	s.updateValueBaseSql = updateValueBaseSql
 	s.updateAsSql = "AS v "
 	log.DebugTag("omr", "table=%v update sql=%v", s.tableName, s.updateStartSql+s.updateValueBaseSql+s.updateAsSql+s.updateEndSql)
-	s.updateChan = make(chan Val)
 }
 
 func (s *sqlBuilder[Val]) toValueSql(val Val) (q []any) {
@@ -1026,51 +1178,6 @@ func (s *sqlBuilder[Val]) toValueSql(val Val) (q []any) {
 	q = make([]any, sliceSize)
 	for i, index := range s.modelFieldName {
 		q[i] = ref.FieldByName(index).Interface()
-	}
-	return
-}
-
-func (s *sqlBuilder[Val]) initField(rf reflect.Type, pkFields, fieldName []string, tableFieldNum []int) (newPkFields, newFieldName []string, newTableFieldNum []int) {
-	// 使用参数初始化新的切片
-	newPkFields = append([]string{}, pkFields...)
-	newFieldName = append([]string{}, fieldName...)
-	newTableFieldNum = append([]int{}, tableFieldNum...)
-
-	for i := 0; i < rf.NumField(); i++ {
-		field := rf.Field(i)
-		if !field.IsExported() {
-			continue
-		}
-		if field.Anonymous {
-			p, f, t := s.initField(field.Type, newPkFields, newFieldName, newTableFieldNum)
-			newPkFields = append([]string{}, p...)
-			newFieldName = append([]string{}, f...)
-			newTableFieldNum = append([]int{}, t...)
-			continue
-		}
-		orm := ""
-		name := ConvertCamelToSnake(field.Name)
-		isTableField := true
-		if field.Tag != "" {
-			orm = field.Tag.Get("orm")
-			data := strings.Split(orm, ";")
-			for _, t := range data {
-				switch t {
-				case ignore:
-					isTableField = false
-				case pk:
-					newPkFields = append(newPkFields, name+" = ?")
-				}
-			}
-		}
-		if isTableField {
-			newFieldName = append(newFieldName, name)
-			newTableFieldNum = append(newTableFieldNum, i)
-			if name == StateName {
-				s.hasState = true
-			}
-		}
-		log.DebugTag("omr", "结构化日志打印 structName=%v field=%v tag=%v", rf.Name(), field.Name, orm)
 	}
 	return
 }
@@ -1220,7 +1327,11 @@ func (s *sqlBuilder[Val]) flushBatch(values []any, count int) error {
 		log.DB(traceId, s.tableName, logScript, int32(count))
 	}
 
-	maxAttempts := defaultLongevityRetry
+	// E6：WithLongevityRetry 真实生效——优先用 builder 透传的重试次数。
+	maxAttempts := s.retryAttempts
+	if maxAttempts <= 0 {
+		maxAttempts = defaultLongevityRetry
+	}
 	var lastErr error
 	backoff := defaultLongevityRetryBackoff
 	for attempt := 1; attempt <= maxAttempts; attempt++ {

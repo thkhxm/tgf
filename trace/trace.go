@@ -1,16 +1,20 @@
 // Package trace 为 tgf 框架提供最小化的分布式追踪抽象。
 //
-// 设计目标（B4 档）：
+// 设计目标（B4 档定义接口，E3 档完成与 rpcx 链路的贯通）：
 //  1. **零外部依赖**。默认实现是 NoOp Span，不引入 go.opentelemetry.io/otel，
 //     避免强制拉一个百 MB 依赖树。
-//  2. **对齐已有 context key**。`StartSpan` 注入/读取的 trace id 使用
-//     `tgf.ContextKeyTRACEID`，和 `tgf/rpc/plugins.go` 里的 RPC 拦截器共用
-//     同一把钥匙。tgf 代码内部不 import tgf 主包（避免循环引用），所以 key
-//     常量在本包内复制声明，迁移时保持字符串一致。
+//  2. **与 rpcx ReqMetaData 贯通（E3）**。实际 RPC 链路的 trace id 存在 rpcx
+//     share.Context 的 ReqMetaData["TraceId"] 里（网关每请求生成并随 rpcx 协议
+//     透传到后端 service）。本包通过**鸭子类型桥接**读取/写入它：凡 ctx 实现
+//     `GetReqMetaDataByKey(string) string` / `SetReqMetaData(key, val string)`
+//     （share.Context 的方法签名），TraceIDFromContext / WithTraceID 即直接
+//     操作 ReqMetaData——不 import rpcx，保持零依赖；同一条请求从网关到后端
+//     service（再到 db 层日志）拿到的是同一个 trace id。
 //  3. **可桥接 OpenTelemetry**。`Tracer` 接口故意设计得贴近 OTEL 的 StartSpan
 //     签名，未来加 `tgf/trace/otel` subpackage 写一个 adapter 就能直接对接。
-//  4. **日志友好**。默认实现在 Span End 时按 DEBUG 级打一条"span=name trace_id=..."，
-//     让没有 OTEL 基建的用户也能在日志里顺出调用链路。
+//  4. **默认 NoOp 不打日志**。noopSpan 的 End 是空实现（零成本）；需要"span
+//     结束打一条日志"的行为请用 SetTracer 注入自定义 Tracer——RPC 链路本身的
+//     请求/响应日志由 tgf/rpc/plugins.go 的拦截器按 DEBUG 级输出（带 trace id）。
 package trace
 
 import (
@@ -114,21 +118,52 @@ func StartSpan(ctx context.Context, name string) (context.Context, Span) {
 
 type traceIDKey struct{}
 
-// WithTraceID 把 trace id 注入 context。使用私有 key 避免和其他包冲突。
+// metaReader / metaWriter 是 rpcx share.Context 的鸭子类型投影（E3 桥接）。
+// 本包不 import rpcx（保持零依赖），按方法签名结构性匹配：
+// *share.Context 天然实现这两个接口。
+type metaReader interface {
+	GetReqMetaDataByKey(key string) string
+}
+
+type metaWriter interface {
+	SetReqMetaData(key, val string)
+}
+
+// WithTraceID 把 trace id 注入 context。
+//
+// E3 桥接：ctx 是 rpcx share.Context（实现 SetReqMetaData）时直接写进
+// ReqMetaData["TraceId"] 并返回**原 ctx**——绝不能用 context.WithValue 包装
+// share.Context，否则下游 rpcx selector / tgf helper 的 `ctx.(*share.Context)`
+// 类型断言会失败，链路 meta 透传整体断裂。写入 ReqMetaData 的 trace id 会随
+// rpcx 协议自动透传到下一跳。其余 ctx 走私有 key 包装（进程内传递）。
 func WithTraceID(ctx context.Context, traceID string) context.Context {
 	if ctx == nil {
 		ctx = context.Background()
+	}
+	if mw, ok := ctx.(metaWriter); ok {
+		mw.SetReqMetaData(ContextKeyTraceID, traceID)
+		return ctx
 	}
 	return context.WithValue(ctx, traceIDKey{}, traceID)
 }
 
 // TraceIDFromContext 读取 trace id。空字符串表示未设置。
+//
+// 查找顺序（E3 桥接）：
+//  1. 私有 key（进程内 WithTraceID 包装的普通 ctx）；
+//  2. rpcx ReqMetaData["TraceId"]（网关 StartReq 生成、经 rpcx 协议透传到
+//     后端 service 的链路 trace id）——这是跨进程贯通的关键一跳。
 func TraceIDFromContext(ctx context.Context) string {
 	if ctx == nil {
 		return ""
 	}
-	if v, ok := ctx.Value(traceIDKey{}).(string); ok {
+	if v, ok := ctx.Value(traceIDKey{}).(string); ok && v != "" {
 		return v
+	}
+	if mr, ok := ctx.(metaReader); ok {
+		if v := mr.GetReqMetaDataByKey(ContextKeyTraceID); v != "" {
+			return v
+		}
 	}
 	return ""
 }

@@ -6,6 +6,7 @@ package rpc
 //           （httptest.Server + gorilla websocket client）
 
 import (
+	"bytes"
 	"encoding/binary"
 	"errors"
 	"io"
@@ -174,13 +175,19 @@ func TestTCPFramedConn_WriteFrame_Passthrough(t *testing.T) {
 	}
 }
 
-// TestTCPFramedConn_IsWebSocket 简单断言 IConn 类型标志正确。
-func TestTCPFramedConn_IsWebSocket(t *testing.T) {
+// TestTCPFramedConn_EncodeResponse E6：编码下沉后，TCP 适配器自带二进制响应帧
+// 编码且不被识别为 WS 传输（isWSConn 用于 handleConn 的 meta 历史行为差异）。
+func TestTCPFramedConn_EncodeResponse(t *testing.T) {
 	_, server := net.Pipe()
 	defer server.Close()
 	fc := newTCPFramedConn(server, 0, 0)
-	if fc.IsWebSocket() {
-		t.Errorf("tcpFramedConn.IsWebSocket() should be false")
+	if isWSConn(fc) {
+		t.Errorf("tcpFramedConn 不应被识别为 WS 传输")
+	}
+	frame := fc.EncodeResponse("game.Hi", 1, 0, []byte("payload"))
+	want := encodeBinaryResponseFrame("game.Hi", []byte("payload"))
+	if !bytes.Equal(frame, want) {
+		t.Errorf("tcpFramedConn.EncodeResponse 应输出二进制响应帧")
 	}
 }
 
@@ -356,8 +363,9 @@ func TestWSFramedConn_ClientCloseReturnsError(t *testing.T) {
 	}
 }
 
-// TestWSFramedConn_IsWebSocket 类型标志断言
-func TestWSFramedConn_IsWebSocket(t *testing.T) {
+// TestWSFramedConn_TransportAndEncode E6：WS 适配器被 isWSConn 识别为 WS 传输，
+// 且 EncodeResponse 输出 WSResponse proto 格式。
+func TestWSFramedConn_TransportAndEncode(t *testing.T) {
 	srv, ready, done := startWSTestServer(t)
 	defer srv.Close()
 	defer close(done)
@@ -372,8 +380,17 @@ func TestWSFramedConn_IsWebSocket(t *testing.T) {
 		t.Fatalf("server wsFramedConn not ready within 2s")
 	}
 
-	if !serverFC.IsWebSocket() {
-		t.Errorf("wsFramedConn.IsWebSocket() should be true")
+	if !isWSConn(serverFC) {
+		t.Errorf("wsFramedConn 应被识别为 WS 传输")
+	}
+	frame := serverFC.EncodeResponse("game.WS", 3, 9, []byte("ws-payload"))
+	resp := &WSResponse{}
+	if err := proto.Unmarshal(frame, resp); err != nil {
+		t.Fatalf("EncodeResponse 应输出 WSResponse proto: %v", err)
+	}
+	if resp.MessageType != "game.WS" || resp.ReqId != 3 || resp.Code != 9 ||
+		!bytes.Equal(resp.Data, []byte("ws-payload")) {
+		t.Errorf("WSResponse 字段不符: %+v", resp)
 	}
 }
 

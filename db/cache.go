@@ -7,6 +7,7 @@ import (
 	"github.com/bytedance/sonic"
 	"github.com/redis/go-redis/v9"
 	"github.com/thkhxm/tgf"
+	tgfconfig "github.com/thkhxm/tgf/config"
 	"github.com/thkhxm/tgf/log"
 	"github.com/thkhxm/tgf/util"
 	"reflect"
@@ -32,6 +33,10 @@ type iCacheService interface {
 	Set(key string, val any, timeout time.Duration)
 	GetMap(key string) map[string]string
 	PutMap(key, filed, val string, timeout time.Duration)
+	// HDel E4：删除 hash 结构中的指定 field（HDEL，立即删除）。
+	// hashAutoCacheManager.Remove 依赖它命中真正的 hash field——
+	// 旧实现 Del 的是不存在的字符串 key，删除等于没发生（数据复活缺陷）。
+	HDel(key string, fields ...string)
 	Del(key string)
 	DelNow(key string)
 	GetList(key string, start, end int64) (res []string, err error)
@@ -229,6 +234,17 @@ func AddSetItem[Val any](key string, timeout time.Duration, val Val) (err error)
 	}
 	cache.AddSetItem(key, a, timeout)
 	return
+}
+
+// DelMapField E4
+// @Description: 删除 hash 结构（GetMap/PutMap 写入的结构）中的指定 field。
+// 与 Del（对整个 key 设短过期）不同，hash field 没有独立 TTL，HDEL 立即删除。
+// hashAutoCacheManager.Remove 通过它删除真正的 hash field。
+func DelMapField(key string, fields ...string) {
+	if cache == nil {
+		return
+	}
+	cache.HDel(key, fields...)
 }
 
 func Del(key string) {
@@ -461,6 +477,8 @@ func (a *AutoCacheBuilder[Key, Val]) WithLongevityGroupSize(size int) *AutoCache
 // WithLongevityRetry
 //
 //	@Description: 指定单批落库失败时的最大重试次数（含首次），<=0 时回退到默认值。
+//	E6 接线：该值经 InitStruct 透传给 sqlBuilder.flushBatch 真实生效
+//	（旧版本字段从未被读取，配置静默无效——V3 审计 P2 修复）。
 func (a *AutoCacheBuilder[Key, Val]) WithLongevityRetry(attempts int) *AutoCacheBuilder[Key, Val] {
 	if attempts > 0 {
 		a.longevityRetry = attempts
@@ -468,12 +486,15 @@ func (a *AutoCacheBuilder[Key, Val]) WithLongevityRetry(attempts int) *AutoCache
 	return a
 }
 
-// WithLongevityFailureQueue C4 / A1b
+// WithLongevityFailureQueue C4 / A1b / E4
 //
 //	@Description: 注入一个落库失败补偿队列。toLongevity 里 flushBatch 在内部
-//	重试耗尽后会把当次 batch 序列化进 queue，业务在启动阶段用 db.ReplayFailureQueue
-//	读出来重放。
-//	传 nil 恢复默认的 NoopFailureQueue（和 A1 行为一致）。
+//	重试耗尽后会把当次 batch 序列化进 queue；longevity 管理器创建时框架自动
+//	重放（wireFailureReplay），业务也可手动调 db.ReplayFailureQueue /
+//	db.ReplayPayload 重放。
+//	E4 起默认（nil）回落到进程级 FileFailureQueue（./longevity_failures.log，
+//	路径可经 db.SetDefaultFailureQueuePath 定制）；显式传 NoopFailureQueue{}
+//	可关闭补偿队列（恢复 A1 行为）。
 func (a *AutoCacheBuilder[Key, Val]) WithLongevityFailureQueue(q FailureQueue) *AutoCacheBuilder[Key, Val] {
 	a.longevityFailureQueue = q
 	return a
@@ -549,7 +570,7 @@ func WithCacheModule(module tgf.CacheModule) {
 	cacheModule = module
 }
 
-// ---- v2 默认 cache 超时（启动时从环境变量读取，未配置时回落到历史硬编码） ----
+// ---- v2 默认 cache 超时（启动时从统一配置系统读取，未配置时回落到历史硬编码） ----
 //
 // 业务可通过：
 //
@@ -563,10 +584,19 @@ var (
 )
 
 func init() {
-	if v := tgf.GetStrConfig[int64](tgf.EnvironmentDBCacheTimeoutSec); v > 0 {
+	// E4/E2 配置读点迁移：旧 tgf.GetStrConfig 改为统一配置系统 tgfconfig.Current()
+	// （两者读同一份解析结果；tgf 包 init 已保证 Current() 非零值）。
+	applyDefaultCacheTimeouts(tgfconfig.Current())
+}
+
+// applyDefaultCacheTimeouts 从统一配置应用 DB 层默认 TTL。
+// 启动期一次性项（builder 构造时拷贝该值），<=0 时保持历史硬编码默认。
+// 抽成独立函数便于表驱动单测。
+func applyDefaultCacheTimeouts(cfg *tgfconfig.Config) {
+	if v := cfg.DB.CacheTimeoutSec; v > 0 {
 		defaultCacheTimeOut = time.Duration(v) * time.Second
 	}
-	if v := tgf.GetStrConfig[int64](tgf.EnvironmentDBMemTimeoutSec); v > 0 {
+	if v := cfg.DB.MemTimeoutSec; v > 0 {
 		defaultMemTimeOutSecond = v
 	}
 }

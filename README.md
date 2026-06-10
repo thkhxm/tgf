@@ -270,7 +270,7 @@ go run main.go
 |------|-----|------|
 | 环境变量加载 | `config.Load()` | struct tag 驱动 |
 | 当前快照 | `config.Current()` | 原子读 |
-| 热更 | `config.Reload()` + `OnReload(fn)` | 业务侧手动调用触发（框架未内置信号/HTTP 触发器） |
+| 热更 | `config.Reload()` + `OnReload(fn)` | 业务侧手动调用触发（框架未内置信号/HTTP 触发器）；Reload 会先重读 `.env.<module>` 文件（文件值覆盖进程 env），旧 `tgf.GetStrConfig` 同步读到新值 |
 | 游戏配置 | `component.GetGameConf[Val](id)` | 泛型查询 |
 | 游戏配置热更 | `component.ReloadGameConf()` + `StartConfigWatcher()` | 手动调用 / fsnotify 目录监听 |
 

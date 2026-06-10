@@ -11,14 +11,20 @@ package db
 //    2. 数据库长时间不可用，脏数据无上限堆积，OOM 风险
 //    3. 跨重启无法恢复——重启后 cache 重建，脏数据彻底消失
 //
-// A1 当时把这块标为 A1b，挪到 C 档配合分库分表抽象一起做。C4 的落地是一个
-// **可插拔 FailureQueue 接口**——默认 NoOp 不改变现有行为，业务可以接入文件、
-// Redis list、RocksDB、Kafka 等持久化实现，按自己的可靠性 SLA 选实现。
+// A1 当时把这块标为 A1b，挪到 C 档配合分库分表抽象一起做。C4 落地了
+// **可插拔 FailureQueue 接口**；E4 把默认实现从 NoOp 升级为进程级
+// FileFailureQueue（failure_replay.go），并内置启动 replay——开箱即得
+// "落库失败跨重启可恢复"。业务仍可接入 Redis list、RocksDB、Kafka 等
+// 持久化实现，按自己的可靠性 SLA 选实现。
 //
 // 接入点：
-//   - 构造 AutoCacheBuilder 时调 WithLongevityFailureQueue(q) 注入实现
+//   - 默认零配置：失败批次自动进 ./longevity_failures.log（路径可经
+//     SetDefaultFailureQueuePath 定制），longevity 管理器创建时自动重放
+//   - 构造 AutoCacheBuilder 时调 WithLongevityFailureQueue(q) 注入自定义实现，
+//     显式传 NoopFailureQueue{} 关闭补偿队列
 //   - toLongevity 里 flushBatch 失败后，把 batch 序列化进 queue
-//   - 启动阶段业务调 db.ReplayFailureQueue(queue, flushFn) 重放
+//   - 业务也可手动调 db.ReplayFailureQueue(queue, flushFn) /
+//     db.ReplayPayload(p) 重放
 //
 // 失败语义：
 //   - q.Enqueue 本身出错 → 日志 WARN 不抛——主流程不能被降级通道打挂
@@ -31,6 +37,8 @@ import (
 	"io"
 	"os"
 	"sync"
+
+	"github.com/thkhxm/tgf/log"
 )
 
 // FailurePayload 是 FailureQueue 的最小单元：一次落库批次的原始字节。
@@ -290,9 +298,13 @@ func ReplayFailureQueue(q FailureQueue, flushFn func(FailurePayload) error) erro
 	}
 	for i, p := range payloads {
 		if err := flushFn(p); err != nil {
-			// 把剩下的（包括失败的当前条）重新入队，保证不丢
+			// 把剩下的（包括失败的当前条）重新入队，保证不丢。
+			// E4：重新入队失败不再静默吞掉——与文件头宣称的失败语义对齐，
+			// 队列自身故障时至少留下可观测的告警。
 			for _, remaining := range payloads[i:] {
-				_ = q.Enqueue(remaining)
+				if eerr := q.Enqueue(remaining); eerr != nil {
+					log.WarnTag("orm", "ReplayFailureQueue 重新入队失败(payload 可能丢失) err=%v", eerr)
+				}
 			}
 			return fmt.Errorf("db/FailureQueue: flushFn 失败 idx=%d: %w", i, err)
 		}

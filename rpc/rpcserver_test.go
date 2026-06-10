@@ -1,196 +1,117 @@
 //go:build integration
 // +build integration
 
-package rpc_test
-
-import (
-	"bytes"
-	"encoding/binary"
-	"fmt"
-	client2 "github.com/thkhxm/rpcx-consul/client"
-	"github.com/thkhxm/rpcx/client"
-	"github.com/thkhxm/tgf"
-	"github.com/thkhxm/tgf/log"
-	"github.com/thkhxm/tgf/rpc"
-	"golang.org/x/net/context"
-	"net"
-	"sync"
-	"testing"
-)
+package rpc
 
 //***************************************************
 //@Link  https://github.com/thkhxm/tgf
 //@Link  https://gitee.com/timgame/tgf
 //@QQ群 7400585
 //author tim.huang<thkhxm@gmail.com>
-//@Description
-//2023/2/23
+//@Description E5 重写：Server.Run 全链路集成测试（真实 Consul）。
+//
+// 原版（2023/2/23）的问题（V3 审计 P3）：四个测试全部以永不 Done 的
+// WaitGroup.Wait() 收尾——永久挂死，整个 integration 套件从未跑完过；
+// 且依赖外部手工起的 Consul 与另一个进程里的服务端，非自包含。
+//
+// 现版本是一条有界端到端用例，覆盖框架对外承诺的完整生命周期：
+//   NewRPCServer → WithService → Run（rpcx Serve + Consul 注册）
+//   → 真实 rpcx 客户端经 Consul 发现并调用服务方法（断言回包）
+//   → Server.Destroy（D3 优雅停机）→ Consul 反注册（节点从发现结果消失）
+//
+//2023/2/23（E5 重写 2026/6/10）
 //***************************************************
 
-func TestStartRpcServer(t *testing.T) {
-	rpcServer := rpc.NewRPCServer()
-	service := new(DemoService)
+import (
+	"fmt"
+	"testing"
+	"time"
 
-	service2 := new(Demo2Service)
-	rpcServer.
-		WithService(service).
-		WithService(service2).
-		WithGateway("8038").
-		Run()
+	consulclient "github.com/thkhxm/rpcx-consul/client"
+	rpcxclient "github.com/thkhxm/rpcx/client"
+	"golang.org/x/net/context"
+)
 
-	w := sync.WaitGroup{}
-	w.Add(1)
-	w.Wait()
+// itEchoService 是端到端用例的最小业务服务。
+type itEchoService struct {
+	Module
 }
 
-func TestWssServer(t *testing.T) {
-	rpcServer := rpc.NewRPCServer()
-	service := new(DemoService)
+func (s *itEchoService) GetName() string        { return "it-echo" }
+func (s *itEchoService) GetVersion() string     { return "1.0" }
+func (s *itEchoService) Startup() (bool, error) { return true, nil }
 
-	rpcServer.
-		WithService(service).
-		WithGatewayWSS("8038", "/wss", "cert.pem", "key.pem").
-		Run()
-
-	w := sync.WaitGroup{}
-	w.Add(1)
-	w.Wait()
+func (s *itEchoService) RPCEcho(ctx context.Context, args *string, reply *string) error {
+	*reply = "echo:" + *args
+	return nil
 }
 
-func TestTcpClientSender(t *testing.T) {
+func TestIT_ServerRun_RegisterDiscoverCallDeregister(t *testing.T) {
+	env := ensureRPCIT(t)
 
-	// [1][1][2][2][n][n]
-	// magic number|message type|request method name size|data size|method name|data
-	//for i := 0; i < 10; i++ {
-	//	go func() {
-	add, err := net.ResolveTCPAddr("tcp", "127.0.0.1:8038")
-	client, err := net.DialTCP("tcp", nil, add)
+	// 每个调 Run 的用例必须独占端口：Serve 端口冲突会 os.Exit(1) 杀掉测试进程。
+	port := freeITPort(t)
+	setITServicePort(t, port)
+	serviceAddr := fmt.Sprintf("tcp@127.0.0.1:%d", port)
+
+	s := NewRPCServer()
+	s.WithCustomServiceAddress() // 绑定 ServiceAddress=127.0.0.1（harness 已设）
+	s.WithoutServiceClient()     // 本用例只验服务端生命周期，客户端用裸 rpcx 直连
+	s.WithService(&itEchoService{})
+	done := s.Run()
+	if done == nil {
+		t.Fatal("Run 应返回关闭通知通道")
+	}
+
+	// ---- 发现：经真实 Consul 看到本节点 ----
+	d, err := consulclient.NewConsulDiscovery(itRPCConsulBasePath, "it-echo", []string{env.consulAddr}, nil)
 	if err != nil {
-		t.Logf("client error: %v", err)
-		return
+		t.Fatalf("创建客户端 discovery 失败: %v", err)
 	}
-	//for i := 0; i < 100; i++ {
-	//var msg = "say hello - " + strconv.Itoa(i)
-	//Login
-	loginBuff := LoginByteTest()
-	cnt, er := client.Write(loginBuff.Bytes())
-	t.Logf("send login message : %v", loginBuff.Bytes())
-	//Logic
-	buff := LogicByteTest()
-	cnt, er = client.Write(buff.Bytes())
-	if er != nil {
-		t.Logf("write len %v error : %v", cnt, er)
+	defer d.Close()
+
+	rpcITWaitUntil(t, 20*time.Second, "Consul 中出现本节点 "+serviceAddr, func() bool {
+		for _, kv := range d.GetServices() {
+			if kv.Key == serviceAddr {
+				return true
+			}
+		}
+		return false
+	})
+
+	// ---- 真实调用：rpcx 客户端经 Consul 发现并调用 RPCEcho ----
+	// -race 构建下跳过本小节：rpcx fork 的 client.input() 并发化存在已知数据
+	// 竞态（V3 审计 P1，rpcx/client/client.go:644/716，F1 fork 治理修复），
+	// 真实 Call 必然触发误报。CI 集成轨不带 -race，本小节在 CI 全量执行。
+	if itRaceEnabled {
+		t.Log("跳过真实 rpcx Call 小节（rpcx fork client.input 已知竞态，见 it_race_on_test.go）")
+	} else {
+		xc := rpcxclient.NewXClient("it-echo", rpcxclient.Failtry, rpcxclient.RandomSelect, d, rpcxclient.DefaultOption)
+		args := "ping"
+		var reply string
+		callCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+		defer cancel()
+		if err = xc.Call(callCtx, "RPCEcho", &args, &reply); err != nil {
+			t.Fatalf("端到端 RPC 调用失败: %v", err)
+		}
+		if reply != "echo:ping" {
+			t.Fatalf("回包不符: got %q, want %q", reply, "echo:ping")
+		}
+		// 先断客户端连接，避免 Destroy 的 drain 阶段等到超时。
+		_ = xc.Close()
 	}
-	t.Logf("send logic message : %v", buff.Bytes())
 
-	//for {
-	//	resBytes := make([]byte, 1024)
-	//	client.Read(resBytes)
-	//	t.Logf("response message : %v", resBytes)
-	//}
+	// ---- 优雅停机：Destroy → Consul 反注册，节点从发现结果消失 ----
+	s.Destroy()
+	rpcITWaitUntil(t, 20*time.Second, "Destroy 后节点从 Consul 消失", func() bool {
+		for _, kv := range d.GetServices() {
+			if kv.Key == serviceAddr {
+				return false
+			}
+		}
+		return true
+	})
 
-	//	}
-	//}()
-	//time.Sleep(time.Second * 3)
-	//buf := make([]byte, 1024)
-	//rcnt, er2 := client.Read(buf)
-	//if er2 != nil {
-	//	t.Logf("write len %v error : %v", rcnt, er)
-	//}
-	//t.Logf("callback message : %v", string(buf))
-	//}
-	wg := sync.WaitGroup{}
-	wg.Add(1)
-	wg.Wait()
-}
-
-func LoginByteTest() *bytes.Buffer {
-	var token = "token-test2022"
-	data := []byte(token)
-	tmp := make([]byte, 0, 4+len(data))
-	buff := bytes.NewBuffer(tmp)
-	buff.WriteByte(250)
-	reqSizeLenByte := make([]byte, 2)
-	binary.BigEndian.PutUint16(reqSizeLenByte, uint16(len(data)))
-	buff.Write(reqSizeLenByte)
-	buff.Write(data)
-	return buff
-}
-
-func LogicByteTest() *bytes.Buffer {
-	service := new(Demo2Service)
-	var msg = "say hello - "
-	data := []byte(msg)
-	reqName := []byte(fmt.Sprintf("%v.%v", service.GetName(), "RPCSayHello"))
-
-	tmp := make([]byte, 0, 6+len(data)+len(reqName))
-	buff := bytes.NewBuffer(tmp)
-	buff.WriteByte(250)
-	buff.WriteByte(byte(rpc.Logic))
-	reqLenByte := make([]byte, 2)
-	binary.BigEndian.PutUint16(reqLenByte, uint16(len(reqName)))
-	buff.Write(reqLenByte)
-	reqSizeLenByte := make([]byte, 2)
-	binary.BigEndian.PutUint16(reqSizeLenByte, uint16(len(data)))
-	buff.Write(reqSizeLenByte)
-	buff.Write(reqName)
-	buff.Write(data)
-	return buff
-}
-
-func TestClientSender(t *testing.T) {
-	service := new(Demo2Service)
-	serviceName := fmt.Sprintf("%v", service.GetName())
-	d, _ := client2.NewConsulDiscovery(tgf.GetStrConfig[string](tgf.EnvironmentConsulPath), serviceName, tgf.GetStrListConfig(tgf.EnvironmentConsulAddress), nil)
-	xclient := client.NewXClient(serviceName, client.Failtry, client.RandomSelect, d, client.DefaultOption)
-	defer xclient.Close()
-	xclient.Call(context.Background(), "RPCSayHello", nil, nil)
-	w := sync.WaitGroup{}
-	w.Add(1)
-	w.Wait()
-}
-
-type Demo2Service struct {
-	rpc.Module
-}
-
-func (this *Demo2Service) GetName() string {
-	return "example"
-}
-
-func (this *Demo2Service) GetVersion() string {
-	return "v1.0"
-}
-
-func (this *Demo2Service) Startup() (bool, error) {
-	var ()
-	return true, nil
-}
-
-func (this *Demo2Service) RPCSayHello(ctx context.Context, args *interface{}, reply *interface{}) error {
-	var ()
-	log.Info("[test] rpcx2请求抵达 ")
-	return nil
-}
-
-type DemoService struct {
-	rpc.Module
-}
-
-func (this *DemoService) GetName() string {
-	return "demo"
-}
-
-func (this *DemoService) GetVersion() string {
-	return "v1.0"
-}
-
-func (this *DemoService) Startup() (bool, error) {
-	var ()
-	return true, nil
-}
-func (this *DemoService) RPCSayHello(ctx context.Context, args *interface{}, reply *interface{}) error {
-	var ()
-	log.Info("[test] rpcx请求抵达 ")
-	return nil
+	// Destroy 幂等：重复调用不得 panic。
+	s.Destroy()
 }

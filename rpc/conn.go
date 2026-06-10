@@ -39,6 +39,11 @@ type FrameIn struct {
 // IConn 是网关连接的抽象。read/write 粒度是"一帧"，由实现负责分帧与解码。
 // 所有方法都应当是 goroutine-safe-读写分离：ReadFrame 在 reader goroutine 调用，
 // WriteFrame 在 writer goroutine 调用，Close/SetDeadline 可在任意 goroutine。
+//
+// E6（v3）：A2 遗留的 IsWebSocket() 临时方法已按当年承诺移除——它存在的唯一
+// 理由是 getSendToClientData 依赖它选择编码格式，现在编码分支下沉为各适配器的
+// EncodeResponse 实现。WS 连接残留的"接入时往 meta 写本地 gate 地址"历史行为
+// 通过 tcp.go 的 wsTransport 可选接口探测，不再污染核心抽象。
 type IConn interface {
 	ReadFrame() (*FrameIn, error)
 	WriteFrame(data []byte) error
@@ -46,9 +51,11 @@ type IConn interface {
 	RemoteAddr() string
 	SetReadDeadline(t time.Time) error
 	SetWriteDeadline(t time.Time) error
-	// IsWebSocket 标记连接类型，getSendToClientData 当前还依赖它选择编码格式。
-	// phase3/C1 把编码也下沉到 conn 适配器后这个方法可以删掉。
-	IsWebSocket() bool
+	// EncodeResponse 把一次逻辑响应编码成本连接的下行帧格式（E6 下沉）：
+	// TCP/KCP 走 tgf 二进制响应帧（encodeBinaryResponseFrame），
+	// WS 走 WSResponse proto（encodeWSResponseFrame）。
+	// 返回的切片与任何共享存储零别名（D2 / P0-1 约束），可被安全地异步消费。
+	EncodeResponse(messageType string, reqId, code int32, reply []byte) []byte
 }
 
 // ---- TCP 适配器 ----
@@ -136,11 +143,15 @@ func (c *tcpFramedConn) WriteFrame(data []byte) error {
 	return err
 }
 
-func (c *tcpFramedConn) Close() error                        { return c.conn.Close() }
-func (c *tcpFramedConn) RemoteAddr() string                  { return c.conn.RemoteAddr().String() }
-func (c *tcpFramedConn) SetReadDeadline(t time.Time) error   { return c.conn.SetReadDeadline(t) }
-func (c *tcpFramedConn) SetWriteDeadline(t time.Time) error  { return c.conn.SetWriteDeadline(t) }
-func (c *tcpFramedConn) IsWebSocket() bool                   { return false }
+func (c *tcpFramedConn) Close() error                       { return c.conn.Close() }
+func (c *tcpFramedConn) RemoteAddr() string                 { return c.conn.RemoteAddr().String() }
+func (c *tcpFramedConn) SetReadDeadline(t time.Time) error  { return c.conn.SetReadDeadline(t) }
+func (c *tcpFramedConn) SetWriteDeadline(t time.Time) error { return c.conn.SetWriteDeadline(t) }
+
+// EncodeResponse E6：TCP 连接的下行帧编码——tgf 二进制响应帧格式。
+func (c *tcpFramedConn) EncodeResponse(messageType string, _ int32, _ int32, reply []byte) []byte {
+	return encodeBinaryResponseFrame(messageType, reply)
+}
 
 // ---- WebSocket 适配器 ----
 
@@ -217,11 +228,19 @@ func (w *wsFramedConn) WriteFrame(data []byte) error {
 	return w.conn.WriteMessage(websocket.BinaryMessage, data)
 }
 
-func (w *wsFramedConn) Close() error                        { return w.conn.Close() }
-func (w *wsFramedConn) RemoteAddr() string                  { return w.conn.RemoteAddr().String() }
-func (w *wsFramedConn) SetReadDeadline(t time.Time) error   { return w.conn.SetReadDeadline(t) }
-func (w *wsFramedConn) SetWriteDeadline(t time.Time) error  { return w.conn.SetWriteDeadline(t) }
-func (w *wsFramedConn) IsWebSocket() bool                   { return true }
+func (w *wsFramedConn) Close() error                       { return w.conn.Close() }
+func (w *wsFramedConn) RemoteAddr() string                 { return w.conn.RemoteAddr().String() }
+func (w *wsFramedConn) SetReadDeadline(t time.Time) error  { return w.conn.SetReadDeadline(t) }
+func (w *wsFramedConn) SetWriteDeadline(t time.Time) error { return w.conn.SetWriteDeadline(t) }
+
+// EncodeResponse E6：WS 连接的下行帧编码——WSResponse proto 格式。
+func (w *wsFramedConn) EncodeResponse(messageType string, reqId, code int32, reply []byte) []byte {
+	return encodeWSResponseFrame(messageType, reqId, code, reply)
+}
+
+// IsWebSocket 满足 tcp.go 的 wsTransport 可选接口（E6：已从 IConn 核心抽象移除，
+// 仅承载"WS 连接接入时往 meta 写本地 gate 地址"的历史行为差异判定）。
+func (w *wsFramedConn) IsWebSocket() bool { return true }
 
 // ---- HTTP upgrade helper ----
 //

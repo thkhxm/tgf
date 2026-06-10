@@ -78,3 +78,52 @@ func resetRPCMetricsOnceForTest() {
 	rpcCallsTotal = nil
 	rpcCallsFailTotal = nil
 }
+
+// ---- E3-rpc：网关入站流量埋点 ----
+//
+// 与 tgf_gate_connections（tcp.go）配套的两个 counter：
+//   - tgf_gate_requests_total        网关收到的业务请求总量（handleConn Logic 分支）
+//   - tgf_gate_dropped_requests_total 被丢弃的请求总量（reqChan 背压满 + inactive 连接）
+//
+// 审计背景（P2 背压静默丢弃）：reqChan 满 / 连接 inactive 时请求被丢，客户端
+// 永远等不到 ReqId 响应且原先只有 Debug 日志——现在丢弃路径计数 + Warn 日志，
+// 过载问题可观测。
+
+var (
+	gateReqMetricsOnce sync.Once
+	gateRequestsTotal  metrics.Counter
+	gateDroppedTotal   metrics.Counter
+)
+
+func ensureGateReqMetrics() {
+	gateReqMetricsOnce.Do(func() {
+		gateRequestsTotal = metrics.NewCounter(
+			"tgf_gate_requests_total",
+			"网关收到的业务请求总量（Logic 帧）",
+		)
+		gateDroppedTotal = metrics.NewCounter(
+			"tgf_gate_dropped_requests_total",
+			"网关丢弃的业务请求总量（reqChan 背压满 / inactive 连接）",
+		)
+	})
+}
+
+// incGateRequest 网关收到一条业务请求（handleConn 的 Logic 分支调用）。
+func incGateRequest() {
+	ensureGateReqMetrics()
+	gateRequestsTotal.Inc()
+}
+
+// incGateDropped 网关丢弃一条业务请求（背压满 / inactive 连接，doLogic 与
+// handleConn 的丢弃分支调用）。
+func incGateDropped() {
+	ensureGateReqMetrics()
+	gateDroppedTotal.Inc()
+}
+
+// resetGateReqMetricsOnceForTest 只用于单测：允许切换 Provider 后重新绑定。
+func resetGateReqMetricsOnceForTest() {
+	gateReqMetricsOnce = sync.Once{}
+	gateRequestsTotal = nil
+	gateDroppedTotal = nil
+}

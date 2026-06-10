@@ -289,11 +289,17 @@ func TestReplayFailureQueue_NilArgsSafe(t *testing.T) {
 
 // --- 与 autoCacheManager 的集成 ---
 
-func TestResolveFailureQueue_FallsBackToNoop(t *testing.T) {
+func TestResolveFailureQueue_FallsBackToDefaultFile(t *testing.T) {
+	// E4：默认实现从 Noop 升级为进程级 File 队列（详细断言见
+	// e4_replay_test.go TestResolveFailureQueue_DefaultIsFileQueue）。
+	swapDefaultFailureQueueForTest(t, filepath.Join(t.TempDir(), "fallback.log"))
 	a := &autoCacheManager[string, int]{builder: &AutoCacheBuilder[string, int]{}}
 	q := a.resolveFailureQueue()
-	if _, ok := q.(NoopFailureQueue); !ok {
-		t.Errorf("未配置时应 fallback 到 Noop, 实际 %T", q)
+	if _, ok := q.(NoopFailureQueue); ok {
+		t.Errorf("E4 后未配置不应再 fallback 到 Noop, 实际 %T", q)
+	}
+	if _, ok := q.(*FileFailureQueue); !ok {
+		t.Errorf("未配置时应 fallback 到默认 File 队列, 实际 %T", q)
 	}
 }
 

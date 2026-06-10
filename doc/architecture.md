@@ -153,7 +153,7 @@ autoCacheManager
 | 对象 | 热更路径 | 触发方式 |
 |------|---------|---------|
 | 游戏配置（JSON） | `component.ReloadGameConf` | fsnotify watcher / 业务侧手动调用 |
-| 环境配置（env） | `config.Reload` | 业务侧手动调用 |
+| 环境配置（env） | `config.Reload` | 业务侧手动调用（显式热更 API） |
 | RPC 策略 | `rpc.SetMethodPolicy` | 运行时任意调用 |
 | 日志级别 | 暂无——zap 包初始化时一次性读 | 重启生效 |
 
@@ -161,6 +161,14 @@ autoCacheManager
 > `config.Reload` / `ReloadGameConf` 需业务侧自行决定触发时机（如自己挂信号
 > handler 或 admin 路由后调用）。`StartConfigWatcher()` 提供的 fsnotify 目录监听
 > 是唯一框架自带的自动触发器，仅作用于游戏配置 JSON 目录。
+>
+> E2 配置收敛后 `config.Reload()` 的完整语义：先重读 `.env.<module>` 文件
+> （`tgf.InitConfig` 注入的 loader，文件值覆盖进程环境变量，使"改文件即热更"
+> 成立；文件不存在时跳过），再重新解析并**原子替换**类型化快照与规范化字符串
+> 快照——旧 `tgf.GetStrConfig` 与新 `config.Current()` 读同一份解析结果（bool
+> 统一规范化为 `"1"/"0"`，`RedisCluster=true` 等宽松写法在新旧路径语义一致），
+> 最后按注册顺序触发 `OnReload` 订阅者。解析失败时保留旧配置（坏值不会被热更
+> 吃进去），仅返回 error。
 
 ## 单机模式 / 单进程模式
 

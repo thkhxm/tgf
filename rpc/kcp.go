@@ -196,9 +196,11 @@ func (c *kcpFramedConn) RemoteAddr() string                 { return c.remote }
 func (c *kcpFramedConn) SetReadDeadline(t time.Time) error  { return c.conn.SetReadDeadline(t) }
 func (c *kcpFramedConn) SetWriteDeadline(t time.Time) error { return c.conn.SetWriteDeadline(t) }
 
-// IsWebSocket 返回 false：KCP 走和 TCP 一样的二进制编码路径（getSendToClientData
-// 的 TCP 分支），不是 WebSocket 的 WSMessage 协议。
-func (c *kcpFramedConn) IsWebSocket() bool { return false }
+// EncodeResponse E6：KCP 走和 TCP 一样的二进制响应帧编码（不是 WS 的 WSResponse
+// 协议）。原 IsWebSocket() 临时方法已随编码下沉移除。
+func (c *kcpFramedConn) EncodeResponse(messageType string, _ int32, _ int32, reply []byte) []byte {
+	return encodeBinaryResponseFrame(messageType, reply)
+}
 
 // ---- 二进制帧解码（从 tcpFramedConn 抽出来供 kcpFramedConn 复用）----
 

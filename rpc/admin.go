@@ -3,15 +3,16 @@ package rpc
 import (
 	"context"
 	"crypto/subtle"
+	"net/http"
+	"strings"
+	"time"
+
 	"github.com/rs/cors"
 	"github.com/thkhxm/rpcx/client"
 	"github.com/thkhxm/tgf"
+	tgfconfig "github.com/thkhxm/tgf/config"
 	"github.com/thkhxm/tgf/exp/admin"
 	"github.com/thkhxm/tgf/log"
-	"net/http"
-	"os"
-	"strings"
-	"time"
 )
 
 //***************************************************
@@ -37,11 +38,15 @@ const adminBearerPrefix = "Bearer "
 // adminTokenHeader 是携带运维口令的备用 HTTP 请求头，便于运维工具直接传 token。
 const adminTokenHeader = "X-Admin-Token"
 
-// readAdminToken 从环境变量直接读取运维口令。
-// 之所以走 os.Getenv 而非 tgf.GetStrConfig 快照，是因为运维口令属于敏感凭据，
-// 不应进入框架配置 mapping（会被日志/导出路径意外打印），而是按需即时从进程环境读取。
+// readAdminToken 读取运维口令。
+//
+// E 档配置读点迁移：改走 tgfconfig.Current().Security.AdminToken（原 os.Getenv
+// 直读）。安全性说明：该 key 已登记 tgf/config.go sensitiveEnvKeys，启动日志
+// 打印时脱敏为 ******，不存在"进配置系统就会被日志泄漏"的顾虑；env 名
+// ADMIN_TOKEN 与 D 档常量逐字一致，存量部署不受影响。每次请求读 Current()
+// 快照——经 tgfconfig.Reload()（POST /config/reload）可热轮换口令。
 func readAdminToken() string {
-	return strings.TrimSpace(os.Getenv(AdminTokenEnv))
+	return strings.TrimSpace(tgfconfig.Current().Security.AdminToken)
 }
 
 // extractRequestToken 从请求头中提取调用方携带的运维口令，
@@ -105,6 +110,11 @@ func ServeAdmin(port string) (r <-chan bool) {
 	mux.HandleFunc("/consul/pause/{id}", CorsMiddleware(AuthMiddleware(c.PauseService)))
 	//
 	mux.HandleFunc("/monitor/service", CorsMiddleware(AuthMiddleware(admin.QueryMonitor)))
+	// E2/E 档热更触发入口：POST /config/reload → tgfconfig.Reload()。
+	// 语义：重读 .env.<module> 文件（文件值覆盖进程 env，缺文件跳过）→ 严格重解析
+	// （失败保旧值返回 500）→ 原子替换 Current()/GetString 快照 → 按注册序触发
+	// OnReload 订阅者（如 rpc 默认超时、log 级别等运行态热更）。
+	mux.HandleFunc("/config/reload", CorsMiddleware(AuthMiddleware(handleConfigReload)))
 	r = NewRPCServer().WithService(&Admin{Module: Module{Name: tgf.AdminServiceModuleName, Version: "1.0"}}).WithCache(tgf.CacheModuleClose).Run()
 	go func() {
 		corsVar := cors.New(cors.Options{
@@ -127,6 +137,24 @@ func ServeAdmin(port string) (r <-chan bool) {
 		}
 	}()
 	return
+}
+
+// handleConfigReload 是配置热更的 admin 控制面入口（仅 POST，且经 AuthMiddleware
+// 鉴权）。成功返回 200 与一行确认文本；解析失败时 tgfconfig.Reload 保旧值，
+// 本端点返回 500——坏配置绝不会被热更吃进去。
+func handleConfigReload(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "method not allowed (use POST)", http.StatusMethodNotAllowed)
+		return
+	}
+	if _, err := tgfconfig.Reload(); err != nil {
+		log.ErrorTag("admin", "配置热更失败(保持旧配置) remote=%s err=%v", r.RemoteAddr, err)
+		http.Error(w, "config reload failed: "+err.Error(), http.StatusInternalServerError)
+		return
+	}
+	log.InfoTag("admin", "配置热更完成 remote=%s", r.RemoteAddr)
+	w.WriteHeader(http.StatusOK)
+	_, _ = w.Write([]byte("config reloaded"))
 }
 
 // CorsMiddleware 当前为透传占位（真正的 CORS 头由 rs/cors 包在 ServeAdmin 中统一处理）。

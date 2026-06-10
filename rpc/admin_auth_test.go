@@ -95,13 +95,10 @@ func TestAuthMiddleware(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			// t.Setenv 自动在子测试结束时还原，且禁止与 t.Parallel 并用，天然隔离环境变量。
-			if tt.envToken != "" {
-				t.Setenv(AdminTokenEnv, tt.envToken)
-			} else {
-				// 显式清空，避免被外部环境/其它用例污染。
-				t.Setenv(AdminTokenEnv, "")
-			}
+			// E 档迁移：readAdminToken 改读配置快照——setEnvConfigForTest 设 env
+			// 并同步重建快照，子测试结束自动还原（含快照），天然隔离。
+			// envToken 为空时显式清空，避免被外部环境/其它用例污染。
+			setEnvConfigForTest(t, AdminTokenEnv, tt.envToken)
 
 			req := httptest.NewRequest(tt.method, "/consul/close/svc-1", nil)
 			if tt.authHeader != "" {
@@ -152,14 +149,15 @@ func TestExtractRequestToken(t *testing.T) {
 	}
 }
 
-// TestReadAdminToken 验证运维口令读取会裁剪首尾空白。
+// TestReadAdminToken 验证运维口令读取会裁剪首尾空白
+// （E 档迁移后经配置快照读取，改 env 需同步重建快照）。
 func TestReadAdminToken(t *testing.T) {
-	t.Setenv(AdminTokenEnv, "  padded-token  ")
+	setEnvConfigForTest(t, AdminTokenEnv, "  padded-token  ")
 	if got := readAdminToken(); got != "padded-token" {
 		t.Fatalf("readAdminToken() = %q, want %q", got, "padded-token")
 	}
 
-	t.Setenv(AdminTokenEnv, "   ")
+	setEnvConfigForTest(t, AdminTokenEnv, "   ")
 	if got := readAdminToken(); got != "" {
 		t.Fatalf("readAdminToken() with blank env = %q, want empty", got)
 	}

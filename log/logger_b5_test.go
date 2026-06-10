@@ -5,6 +5,10 @@ package log_test
 //   1. 老的 `*` / `*Tag` API 在 level/tag 被过滤时完全跳过 Sprintf（不 panic，不分配）
 //   2. 新的 `*W` / `*TagW` API 可以处理 zap.Field
 //   3. 老 API 的调用不会因为 B5 改造退化（基本 smoke test）
+//
+// 注：B5 优化"level 过滤时跳过 Sprintf"的行为级断言见 logger_e3_test.go 的
+// TestTagWT_LevelFilterSkipsFieldConstruction / TestAtomicLevel_RuntimeReload
+// （白盒 + observer core，弥补了 V3 审计指出的"B5 测试全是 smoke 无断言"缺口）。
 
 import (
 	"testing"

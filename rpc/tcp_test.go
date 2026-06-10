@@ -252,10 +252,21 @@ func (m *mockConn) Close() error {
 	return nil
 }
 
-func (m *mockConn) RemoteAddr() string                  { return "mock://test" }
-func (m *mockConn) SetReadDeadline(_ time.Time) error   { return nil }
-func (m *mockConn) SetWriteDeadline(_ time.Time) error  { return nil }
-func (m *mockConn) IsWebSocket() bool                   { return m.isWS }
+func (m *mockConn) RemoteAddr() string                 { return "mock://test" }
+func (m *mockConn) SetReadDeadline(_ time.Time) error  { return nil }
+func (m *mockConn) SetWriteDeadline(_ time.Time) error { return nil }
+
+// IsWebSocket 满足 tcp.go 的 wsTransport 可选接口（E6 后 IConn 不再声明它）。
+func (m *mockConn) IsWebSocket() bool { return m.isWS }
+
+// EncodeResponse 实现 E6 下沉后的 IConn 编码接口：按 isWS 标志选格式，
+// 与真实 tcp/ws 适配器行为一致。
+func (m *mockConn) EncodeResponse(messageType string, reqId, code int32, reply []byte) []byte {
+	if m.isWS {
+		return encodeWSResponseFrame(messageType, reqId, code, reply)
+	}
+	return encodeBinaryResponseFrame(messageType, reply)
+}
 
 // newTestServer 构造一个最小可用的 TCPServer，跳过 Run 里的真实 listen。
 // config 填了必要的默认值——deadLineTime 必须 >0，否则 handleConn 里

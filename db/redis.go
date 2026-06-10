@@ -5,7 +5,7 @@ import (
 	"errors"
 	"github.com/bsm/redislock"
 	"github.com/redis/go-redis/v9"
-	"github.com/thkhxm/tgf"
+	tgfconfig "github.com/thkhxm/tgf/config"
 	"github.com/thkhxm/tgf/log"
 	"strings"
 	"time"
@@ -19,8 +19,6 @@ import (
 // @Description
 // 2023/2/24
 // ***************************************************
-
-var service *redisService
 
 type redisService struct {
 	client  redis.UniversalClient
@@ -66,6 +64,15 @@ func (r *redisService) PutMap(key, filed, val string, timeout time.Duration) {
 	if timeout > 0 {
 		warnRedisErr("PutMap/Expire", key, r.client.Expire(context.Background(), key, timeout).Err())
 	}
+}
+
+// HDel E4：删除 hash key 中的指定 field（HDEL，立即生效）。
+// hashAutoCacheManager.Remove 的 Redis 侧删除走这里。
+func (r *redisService) HDel(key string, fields ...string) {
+	if len(fields) == 0 {
+		return
+	}
+	warnRedisErr("HDel", key, r.client.HDel(context.Background(), key, fields...).Err())
 }
 
 func (r *redisService) Del(key string) {
@@ -153,43 +160,56 @@ func (r *redisService) AddSetItem(key string, val interface{}, timeout time.Dura
 	}
 }
 
+// redisConnParams 启动期一次性连接参数（E4/E2 配置读点迁移：统一从
+// tgfconfig.Current() 读取，Cluster 为类型化 bool，宽松写法 true/yes 等
+// 由配置系统统一规范化）。抽成独立结构与函数便于表驱动单测。
+type redisConnParams struct {
+	addrs    []string
+	password string
+	db       int
+	cluster  bool
+}
+
+func redisParamsFromConfig(cfg *tgfconfig.Config) redisConnParams {
+	return redisConnParams{
+		addrs:    strings.Split(cfg.Redis.Addr, ","),
+		password: cfg.Redis.Password,
+		db:       cfg.Redis.DB,
+		cluster:  cfg.Redis.Cluster,
+	}
+}
+
 // newRedisService D5: 启动失败改为显式返回 error，绝不返回 nil 的 *redisService——
 // 旧实现 `return nil` 赋给 iCacheService 接口后变成 typed-nil，绕过所有
 // `cache == nil` 防御，首次缓存操作直接 nil receiver panic。
 func newRedisService() (*redisService, error) {
-	var (
-		addr     = tgf.GetStrConfig[string](tgf.EnvironmentRedisAddr)
-		password = tgf.GetStrConfig[string](tgf.EnvironmentRedisPassword)
-		db       = tgf.GetStrConfig[int](tgf.EnvironmentRedisDB)
-		cluster  = tgf.GetStrConfig[int](tgf.EnvironmentRedisCluster)
-	)
+	p := redisParamsFromConfig(tgfconfig.Current())
 
 	svc := new(redisService)
 
-	if cluster == 1 {
+	if p.cluster {
 		redisOptions := &redis.ClusterOptions{}
-		redisOptions.Addrs = strings.Split(addr, ",")
-		if password != "" {
-			redisOptions.Password = password
+		redisOptions.Addrs = p.addrs
+		if p.password != "" {
+			redisOptions.Password = p.password
 		}
 		svc.client = redis.NewClusterClient(redisOptions)
 	} else {
 		redisOptions := &redis.UniversalOptions{}
-		redisOptions.Addrs = strings.Split(addr, ",")
-		redisOptions.DB = db
-		if password != "" {
-			redisOptions.Password = password
+		redisOptions.Addrs = p.addrs
+		redisOptions.DB = p.db
+		if p.password != "" {
+			redisOptions.Password = p.password
 		}
 		svc.client = redis.NewUniversalClient(redisOptions)
 	}
 
 	if stat := svc.client.Ping(context.Background()); stat.Err() != nil {
-		log.WarnTag("init", "启动redis服务异常 addr=%v db=%v err=%v", addr, db, stat.Err())
+		log.WarnTag("init", "启动redis服务异常 addr=%v db=%v err=%v", p.addrs, p.db, stat.Err())
 		_ = svc.client.Close()
 		return nil, stat.Err()
 	}
 
-	service = svc
-	log.InfoTag("init", "启动redis服务 addr=%v db=%v", addr, db)
+	log.InfoTag("init", "启动redis服务 addr=%v db=%v", p.addrs, p.db)
 	return svc, nil
 }

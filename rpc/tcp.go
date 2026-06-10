@@ -18,6 +18,7 @@ import (
 	"github.com/thkhxm/rpcx/share"
 	util2 "github.com/thkhxm/rpcx/util"
 	"github.com/thkhxm/tgf"
+	tgfconfig "github.com/thkhxm/tgf/config"
 	"github.com/thkhxm/tgf/log"
 	"github.com/thkhxm/tgf/metrics"
 	"github.com/thkhxm/tgf/rpc/internal"
@@ -72,11 +73,6 @@ func resetGateConnGaugeOnceForTest() {
 	gateConnGauge = nil
 }
 
-var upGrader = websocket.Upgrader{
-	ReadBufferSize:  1024,
-	WriteBufferSize: 1024 * 8,
-}
-
 type Args[T protoreflect.ProtoMessage] struct {
 	ByteData []byte
 }
@@ -105,12 +101,13 @@ func (r *Reply[T]) SetCode(code int32) {
 	r.Code = code
 }
 
+// E6 死代码清理（v3 审计 P3）：删除三个声明后零引用的僵尸量——
+// upGrader（wsUpGrader 的无 CheckOrigin 重复定义）、requestLoginHeadSize、
+// loginTokenTimeOut。closeChan/onDestroy 等已在 D 档优雅停机改造时移除。
 var (
 
 	// 请求头长度
 	requestHeadSize uint16 = 6
-	// 请求登录头长度
-	requestLoginHeadSize uint16 = 4
 	// 最大同时连接数
 	maxSynChanConn = 3000
 	// 连接超时时间
@@ -119,8 +116,6 @@ var (
 	requestMagicNumber byte = 250
 	//最低压缩大小
 	compressMinSize = 1024 * 2
-
-	loginTokenTimeOut = time.Hour * 12
 
 	heartbeatData    = []byte{byte(Heartbeat)}
 	replaceLoginData = []byte{byte(ReplaceLogin)}
@@ -163,16 +158,19 @@ var (
 )
 
 func init() {
-	// v2: 从环境变量加载网关连接默认超时。
-	// 直接用 tgf.GetStrConfig——init 顺序：tgf.InitConfig (init.go) 先于
-	// rpc 包的 init，所以 mapping 已经就绪。
-	if v := tgf.GetStrConfig[int](tgf.EnvironmentTCPDeadLineSec); v > 0 {
+	// E 档配置读点迁移：改走新配置系统的类型化字段（原 tgf.GetStrConfig 旧读法）。
+	// init 顺序：rpc 包 import tgf → tgf 包 init 先执行 tgf.InitConfig →
+	// tgfconfig.Current() 此时保证非零值。
+	// 这些是启动期一次性项：连接建立时读取的包级默认值，不做热更
+	//（连接级参数热更需逐连接生效语义，归 F 档评估）。
+	cfg := tgfconfig.Current()
+	if v := cfg.RPC.TCPDeadLineSec; v > 0 {
 		defaultDeadLineTime = time.Duration(v) * time.Second
 	}
-	if v := tgf.GetStrConfig[int](tgf.EnvironmentTCPWriteTimeoutMs); v > 0 {
+	if v := cfg.RPC.TCPWriteTimeoutMs; v > 0 {
 		defaultWriteDeadline = time.Duration(v) * time.Millisecond
 	}
-	if v := tgf.GetStrConfig[int](tgf.EnvironmentTCPSendChanTimeoutMs); v > 0 {
+	if v := cfg.RPC.TCPSendChanTimeoutMs; v > 0 {
 		defaultSendChanTimeout = time.Duration(v) * time.Millisecond
 	}
 }
@@ -544,13 +542,14 @@ func (t *TCPServer) handleConn(conn IConn) {
 	reqMetaData[tgf.ContextKeyTemplateUserId] = templateUserId
 	// WS 原路径会把 gate 的本地地址写进 meta（便于跨节点路由），TCP 原路径不写。
 	// phase2 里统一让 WS 仍写入、TCP 仍不写入——行为与 phase1 完全一致。
-	if conn.IsWebSocket() {
+	// E6：IConn.IsWebSocket 已随编码下沉移除，这里改用 wsTransport 可选接口探测。
+	if isWSConn(conn) {
 		reqMetaData[tgf.GatewayServiceModuleName] = internal.LocalServerAddress
 	}
 	connectData.contextData.SetValue(share.ReqMetaDataKey, reqMetaData)
 	t.users.Set(templateUserId, connectData)
 	log.DebugTag("tcp", "接收到一条新的连接 addr=%v templateUserId=%v ws=%v",
-		conn.RemoteAddr(), templateUserId, conn.IsWebSocket())
+		conn.RemoteAddr(), templateUserId, isWSConn(conn))
 
 	// B4 埋点：活跃连接数 gauge +1；defer -1 保证任何退出路径都配对。
 	gauge := getGateConnGauge()
@@ -622,13 +621,17 @@ func (t *TCPServer) handleConn(conn IConn) {
 				User:          connectData,
 				ReqId:         frame.ReqId,
 			}
+			// E3-rpc 埋点：网关入站业务请求量。
+			incGateRequest()
 			log.DebugTag("tcp", "收到请求[%s.%s]", pack.Module, pack.RequestMethod)
 			select {
 			case reqChan <- pack:
 			case <-connectData.stop:
 				return
 			default:
-				log.DebugTag("tcp", "用户[%s] 请求处理繁忙,直接丢弃请求[%s.%s]",
+				// E3-rpc：背压丢弃原先只打 Debug（生产不可观测）——升 Warn 并计数。
+				incGateDropped()
+				log.WarnTag("tcp", "用户[%s] 请求处理繁忙,直接丢弃请求[%s.%s] (tgf_gate_dropped_requests_total+1)",
 					connectData.userId, pack.Module, pack.RequestMethod)
 			}
 			connectData.reqCount++
@@ -701,6 +704,8 @@ func (t *TCPServer) doLogic(data *RequestData) {
 	// 是 logic goroutine 还没退出但 Offline 已经触发，拒绝请求避免对已死连接
 	// 做无意义的下游调用。LoggingIn 状态拒绝是为了避免登录过程中客户端抢发业务请求。
 	if !data.User.isActiveForLogic() {
+		// E3-rpc 埋点：inactive 连接上的丢弃与背压丢弃共用同一计数器。
+		incGateDropped()
 		log.DebugTag("tcp", "drop request on inactive connection user=%v state=%d module=%v method=%v",
 			data.User.userId, data.User.loadState(), data.Module, data.RequestMethod)
 		return
@@ -739,7 +744,9 @@ func (t *TCPServer) doLogic(data *RequestData) {
 	//	return
 	//}
 	reply = resData.ByteData
-	clientData := t.getSendToClientData(messageType, data.ReqId, resData.Code, reply)
+	// E6：响应编码下沉到连接适配器（conn.EncodeResponse），不再经由 server 级
+	// IsWebSocket 分支——同一 GateService 下 TCP/KCP/WS 连接各取所需的帧格式。
+	clientData := t.encodeResponseFor(data.User.conn, messageType, data.ReqId, resData.Code, reply)
 	// phase3: Send 返回 error 时记录日志——连接此时要么正在 Offline，
 	// 要么 writer 已卡死由 Send 内部触发 Offline，无需额外处理。
 	if sendErr := data.User.Send(clientData); sendErr != nil {
@@ -748,7 +755,45 @@ func (t *TCPServer) doLogic(data *RequestData) {
 	}
 }
 
-// getSendToClientData 把一次逻辑响应编码成客户端帧。
+// wsTransport 是 WebSocket 传输的可选标记接口（E6）。
+// 编码差异已下沉为 IConn.EncodeResponse，IConn 不再声明 IsWebSocket；
+// 仅剩的"WS 连接接入时往 meta 写本地 gate 地址"历史行为差异通过本接口探测。
+type wsTransport interface{ IsWebSocket() bool }
+
+// isWSConn 判断一个连接是否 WebSocket 传输。
+func isWSConn(conn IConn) bool {
+	w, ok := conn.(wsTransport)
+	return ok && w.IsWebSocket()
+}
+
+// encodeWSResponseFrame 编码 WS 下行响应（WSResponse proto）。
+//
+// D2 / P0-1 约束：proto.Marshal 独立分配，返回值与任何共享存储零别名。
+// 压缩失败降级发送未压缩原文（原实现吞错仍标 Zip=true 发坏数据）；
+// 压缩阈值与二进制分支统一为 `>= compressMinSize`。
+func encodeWSResponseFrame(messageType string, reqId, code int32, reply []byte) []byte {
+	data := &WSResponse{}
+	data.MessageType = messageType
+	if len(reply) >= compressMinSize {
+		if zipped, zipErr := util2.Zip(reply); zipErr == nil {
+			reply = zipped
+			data.Zip = true
+		} else {
+			log.WarnTag("tcp", "WS响应压缩失败,降级发送未压缩数据 msgType=%v err=%v", messageType, zipErr)
+		}
+	}
+
+	data.Data = reply
+	data.ReqId = reqId
+	data.Code = code
+	res, _ := proto.Marshal(data)
+	return res
+}
+
+// encodeBinaryResponseFrame 编码 TCP / KCP 下行二进制响应帧：
+//
+//	[1][2][4][n][n]
+//	compress|request method name size|data size|method name|data
 //
 // D2 / P0-1 修复（v3）：原实现用 bytebufferpool 编码后 `res = bp.Bytes()` 直接返回
 // 池化 buffer 的内部切片，函数返回（defer Put）即归还池——而调用方 doLogic / ToUser
@@ -757,35 +802,10 @@ func (t *TCPServer) doLogic(data *RequestData) {
 // （A 玩家收到 B 玩家的数据）。修复方式：彻底移除该处 bytebufferpool，按精确容量
 // 一次性分配独立切片返回——返回值与任何共享存储零别名，可被安全地异步消费。
 //
-// 顺手修复（原 P3）：压缩失败原先 TCP 分支 return 空帧（客户端该请求的响应静默消失）、
-// WS 分支吞错仍标 Zip=true 发坏数据——现在两分支统一降级为发送未压缩原文；
-// 两分支压缩阈值统一为 `>= compressMinSize`。
-func (t *TCPServer) getSendToClientData(messageType string, reqId, code int32, reply []byte) (res []byte) {
+// 顺手修复（原 P3）：压缩失败原先 return 空帧（客户端该请求的响应静默消失）——
+// 现在降级为发送未压缩原文。
+func encodeBinaryResponseFrame(messageType string, reply []byte) []byte {
 	var compress byte = 0
-
-	//逻辑响应
-	if t.config.IsWebSocket() {
-		data := &WSResponse{}
-		data.MessageType = messageType
-		if len(reply) >= compressMinSize {
-			if zipped, zipErr := util2.Zip(reply); zipErr == nil {
-				reply = zipped
-				data.Zip = true
-			} else {
-				log.WarnTag("tcp", "WS响应压缩失败,降级发送未压缩数据 msgType=%v err=%v", messageType, zipErr)
-			}
-		}
-
-		data.Data = reply
-		data.ReqId = reqId
-		data.Code = code
-		res, _ = proto.Marshal(data)
-		return
-	}
-
-	// TCP / KCP 响应帧格式：
-	// [1][2][4][n][n]
-	// compress|request method name size|data size|method name|data
 	if len(reply) >= compressMinSize {
 		if zipped, zipErr := util2.Zip(reply); zipErr == nil {
 			reply = zipped
@@ -797,7 +817,7 @@ func (t *TCPServer) getSendToClientData(messageType string, reqId, code int32, r
 
 	mtSize := len(messageType)
 	// 1B compress + 2B method size + 4B data size + method + data，精确容量一次分配
-	res = make([]byte, 0, 1+2+4+mtSize+len(reply))
+	res := make([]byte, 0, 1+2+4+mtSize+len(reply))
 	//是否压缩
 	res = append(res, compress)
 	//响应函数长度
@@ -812,7 +832,28 @@ func (t *TCPServer) getSendToClientData(messageType string, reqId, code int32, r
 	res = append(res, messageType...)
 	//响应内容
 	res = append(res, reply...)
-	return
+	return res
+}
+
+// getSendToClientData 把一次逻辑响应编码成客户端帧——按 server 配置推断格式。
+//
+// E6 之后这是**回退路径**：正常流量走 conn.EncodeResponse（编码已下沉到连接
+// 适配器，见 encodeResponseFor）；本方法保留给"拿不到 IConn"的场景（单测 mock、
+// conn 为 nil 的连接数据）。
+func (t *TCPServer) getSendToClientData(messageType string, reqId, code int32, reply []byte) (res []byte) {
+	if t.config.IsWebSocket() {
+		return encodeWSResponseFrame(messageType, reqId, code, reply)
+	}
+	return encodeBinaryResponseFrame(messageType, reply)
+}
+
+// encodeResponseFor 优先用连接自身的帧编码（E6：每个 IConn 实现自带格式），
+// conn 为 nil（单测 mock / 无连接场景）时回退到按 server 配置推断。
+func (t *TCPServer) encodeResponseFor(conn IConn, messageType string, reqId, code int32, reply []byte) []byte {
+	if conn != nil {
+		return conn.EncodeResponse(messageType, reqId, code, reply)
+	}
+	return t.getSendToClientData(messageType, reqId, code, reply)
 }
 
 func (t *TCPServer) Update() {
@@ -979,7 +1020,13 @@ func (t *TCPServer) ToUser(userId, messageType string, data []byte) (err error) 
 		log.DebugTag("tcp", "userid=%v user connection not found", userId)
 		return tgf.ErrUserNotFound
 	}
-	res := t.getSendToClientData(messageType, 0, 0, data)
+	// E6：推送编码同样下沉到连接适配器；非 *UserConnectData（测试替身）或
+	// conn 为 nil 时回退 server 配置推断。
+	var conn IConn
+	if ucd, isUCD := connectData.(*UserConnectData); isUCD {
+		conn = ucd.conn
+	}
+	res := t.encodeResponseFor(conn, messageType, 0, 0, data)
 	return connectData.Send(res)
 }
 

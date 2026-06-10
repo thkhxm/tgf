@@ -138,6 +138,15 @@ const (
 	EnvironmentDBCacheTimeoutSec Environment = "DBCacheTimeoutSec"
 	// EnvironmentDBMemTimeoutSec 内存缓存默认 TTL（秒），默认 3600*3 (3小时)
 	EnvironmentDBMemTimeoutSec Environment = "DBMemTimeoutSec"
+
+	// ---- E2 新增：登记 D 档遗留的凭据类直读变量（默认值均为空，fail-closed）----
+
+	// EnvironmentLoginTokenSecret 网关默认登录鉴权（HMAC token）的密钥。
+	// 与 rpc.EnvLoginTokenSecret 同名；为空时默认鉴权拒绝登录（见 rpc/login_check.go）。
+	EnvironmentLoginTokenSecret Environment = "LoginTokenSecret"
+	// EnvironmentAdminToken admin 控制面运维口令。
+	// 与 rpc.AdminTokenEnv 同名；为空时 admin 控制面返回 503（见 rpc/admin.go）。
+	EnvironmentAdminToken Environment = "ADMIN_TOKEN"
 )
 
 type CacheModule int
