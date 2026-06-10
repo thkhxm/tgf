@@ -147,6 +147,15 @@ const (
 	// EnvironmentAdminToken admin 控制面运维口令。
 	// 与 rpc.AdminTokenEnv 同名；为空时 admin 控制面返回 503（见 rpc/admin.go）。
 	EnvironmentAdminToken Environment = "ADMIN_TOKEN"
+
+	// ---- G1 新增：HTTP 服务（tgf/web 包）运行参数 ----
+
+	// EnvironmentHTTPPort HTTP 服务监听端口（WithHTTPService 未显式指定 Addr 时使用），默认 8090
+	EnvironmentHTTPPort Environment = "HTTPPort"
+	// EnvironmentHTTPReadHeaderTimeoutSec HTTP 读请求头超时（秒，防 slowloris），默认 5
+	EnvironmentHTTPReadHeaderTimeoutSec Environment = "HTTPReadHeaderTimeoutSec"
+	// EnvironmentHTTPShutdownTimeoutSec HTTP 优雅停机 drain 超时（秒），默认 10
+	EnvironmentHTTPShutdownTimeoutSec Environment = "HTTPShutdownTimeoutSec"
 )
 
 type CacheModule int

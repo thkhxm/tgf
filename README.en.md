@@ -4,16 +4,29 @@
 [![Go Version](https://img.shields.io/badge/go-1.24%2B-blue)](https://go.dev/)
 [![License](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
 
-**tgf** is a distributed game server framework written in Go. v2 focuses on
-**stability, tooling, observability, and API consistency**, letting small teams
-and solo developers focus on business logic instead of connection storms,
-cross-node coordination, config hot reload, and metric instrumentation.
+**tgf** is a distributed game server framework written in Go that also makes
+**HTTP web services a first-class citizen** alongside RPC. v2/v3 focus on
+**stability, tooling, observability, API consistency, and HTTP web capability**,
+letting small teams and solo developers focus on business logic instead of
+connection storms, cross-node coordination, config hot reload, and metric
+instrumentation.
 
 > The primary documentation is in Chinese — see [`README.md`](README.md).
 > This file is a brief English overview.
 
+One framework covers three scenarios: a **conventional HTTP web service**
+([`example/http_rest/`](example/http_rest/)), a **distributed web service**
+that bridges HTTP to backend RPC ([`example/http_rpc/`](example/http_rpc/)),
+and a **distributed game service** ([`example/single_process/`](example/single_process/)).
+
 ## Highlights
 
+- 🌐 **HTTP first-class citizen** — `WithHTTPService` spins up a standard HTTP
+  server with routing / middleware / rate limiting / auth / graceful shutdown;
+  handlers bridge to backend RPC via `web.Backend` with end-to-end traceId.
+  `WithHTTPServiceConsul` registers the HTTP service into Consul (discoverable /
+  load-balanced); `WithClientOnly` runs a pure web/client process that does *not*
+  masquerade as an RPC node
 - 🛡️ **Stability** — Unified `IConn` gateway abstraction (TCP/WS/KCP),
   atomic cross-node login via Redis lock, reliable write-behind cache with
   compensation queue, KCP + AEAD gateway

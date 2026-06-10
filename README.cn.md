@@ -2,8 +2,13 @@
 
 > 中文主文档见 [`README.md`](README.md)，本文件是简要中文概览。
 
-**tgf** 是一套基于 Go 的分布式游戏服务器框架。v2 聚焦稳定性、工程化、
-可观测性与 API 一致性，让中小型团队和独立开发者可以**只关注业务逻辑**。
+**tgf** 是一套基于 Go 的分布式游戏服务器框架，同时把 **HTTP web 服务**做成与
+RPC 平级的一等公民。v2/v3 聚焦稳定性、工程化、可观测性、API 一致性与 HTTP web
+能力，让中小型团队和独立开发者可以**只关注业务逻辑**。
+
+一套框架覆盖三类场景：**常规 http web 服务**（[`example/http_rest/`](example/http_rest/)）、
+**分布式 web 服务**（[`example/http_rpc/`](example/http_rpc/)）、**分布式游戏服务**
+（[`example/single_process/`](example/single_process/)）。
 
 ## 一句话看 tgf v2
 
@@ -21,6 +26,7 @@ rpc.NewRPCServer().
 
 ## 主要能力
 
+- 🌐 **HTTP 一等公民**：`WithHTTPService` 起标准 HTTP 服务，路由 / 中间件 / 限流 / 鉴权 / 优雅停机齐全，handler 经 `web.Backend` 桥调后端 RPC（traceId 全链路）；`WithHTTPServiceConsul` 把 HTTP 服务注册进 Consul（可被发现/负载均衡），`WithClientOnly` 起"不伪装成 RPC 节点"的纯 web/client 接入进程
 - 🛡️ **稳定性**：网关 `IConn` 统一抽象、跨节点登录原子化、write-behind 落库可靠性、KCP+AEAD 网关
 - 🔧 **工程化**：Makefile / golangci / CI / Dockerfile / CHANGELOG / 依赖升级
 - 📊 **可观测性**：`tgf/metrics` + `tgf/trace` 零依赖接口，按需接 Prometheus / OpenTelemetry

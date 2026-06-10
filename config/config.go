@@ -66,6 +66,20 @@ type Config struct {
 	DB  DBConfig
 	// E2 新增：登记 D 档遗留的 os.Getenv 直读凭据类变量
 	Security SecurityConfig
+	// G1 新增：HTTP 服务（tgf/web 包，经 rpc.Server.WithHTTPService 装载）
+	HTTP HTTPConfig
+}
+
+// HTTPConfig G1 新增：HTTP 服务（tgf/web）运行参数。
+// WithHTTPService 的 web.Options 对应字段为零值时，Run 启动期以这里的值填充
+// （见 rpc/rpcserver.go applyHTTPDefaults）。
+type HTTPConfig struct {
+	// Port HTTP 监听端口（web.Options.Addr 为空时使用，监听 ":<Port>"）
+	Port string `env:"HTTPPort" default:"8090"`
+	// ReadHeaderTimeoutSec 读请求头超时（秒，防 slowloris），默认 5
+	ReadHeaderTimeoutSec int `env:"HTTPReadHeaderTimeoutSec" default:"5"`
+	// ShutdownTimeoutSec 优雅停机 drain 超时（秒），默认 10
+	ShutdownTimeoutSec int `env:"HTTPShutdownTimeoutSec" default:"10"`
 }
 
 // SecurityConfig E2 新增：凭据 / 安全类配置。

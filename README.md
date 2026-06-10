@@ -4,17 +4,28 @@
 
 # tgf
 
-**tgf** 是一套基于 Go 语言的**分布式游戏服务器框架**，专注于解决游戏业务开发中常见的
-稳定性、并发与运维问题。v2 在 v1 基础上做了系统性的重构——从网关连接生命周期到
-数据落库可靠性，从可观测性接口到 API 一致性，都有明显的提升。
+**tgf** 是一套基于 Go 语言的**分布式游戏服务器框架**，同时把 **HTTP web 服务**
+做成与 RPC 平级的一等公民。它专注于解决游戏 / web 业务开发中常见的稳定性、并发
+与运维问题。v2/v3 在 v1 基础上做了系统性的重构——从网关连接生命周期到数据落库
+可靠性，从可观测性接口到 API 一致性，再到 HTTP 服务的路由 / 中间件 / 优雅停机，
+都有明显的提升。
 
 > 设计目标：让中小型团队与独立开发者**只关注业务逻辑**，不必处理连接风暴、
 > 跨节点协调、配置热更、指标埋点这些底层细节。
+
+tgf 一套框架覆盖三类场景，各有对应示例：
+
+| 场景 | 形态 | 对应示例 |
+|------|------|---------|
+| **常规 http web 服务** | 标准 REST API：路由 + 中间件 + 限流 + 鉴权 + 优雅停机 | [`example/http_rest/`](example/http_rest/) |
+| **分布式 web 服务** | HTTP 接入层经 HTTP→RPC 桥调后端 service（traceId 全链路、Consul 服务发现） | [`example/http_rpc/`](example/http_rpc/) |
+| **分布式游戏服务** | 长连接网关（TCP/WS/KCP）+ 跨 module RPC + write-behind 落库 | [`example/single_process/`](example/single_process/) |
 
 ## 目录
 
 - [v2 特性亮点](#v2-特性亮点)
 - [5 分钟快速上手](#5-分钟快速上手)
+- [HTTP 一等公民](#http-一等公民g-档)
 - [核心架构](#核心架构)
 - [功能清单](#功能清单)
 - [示例项目](#示例项目)
@@ -42,6 +53,14 @@
 - **可观测性接口** — `tgf/metrics` 和 `tgf/trace` 两个新包，零外部依赖，默认 NoOp，业务按需写 Prometheus / OpenTelemetry adapter
 - **日志热路径优化** — `log.*Tag` 系列加 level + tag 前置过滤，新增 `InfoTagW` 等 `zap.Field` 风格 API，避免 Sprintf 分配
 - **依赖升级** — Go 1.24.7、go-sql-driver/mysql、ants、excelize、protobuf 等保守升级到主线
+
+### 🌐 HTTP 一等公民（G 档）
+
+- **`WithHTTPService(web.Options{...})`** — HTTP 与 RPC 平级的服务构建器，同进程共存、共享优雅停机；可多次调用挂多个端口
+- **标准库路由** — 基于 Go 1.22 `net/http.ServeMux`（`"GET /users/{id}"` 模式 + 路径参数），零第三方 web 框架依赖
+- **内置中间件链** — Trace（X-Trace-Id）/ AccessLog / Metrics / Recover / RateLimit / Auth，与 net/http 生态同构（`func(http.Handler) http.Handler`）
+- **HTTP→RPC 桥** — handler 经注入的 `web.Backend` 调任意后端 service，单进程直通 / 分布式 rpcx 自动选路，traceId 从 HTTP 请求透传到后端 RPC
+- **生产级停机** — `http.Server` 实例（带超时，防 slowloris）挂进 D3 停机序列，`Shutdown(ctx)` 带超时 drain in-flight 请求
 
 ### 🏗️ API / 架构演进（C 档）
 
@@ -172,7 +191,203 @@ go run main.go
 没有 Consul、没有 Redis、没有 MySQL——`WithSingleProcess()` 让框架跑在零依赖模式。
 从单进程原型平滑迁移到分布式部署只需要去掉这一行调用。
 
-更多场景见 [`example/`](example/) 目录下的 9 个示例项目。
+更多场景见 [`example/`](example/) 目录下的示例项目。
+
+---
+
+## HTTP 一等公民（G 档）
+
+tgf 把 HTTP web 服务做成与 RPC 平级的一等公民：用 `WithHTTPService` 即可在同一个
+进程里起一个标准 HTTP 服务，与 RPC 服务**共享生命周期与优雅停机**。核心实现放在
+自包含的 `tgf/web` 包（只依赖标准库 + log/metrics/trace 三个叶子包，**不 import
+rpc**，无 import 环）；`rpc.Server` 单向 import `web`，把"调用后端 RPC 的能力"以
+`web.Backend` 接口注入进来。
+
+### 最小用法
+
+```go
+import (
+    "net/http"
+    "github.com/thkhxm/tgf/rpc"
+    "github.com/thkhxm/tgf/web"
+)
+
+rpc.NewRPCServer().
+    WithStandalone().                       // 纯 web 进程：不挂 Consul
+    WithHTTPService(web.Options{
+        Addr: ":8090",                      // 省略则读配置 HTTPPort（默认 8090）
+        Routes: func(r *web.Router) {
+            r.GET("/health", func(w http.ResponseWriter, _ *http.Request) {
+                _, _ = w.Write([]byte("ok"))
+            })
+            r.GET("/users/{id}", func(w http.ResponseWriter, req *http.Request) {
+                _, _ = w.Write([]byte(req.PathValue("id")))   // Go 1.22 路径参数
+            })
+            // 鉴权分组：/admin/* 全部要求 Bearer 口令（fail-closed）
+            admin := r.Group("/admin", web.Auth(web.StaticBearerToken("s3cr3t")))
+            admin.GET("/stats", statsHandler)
+        },
+        Limiter: web.NewTokenBucketLimiter(1000),   // 全局 1000 QPS（E1 同款语义）
+    }).
+    Run()                                   // 启动监听；收到信号后 Destroy 优雅 drain
+```
+
+> 完整可跑示例：[`example/http_rest/`](example/http_rest/)。
+
+### 路由与中间件
+
+- **路由**：基于 Go 1.22 `net/http.ServeMux`。模式 `"GET /users/{id}"`（method + 路径参数），
+  handler 内 `req.PathValue("id")` 取参；`r.Group(prefix, mws...)` 派生带前缀的分组，
+  `r.Use(mws...)` 只影响**之后**注册的路由。便捷方法 `GET/POST/PUT/DELETE/PATCH`。
+- **内置中间件链**（外 → 内）：`Trace → AccessLog → Metrics → Recover → RateLimit →
+  Backend 注入 → 用户 Middlewares → 路由`。可经 `DisableTrace/DisableAccessLog/
+  DisableMetrics/DisableRecover` 单独关闭。
+- **中间件形状**：`type Middleware func(http.Handler) http.Handler`，与 net/http 生态
+  完全同构——任何第三方中间件直接可用。内置构造器：`Trace()` / `AccessLog()` /
+  `Metrics()` / `Recover()` / `RateLimit(Limiter)` / `Auth(AuthFunc)`。
+- **鉴权**：`web.Auth(web.StaticBearerToken(token))` 或 `web.BearerToken(provider)`
+  （支持热轮换）。比对走 `subtle.ConstantTimeCompare` 防时序侧信道；未配置口令 →
+  503（fail-closed），带错/缺口令 → 401。
+
+### HTTP→RPC 桥（分布式 web 服务）
+
+HTTP handler 经框架注入的 `web.Backend` 调用任意后端 service，**不必裸写 net/http**
+（若进程本身想"不伪装成 RPC 节点"，用 `WithClientOnly()`，见下文）：
+
+```go
+func getPlayer(w http.ResponseWriter, r *http.Request) {
+    backend, _ := web.BackendFromRequest(r)          // 框架自动注入的默认后端
+    args := GetPlayerReq{PlayerId: r.PathValue("id")}
+    var reply GetPlayerRes
+    if err := backend.Invoke(r.Context(), "player", "GetPlayer", &args, &reply); err != nil {
+        http.Error(w, err.Error(), http.StatusBadGateway)
+        return
+    }
+    // 写 reply ...
+}
+```
+
+- `WithHTTPService` 装配时 `Options.Backend` 留空 → 框架自动注入默认后端
+  （`defaultWebBackend`）：单进程命中 `localDispatcher` 走进程内直通，否则走
+  `SendRPCMessageByStr` 分布式路径。两条路径业务代码一样，且共用 **E1 策略管道
+  （限流/熔断）+ A7 超时 + E3 埋点**。
+- **traceId 全链路**：`web.Trace` 中间件注入的 traceId（入站 `X-Trace-Id` 复用，
+  否则新生成）会被写进 rpcx `ReqMetaData`，后端 service 内
+  `trace.TraceIDFromContext(ctx)` 读到的是同一个 id。
+- 业务也可注入自己的 `web.Backend`（如更丰富的 HTTP→RPC 编解码桥）替换默认实现。
+
+> 完整可跑示例（含单进程 / 多进程两种部署）：[`example/http_rpc/`](example/http_rpc/)。
+
+### 与 RPC 共存 / client-only / Consul 注册
+
+- **与 RPC 共存**：同一个 `rpc.NewRPCServer()` 既 `WithService(...)` 注册游戏 service，
+  又 `WithHTTPService(...)` 起 HTTP 服务，二者同进程、同一条 D3 优雅停机序列。
+- **client-only web 接入层**：HTTP 进程用 `WithClientOnly()` + `WithHTTPService(...)`
+  （或 `WithHTTPServiceConsul(...)`）。`WithClientOnly()` 才是"不把自己伪装成 RPC
+  节点"的开关：**不注册任何 service、不创建 rpcx server、不监听 rpcx 端口、不进入
+  RPC 服务发现**，但照常初始化 Consul discovery + RPC client，所以 `Backend.Invoke`
+  经服务发现跨节点调游戏服。
+  > ⚠️ 常见误解：**默认 `Run()` 即便不 `WithService` 任何 service，仍会创建 rpcx
+  > server、监听 `ServicePort`、并在 discovery 非 nil 时注册进 Consul**——那仍是一个
+  > RPC 节点，**不是** client-only。client-only 语义只有显式调用 `WithClientOnly()`
+  > 才成立（它与 `WithService` / `WithGateway*` / `WithoutServiceClient` /
+  > `WithoutConsul` 互斥，`Run` 时 `validateClientOnly` fail-fast）。
+
+  从单进程平滑迁移到多进程分布式只改 server 构建那几行，handler 一字不改
+  （见 `example/http_rpc/`）。
+- **HTTP 服务注册进 Consul**：`WithHTTPServiceConsul(opt, reg)` = `WithHTTPService` +
+  把这个 HTTP 服务注册进 Consul（自动挂 health 路由、TTL 续约、`Destroy` 时摘除），
+  让"分布式 web 服务"可被标准 Consul 生态（DNS / API / fabio / traefik）发现与
+  负载均衡。详见下方「[client-only + HTTP + Consul 注册：纯 web 接入进程](#client-only--http--consul-注册纯-web-接入进程)」。
+- **优雅停机**：HTTP 用独立 `http.Server` 实例（带 `ReadHeaderTimeout` 等超时，防
+  slowloris），挂进框架 `Destroy` 链；停机时**先停 accept → drain in-flight HTTP
+  请求（`http.Server.Shutdown` 带 `ShutdownTimeout`）→ 再 drain RPC → 终末 flush**。
+- **脱离 rpc 单独用**：`web.NewServer(opts).Start()` / `Shutdown(ctx)` 可不依赖
+  `rpc.Server` 独立起一个 HTTP 服务（此时 `Backend` 需自行注入或不调后端）。
+
+### HTTP 一等公民 · Server builder API 清单
+
+| API | 作用 |
+|-----|------|
+| `WithHTTPService(opt web.Options) *Server` | 装载一个 HTTP 服务（**不**注册 Consul）。可多次调用起多个端口。 |
+| `WithHTTPServiceConsul(opt web.Options, reg HTTPRegistration) *Server` | 装载 HTTP 服务**并注册进 Consul**（自动挂 health 路由 + TTL 续约 + `Destroy` 摘除），使分布式 web 服务可被发现/负载均衡。 |
+| `WithClientOnly() *Server` | 开启 **client-only** 模式：不注册 service、不创建 rpcx server、不监听 rpcx 端口，仅保留 RPC client（可调后端）+ HTTP 服务 + HTTP 的 Consul 注册。与 `WithService` / `WithGateway*` 互斥。 |
+
+`HTTPRegistration`（`WithHTTPServiceConsul` 的第二参数）关键字段：
+
+| 字段 | 说明 |
+|------|------|
+| `ServiceName string` | Consul service 逻辑名（发现/负载均衡检索键）。必填，为空则跳过注册（Error 日志提示）。 |
+| `Address string` | 显式对外可达地址 `host:port`。空 → 取 HTTP 实际监听地址（`:0` 随机端口也注册真实端口）。 |
+| `HealthPath string` | health endpoint 路径。空 → `/health`。 |
+| `HealthCheck func() error` | 业务自检（如 Redis/MySQL ping），失败时 health 返 503 摘流量；nil → 端口活性级探活。 |
+| `DisableHealthRoute bool` | 已自行注册 health 路由或不需要 endpoint 时置 true。 |
+| `UseHTTPCheck bool` | true → Consul agent 主动 GET health；false（默认）→ TTL check（框架续约 goroutine 维持，容器/NAT 零配置可用）。 |
+| `Interval` / `Timeout` / `DeregisterCriticalAfter` | TTL 续约周期 / HTTP 探测超时 / critical 后自动摘除时长。 |
+| `Tags []string` / `Meta map[string]string` | 透传到 Consul service。 |
+
+#### client-only + HTTP + Consul 注册：纯 web 接入进程
+
+一个无状态 REST 接入进程：自身**不**注册成 RPC 节点（`WithClientOnly`），只对外提供
+HTTP，并把这个 HTTP 服务注册进 Consul（可被发现/负载均衡），handler 经 `web.Backend`
+跨节点调后端游戏 service：
+
+```go
+package main
+
+import (
+    "github.com/thkhxm/tgf/rpc"
+    "github.com/thkhxm/tgf/web"
+)
+
+type GetPlayerReq struct{ PlayerId string }
+type GetPlayerRes struct {
+    PlayerId string
+    Level    int
+}
+
+func main() {
+    rpc.NewRPCServer().
+        // client-only：不伪装成 RPC 节点（不注册 service、不监听 rpcx 端口），
+        // 但初始化 RPC client，可经服务发现调后端。
+        WithClientOnly().
+        // 装载 HTTP 服务并把它注册进 Consul（带 health 路由 + TTL 续约）。
+        WithHTTPServiceConsul(web.Options{
+            Addr: ":8091",
+            Routes: func(r *web.Router) {
+                // web.RPC[Req,Res] 泛型 handler：HTTP body ⇄ 后端 module.method，
+                // 内部经 web.Backend 跨节点调 player.GetPlayer。
+                r.POST("/api/player", web.RPC[GetPlayerReq, GetPlayerRes]("player", "GetPlayer"))
+            },
+        }, rpc.HTTPRegistration{
+            ServiceName: "player-web", // Consul 逻辑名
+            // 其余字段取默认：TTL check、/health 路由、本机出口 IP + 实际端口注册。
+        }).
+        Run()
+}
+```
+
+要点：
+
+- **client-only 不是"少 WithService"**：默认 `Run()` 不 `WithService` 任何 service
+  时仍会创建 rpcx server、监听 `ServicePort` 并注册进 Consul——必须显式
+  `WithClientOnly()` 才真正不伪装成 RPC 节点。
+- 若**不需要**把 HTTP 服务注册进 Consul（如前面有外部 LB / 网关），把
+  `WithHTTPServiceConsul(opt, reg)` 换成 `WithHTTPService(opt)` 即可，其余不变。
+- handler 也可不用泛型 `web.RPC`，而在普通 `http.HandlerFunc` 内
+  `web.BackendFromRequest(r)` 取 `Backend` 后 `backend.Invoke(ctx, module, method, &args, &reply)`
+  手动调用（见 `example/http_rpc/`）。
+
+### 配置项
+
+| 配置项（env） | 默认值 | 说明 |
+|---------------|--------|------|
+| `HTTPPort` | `8090` | `WithHTTPService` 未显式指定 `Addr` 时的监听端口 |
+| `HTTPReadHeaderTimeoutSec` | `5` | 读请求头超时（秒，防 slowloris） |
+| `HTTPShutdownTimeoutSec` | `10` | 优雅停机 drain 超时（秒） |
+
+登记于 `tgf/config.HTTPConfig` 与 `define.go` 的 `Environment` 常量；
+`Options` 的零值字段在 `Run` 时按这些配置项与 `web` 包默认值填充。
 
 ---
 
@@ -187,21 +402,22 @@ go run main.go
 │  Server Builder (rpc.NewRPCServer)                           │
 │  ├── WithSingleProcess / WithStandalone (C1/C8)              │
 │  ├── WithGatewayOptions (C1) / WithGatewayKCP (A8)           │
+│  ├── WithHTTPService (G1) ── HTTP 一等公民                    │
 │  ├── WithMethodPolicy (C6) / WithMetrics (B4) / WithTracer   │
 │  └── WithHealthCheck (A6)                                    │
 └───────────────────────────┬───────────────────────────────────┘
                             │
-       ┌────────────────────┴─────────────────────────┐
-       │                                              │
-┌──────▼─────────────┐          ┌────────────────────▼─────────┐
-│  Gateway           │          │  RPC Server                   │
-│  ├── TCP / WS/WSS  │          │  ├── rpcx service registry    │
-│  ├── KCP+AEAD (A8) │          │  ├── Consul discovery         │
-│  ├── IConn (A2)    │          │  ├── localDispatcher (C8)     │
-│  └── 登录锁 (A3)    │          │  └── MethodPolicy 管道 (C6)   │
-└──────┬─────────────┘          └────────────────────┬──────────┘
-       │                                             │
-┌──────▼─────────────────────────────────────────────▼──────────┐
+   ┌───────────────┬────────┴───────────────┬───────────────────┐
+   │               │                        │                   │
+┌──▼───────────┐ ┌─▼──────────────┐  ┌──────▼─────────────────┐ │
+│ HTTP (web/)  │ │  Gateway        │  │  RPC Server            │ │
+│ ├ Router(G1) │ │  ├ TCP / WS/WSS │  │  ├ rpcx service registry│ │
+│ ├ 中间件链   │ │  ├ KCP+AEAD(A8) │  │  ├ Consul discovery     │ │
+│ ├ Backend桥  │─┼─→ IConn (A2)    │  │  ├ localDispatcher (C8) │ │
+│ └ Shutdown   │ │  └ 登录锁 (A3)   │  │  └ MethodPolicy 管道(C6)│ │
+└──┬───────────┘ └─┬──────────────┘  └──────┬─────────────────┘ │
+   │               │                        │                   │
+┌──▼───────────────▼────────────────────────▼───────────────────┐
 │  Data Layer                                                   │
 │  ├── autoCacheManager (write-behind, A1 + A1b FailureQueue)  │
 │  ├── game_config (C5 hot reload + fsnotify)                  │
@@ -209,11 +425,29 @@ go run main.go
 └───────────────────────────────────────────────────────────────┘
 ```
 
+> HTTP（`web/`）是自包含层（不 import rpc，无 import 环）；`rpc.Server` 经
+> `WithHTTPService` 把后端调用能力以 `web.Backend` 注入，HTTP handler 即可经桥
+> 调任意后端 service（图中 HTTP → Gateway/RPC 的虚线）。
+
 完整架构说明见 [`doc/architecture.md`](doc/architecture.md)。
 
 ---
 
 ## 功能清单
+
+### HTTP web 服务（G 档）
+
+| 能力 | API | 说明 |
+|------|-----|------|
+| HTTP 服务构建器 | `Server.WithHTTPService(web.Options{...})` | 与 RPC 同进程共存，可多次调用挂多端口 |
+| 路由 | `web.Router` `GET/POST/PUT/DELETE/PATCH` / `Handle("GET /p/{x}", h)` | Go 1.22 ServeMux，路径参数 `req.PathValue` |
+| 路由分组 | `r.Group(prefix, mws...)` / `r.Use(mws...)` | 前缀 + 分组中间件 |
+| 内置中间件 | `Trace / AccessLog / Metrics / Recover / RateLimit / Auth` | 链顺序外→内，可单独 Disable |
+| 限流 | `web.NewTokenBucketLimiter(qps)` | E1 同款令牌桶，超限 429 |
+| 鉴权 | `web.Auth(web.StaticBearerToken(t))` / `web.BearerToken(provider)` | constant-time + fail-closed |
+| HTTP→RPC 桥 | `web.BackendFromRequest(r).Invoke(ctx, module, method, &args, &reply)` | 单进程直通 / 分布式选路，traceId 透传 |
+| 优雅停机 | `Run()` + 框架 `Destroy` 链 | 独立 `http.Server` + `Shutdown(ctx)` 带超时 drain |
+| 脱离 rpc 单用 | `web.NewServer(opts).Start()` / `Shutdown(ctx)` | 不依赖 rpc.Server 独立起 HTTP |
 
 ### 网关与连接
 
@@ -282,6 +516,8 @@ go run main.go
 
 | 目录 | 演示内容 |
 |------|---------|
+| [`http_rest/`](example/http_rest/) | **纯 REST API**（WithHTTPService + 路由/中间件/限流/鉴权/优雅停机）——常规 http web 服务 |
+| [`http_rpc/`](example/http_rpc/) | **REST + 调游戏服 RPC**（HTTP→RPC 桥 + traceId 全链路 + 单/多进程部署）——分布式 web 服务 |
 | [`single_process/`](example/single_process/) | 单进程多 Module + 跨 module RPC + 策略 + metrics |
 | [`robot_test/`](example/robot_test/) | WS + KCP robot 自测（登录 + 多人移动同步，QPS ~200 万） |
 | [`db_cache/`](example/db_cache/) | AutoCacheBuilder + Redis KV/Map/List + 分布式锁 + 补偿队列 |
@@ -371,7 +607,8 @@ go run .
   下游可消费、凭据卫生、登录鉴权地基），让框架"对外存在"
 - 📅 v3-E 档：接线收尾（策略管道全覆盖、配置系统收敛、可观测性落地、数据层故障路径）
 - 📅 v3-F 档：生产化地基（fork 治理、Consul TTL check、会话与踢人收尾、过载保护）
-- 📅 v3-G 档：定位对齐（HTTP web 能力，按需启动）
+- ✅ **v3-G 档：HTTP 一等公民**（`WithHTTPService` + 路由/中间件/限流/鉴权 + HTTP→RPC 桥 +
+  共享 D3 优雅停机），把"常规 http web 服务 / 分布式 web 服务 / 分布式游戏服务"三场景讲清
 - 📅 更远期：
   - DB 层真正的分库分表（sqlBuilder 重构）
   - OpenTelemetry / Prometheus adapter 官方 subpackage

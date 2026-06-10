@@ -26,6 +26,7 @@ import (
 	"github.com/thkhxm/tgf/rpc/internal"
 	"github.com/thkhxm/tgf/trace"
 	"github.com/thkhxm/tgf/util"
+	"github.com/thkhxm/tgf/web"
 	"google.golang.org/protobuf/proto"
 )
 
@@ -127,6 +128,28 @@ type Server struct {
 	shutdownDrainTimeout time.Duration
 	// destroyed 保证 Destroy 只执行一次（信号编排与业务手动调用可能并存）。
 	destroyed atomic.Bool
+
+	// G1 HTTP 一等公民：
+	// httpOptions 是 WithHTTPService 注册的 HTTP 服务配置（可多实例，如业务
+	// API 与内部管理面分端口）；Run 时经 applyHTTPDefaults 填配置默认值并启动。
+	httpOptions []web.Options
+	// httpServers 是已启动的 HTTP 服务实例，Destroy 时按序优雅停机
+	//（http.Server.Shutdown 带超时 drain，见 shutdownHTTPServers）。
+	httpServers []*web.Server
+
+	// G3 client-only（rpcserver_clientonly.go）：
+	// clientOnly 开启后 Run 分流到 runClientOnly——不注册任何 service、不监听
+	// rpcx 端口，仅初始化 RPC client（+ 可选 HTTP 服务）调用后端。
+	clientOnly bool
+
+	// G2/G3 HTTP 服务注册进 Consul（http_consul.go）：
+	// httpConsulRegs 记录 WithHTTPServiceConsul 的注册意图，key 与 httpOptions
+	// 下标对齐（混用 WithHTTPService 时未注册的下标缺位即可）。
+	httpConsulRegs map[int]*HTTPRegistration
+	// httpConsulServices 是已注册进 Consul 的 HTTP service 句柄，Destroy 反注册。
+	httpConsulServices []httpConsulHandle
+	// httpConsulRenewStop 是 TTL 续约 goroutine 的共享退出信号，Destroy 关闭。
+	httpConsulRenewStop chan struct{}
 }
 
 type loginHook func(ctx context.Context, userId string) (err error)
@@ -519,6 +542,165 @@ func (s *Server) WithProfileDebug() *Server {
 	return s
 }
 
+// ---------------------------------------------------------------------------
+// G1：HTTP 一等公民（tgf/web 包的 rpc 侧接线）
+// ---------------------------------------------------------------------------
+//
+// 架构（防 import 环）：web 包自包含（HTTP server / 路由 / 中间件 / 生命周期），
+// 不 import rpc；rpc 单向 import web，并把"调用后端 RPC 的能力"以 web.Backend
+// 接口注入（见 defaultWebBackend）——HTTP handler 经 web.BackendFromRequest
+// 拿到它即可调用任意后端 service，单进程直通（local dispatcher）与分布式
+// rpcx 路径自动选择，限流/熔断策略管道（E1）、超时（A7）、metrics（E3）与
+// traceId 透传（HTTP X-Trace-Id → rpcx ReqMetaData["TraceId"]）全部生效。
+//
+// 生命周期（与 D3 优雅停机统一编排）：
+//   - Run()：postServe 钩子之后启动 HTTP 监听（startHTTPServers）；监听失败
+//     与 rpcx 监听失败同语义——非零码退出；
+//   - Destroy()：网关停 accept 之后、rpcx drain 之前，对每个 HTTP 实例执行
+//     http.Server.Shutdown（带 ShutdownTimeout）drain in-flight 请求——HTTP
+//     handler 可能还要调后端 RPC，所以必须先 drain HTTP 再 drain RPC。
+//
+// 最小用法（DX 示例）：
+//
+//	rpc.NewRPCServer().
+//	    WithService(&UserService{}).
+//	    WithHTTPService(web.Options{
+//	        // Addr 省略时读配置 HTTPPort（默认 8090）
+//	        Routes: func(r *web.Router) {
+//	            r.GET("/users/{id}", func(w http.ResponseWriter, req *http.Request) {
+//	                backend, _ := web.BackendFromRequest(req)
+//	                id := req.PathValue("id")
+//	                var reply UserRes
+//	                if err := backend.Invoke(req.Context(), "user", "GetUser", &id, &reply); err != nil {
+//	                    http.Error(w, err.Error(), http.StatusBadGateway)
+//	                    return
+//	                }
+//	                // ... 序列化 reply
+//	            })
+//	            admin := r.Group("/admin", web.Auth(web.StaticBearerToken(token)))
+//	            admin.GET("/stats", statsHandler)
+//	        },
+//	        Limiter: web.NewTokenBucketLimiter(1000),
+//	    }).
+//	    Run()
+
+// WithHTTPService 装载一个与 RPC 服务同进程、共生命周期的 HTTP 服务（G1）。
+// 可多次调用装载多个 HTTP 实例（不同端口）。opt 的零值字段在 Run 时按
+// 配置项（HTTPPort / HTTPReadHeaderTimeoutSec / HTTPShutdownTimeoutSec）与
+// web 包默认值填充；opt.Backend 为 nil 时自动注入框架默认后端调用实现。
+func (s *Server) WithHTTPService(opt web.Options) *Server {
+	s.httpOptions = append(s.httpOptions, opt)
+	log.InfoTag("init", "装载HTTP服务 addr=%v (空地址将在 Run 时读配置 HTTPPort)", opt.Addr)
+	return s
+}
+
+// applyHTTPDefaults 用 tgf 配置系统（E2 唯一真源）填充 Options 零值字段。
+// 在 Run 时调用（而非 WithHTTPService 时）——读到的是启动时刻最新的配置快照。
+func applyHTTPDefaults(opt *web.Options) {
+	cfg := tgfconfig.Current().HTTP
+	if opt.Addr == "" {
+		port := cfg.Port
+		if port == "" {
+			port = "8090"
+		}
+		opt.Addr = ":" + port
+	}
+	if opt.ReadHeaderTimeout <= 0 && cfg.ReadHeaderTimeoutSec > 0 {
+		opt.ReadHeaderTimeout = time.Duration(cfg.ReadHeaderTimeoutSec) * time.Second
+	}
+	if opt.ShutdownTimeout <= 0 && cfg.ShutdownTimeoutSec > 0 {
+		opt.ShutdownTimeout = time.Duration(cfg.ShutdownTimeoutSec) * time.Second
+	}
+}
+
+// startHTTPServers 在 Run 的收尾阶段启动全部 HTTP 服务。
+// 监听失败与 rpcx 监听失败同语义：启动期失败必须以非零码退出，
+// 不允许"进程活着但 HTTP 端口没起来"的半启动状态。
+func (s *Server) startHTTPServers() {
+	for i := range s.httpOptions {
+		opt := s.httpOptions[i]
+		applyHTTPDefaults(&opt)
+		if opt.Backend == nil {
+			opt.Backend = defaultWebBackend()
+		}
+		srv := web.NewServer(opt)
+		if err := srv.Start(); err != nil {
+			log.Error("[init] HTTP 服务启动失败 addr=%v err=%v", opt.Addr, err)
+			os.Exit(1)
+		}
+		s.httpServers = append(s.httpServers, srv)
+		log.InfoTag("init", "HTTP 服务启动成功 addr=%v", srv.Addr())
+	}
+}
+
+// shutdownHTTPServers 是 D3 停机序列中的 HTTP drain 步骤：对每个实例执行
+// http.Server.Shutdown（带该实例的 ShutdownTimeout）——停止接收新连接并等待
+// in-flight 请求处理完成；超时只告警不阻断后续停机（与 drain RPC 同语义）。
+func (s *Server) shutdownHTTPServers() {
+	for _, hs := range s.httpServers {
+		ctx, cancel := context.WithTimeout(context.Background(), hs.ShutdownTimeout())
+		if err := hs.Shutdown(ctx); err != nil {
+			log.WarnTag("shutdown", "HTTP 服务 drain 未在 %v 内完成(继续停机) addr=%v err=%v",
+				hs.ShutdownTimeout(), hs.Addr(), err)
+		} else {
+			log.InfoTag("shutdown", "HTTP 服务已优雅停机 addr=%v", hs.Addr())
+		}
+		cancel()
+	}
+}
+
+// defaultWebBackend 构造注入给 web 包的默认后端调用实现（G1 注入点，
+// BRIDGE/G2 的 HTTP→RPC 编解码桥也基于同一个 web.Backend 契约接线）。
+func defaultWebBackend() web.Backend {
+	return web.BackendFunc(webBackendInvoke)
+}
+
+// webBackendInvoke 是默认 Backend 的执行体。路径选择与网关主链路 sendMessage
+// 一致：单进程模式命中 local dispatcher 走进程内反射直通（含 E1 策略管道），
+// 否则走 SendRPCMessageByStr（自带策略管道 + A7 超时）。两条路径共用
+// E3 的 RPC 时延/调用量/错误率埋点（observeRPCCall）。
+func webBackendInvoke(ctx context.Context, module, method string, args, reply any) (err error) {
+	startTime := time.Now()
+	defer func() {
+		observeRPCCall(module, method, startTime, err)
+	}()
+
+	rctx := newWebBackendContext(ctx)
+	if localDispatchEnabled.Load() {
+		if _, ok := localDispatcher.Lookup(module); ok {
+			release, perr := applyMethodPolicy(module, method)
+			if perr != nil {
+				err = perr
+				return
+			}
+			defer func() {
+				release(err)
+			}()
+			err = localDispatcher.Call(rctx, module, method, args, reply)
+			return
+		}
+	}
+	err = SendRPCMessageByStr(rctx, module, method, args, reply)
+	return
+}
+
+// newWebBackendContext 把 HTTP 请求 context 升级为 rpcx share.Context：
+//   - 标记 RPCTip（与 NewRPCContext 一致）；
+//   - 把 HTTP 链路的 traceId（web.Trace 中间件注入，trace 包私有 key）写进
+//     ReqMetaData["TraceId"]——经 rpcx 协议透传到后端 service，实现
+//     "HTTP 请求 → 后端 RPC" 全链路同一个 traceId（E3 贯通语义）。
+//
+// 注意：share.NewContext 包装原 ctx，HTTP 请求取消/超时信号对 RPC 路径仍然可见。
+func newWebBackendContext(ctx context.Context) context.Context {
+	sc := share.NewContext(ctx)
+	meta := map[string]string{tgf.ContextKeyRPCType: tgf.RPCTip}
+	if tid := trace.TraceIDFromContext(ctx); tid != "" {
+		meta[tgf.ContextKeyTRACEID] = tid
+	}
+	sc.SetValue(share.ReqMetaDataKey, meta)
+	return sc
+}
+
 // defaultShutdownDrainTimeout 优雅停机中 drain in-flight 阶段的默认超时。
 // rpcx Shutdown 的轮询间隔是 1s，所以该值不应小于 1s。
 const defaultShutdownDrainTimeout = 10 * time.Second
@@ -585,6 +767,14 @@ func (s *Server) Run() <-chan bool {
 	// 这替代了原先 NewRPCServer 里硬编码 withConsulDiscovery + withServiceClient 的写法。
 	for _, hook := range s.buildPreServeHooks() {
 		hook(s)
+	}
+
+	// G3（BRIDGE）：client-only 模式分流——不创建 rpcx server、不监听、不注册
+	// service，仅初始化 RPC client + HTTP 服务（见 rpcserver_clientonly.go）。
+	// 放在 preServe 钩子之后：Consul discovery 已装载、经钩子追加的 service
+	//（WithGatewayOptions 等）已就位，可做完整的配置冲突校验。
+	if s.clientOnly {
+		return s.runClientOnly()
 	}
 	/**启动逻辑链*/
 	//注册rpcx服务
@@ -730,6 +920,15 @@ func (s *Server) Run() <-chan bool {
 		hook(s)
 	}
 
+	// G1: postServe 钩子之后启动 HTTP 服务——分布式模式下默认 Backend 依赖的
+	// rpc client watch 已在上面装载，单进程模式下 local dispatcher 也已注册完毕，
+	// HTTP 首个请求即可调通后端。监听失败非零码退出（startHTTPServers 内部处理）。
+	s.startHTTPServers()
+
+	// G2/G3（BRIDGE）：把 WithHTTPServiceConsul 声明的 HTTP 服务注册进 Consul
+	//（带 health endpoint）——监听已就绪，注册即可服务（F2 时序原则）。
+	s.registerHTTPConsulServices()
+
 	// A6: 如果 WithHealthCheck 已配置，在 postServe Hook 全部跑完后启动心跳 goroutine。
 	// 放在最后是因为心跳的存在条件是"rpcx Serve 已启动 + 默认 client watch 已装载"。
 	s.startHealthCheckLoop()
@@ -762,12 +961,16 @@ type gateAcceptStopper interface {
 //  1. 停健康心跳；
 //  2. 从 Consul 反注册本节点并停止 TTL 刷新 goroutine——新流量不再路由过来，
 //     且节点不会被 TTL 刷新"复活"（带超时兜底，Consul 不可达时不阻塞停机）；
+//     同阶段反注册 HTTP service（G2/G3，deregisterHTTPConsulServices）——
+//     LB/发现侧先摘流量，再进入后续 drain；
 //  3. 网关停止 accept 并关闭 TCP/WS/KCP listener（已建立的 TCP/WS 连接不受影响，
 //     KCP 例外：kcp-go 会话与 listener 共享 UDP socket，关 listener 会中断既有会话）；
-//  4. drain in-flight——rpcServer.Shutdown 等待正在处理的 RPC 全部完成（带可配置
+//  4. HTTP 服务优雅停机（G1）——http.Server.Shutdown 带超时 drain in-flight
+//     HTTP 请求；必须在 drain RPC 之前：HTTP handler 可能还要调后端 RPC；
+//  5. drain in-flight——rpcServer.Shutdown 等待正在处理的 RPC 全部完成（带可配置
 //     超时，见 WithShutdownDrainTimeout）；
-//  5. 第一轮终末 flush——把 drain 完成时刻的全部脏数据立即落库（db.FlushAll）；
-//  6. 业务 service Destroy（每个独立 recover，单个 panic 不中断其余）。
+//  6. 第一轮终末 flush——把 drain 完成时刻的全部脏数据立即落库（db.FlushAll）；
+//  7. 业务 service Destroy（每个独立 recover，单个 panic 不中断其余）。
 //
 // 之后 tgf 的 finalFlushHooks（见本文件 init 注册的桥接）会做第二轮 flush，
 // 兜住步骤 6 业务代码新产生的脏数据；整个序列由 tgf 的停机看门狗
@@ -780,7 +983,12 @@ func (s *Server) Destroy() {
 	// 前提，但摘流量之后心跳已无意义，且业务 Destroy 完成后心跳绝不应再跳。
 	s.stopHealthCheckLoop()
 	s.unregisterFromConsul()
+	// G2/G3（BRIDGE）：HTTP service 的 Consul 反注册与 rpcx 节点摘除同阶段——
+	// 必须先于 shutdownHTTPServers（drain）：LB 不再把新请求路由过来，
+	// in-flight 由 drain 正常送完。
+	s.deregisterHTTPConsulServices()
 	s.stopGatewayAccept()
+	s.shutdownHTTPServers()
 	s.drainInFlight()
 	shutdownFlushFn()
 	for _, service := range s.service {
