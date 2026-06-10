@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"math/rand"
+	"net"
 	"os"
 	"strings"
 	"sync"
@@ -95,15 +96,24 @@ type Server struct {
 	// 由 WithInProcessDispatch / WithSingleProcess 设置。
 	inProcessDispatch bool
 
-	// A6 新增：后台健康心跳骨架。
-	// healthInterval > 0 时 Run 会启动一个心跳 goroutine，每 healthInterval
-	// 打一次"进程存活"的 heartbeat（当前只做 atomic 状态位 + 日志，未来 C2/B4
-	// 集成 Consul Agent TTL check / Prometheus gauge 时复用这条 goroutine）。
+	// A6 新增、F2 接线：后台健康心跳。
+	// healthInterval > 0 时 Run 会启动一个心跳 goroutine；Consul 开启且服务注册
+	// 成功时（consulHealth 非 nil），每 tick 对 Consul agent TTL check 续约
+	// （internal.ConsulTTLHealth.Renew），进程 kill 后 Consul 在 TTL 内自动把
+	// 检查置 critical 并按 DeregisterCriticalServiceAfter 摘除节点；
+	// 无 Consul 时保持 A6 的"atomic 状态位 + 日志"行为。
+	// Consul 开启时未显式 WithHealthCheck 也会以 internal.DefaultTTLHealthInterval
+	// 默认开启（见 setupConsulTTLHealth）。
 	healthInterval time.Duration
 	// healthCheckStop 是心跳 goroutine 的退出信号，Destroy 时关闭。
 	healthCheckStop chan struct{}
-	// healthy 是进程级存活标志，默认 false，心跳 goroutine 启动后首次 tick 前就会置 true。
+	// healthy 是进程级健康标志。F2 之后：接了 Consul TTL 时反映"最近一次续约
+	// 是否成功"；未接 Consul 时维持 A6 语义（心跳 goroutine 活着即 true）。
 	healthy atomic.Bool
+	// consulHealth 是 Consul agent TTL health check 句柄（F2）。
+	// Run 在服务注册成功后、心跳 goroutine 启动前一次性赋值；心跳循环与
+	// Destroy 只读——无并发写。nil = 未启用（无 Consul / 全部注册失败）。
+	consulHealth ttlHealthRenewer
 
 	// D3 / P0-3 优雅停机相关：
 	// registryPlugin 持有 Consul 注册插件（internal.ConsulDiscovery.RegisterServer
@@ -153,18 +163,17 @@ func (s *Server) WithStandalone() *Server {
 	return s.WithoutConsul().WithoutServiceClient()
 }
 
-// WithHealthCheck 开启进程级健康心跳。interval 指定每次心跳的间隔；传 0 或负数
-// 视为禁用（默认行为就是禁用）。
+// WithHealthCheck 配置健康心跳的续约周期。传 0 或负数视为不改动。
 //
-// A6 定位是"骨架"：当前心跳只做两件事——
-//  1. 通过 atomic.Bool 维护 `healthy` 状态，业务可通过 Server.IsHealthy() 观察；
-//  2. 每次 tick 打一条 DebugTag 日志，便于运维从日志里确认进程存活。
+// F2 之后的语义（A6 骨架已接真实 Consul TTL check）：
+//   - Consul 开启（默认）：心跳每 interval 对 Consul agent TTL check 续约一次，
+//     TTL = 3×interval——进程 kill / 宕机后 Consul 在 TTL 内把检查置 critical
+//     并按 DeregisterCriticalServiceAfter（1m，Consul 硬下限）自动摘除节点。
+//     不调本方法时 Run 也会以 internal.DefaultTTLHealthInterval(5s) 默认开启。
+//   - WithoutConsul / 单进程模式：维持 A6 行为——atomic 状态位 + Debug 日志，
+//     且不调本方法时心跳不启动。
 //
-// 后续 C2（Consul 改造）/ B4（可观测性）会在这条心跳 goroutine 上挂上真正的
-// Consul Agent TTL check 续约调用 + Prometheus gauge 上报。
-//
-// 由于是骨架，本 Option 的默认 interval 建议用 5~10 秒；再短容易干扰 Consul
-// 的 rpcx UpdateInterval。
+// interval 建议 2~10 秒：太短增加 Consul agent 压力，太长拉高死节点的发现延迟。
 func (s *Server) WithHealthCheck(interval time.Duration) *Server {
 	if interval > 0 {
 		s.healthInterval = interval
@@ -183,7 +192,9 @@ func (s *Server) IsHealthy() bool {
 // 内部细节：
 //   - healthCheckStop 是退出信号，由 Destroy 关闭
 //   - goroutine 启动后立即把 healthy 置 true（表示进程 bootstrapping 完成）
-//   - 后续 tick 每次都写日志 + 可以在这里接入外部 ping / TTL check
+//   - F2：consulHealth 非 nil 时每 tick 对 Consul agent TTL check 续约——
+//     这是"节点宕机后 Consul 在 TTL 内自动摘除"的供给侧（续约停止 = 节点死亡信号）。
+//     consulHealth 在 Run 内、本 goroutine 启动前一次性赋值，循环内只读，无竞态。
 func (s *Server) startHealthCheckLoop() {
 	if s.healthInterval <= 0 {
 		return
@@ -194,6 +205,7 @@ func (s *Server) startHealthCheckLoop() {
 	s.healthCheckStop = make(chan struct{})
 	stop := s.healthCheckStop
 	interval := s.healthInterval
+	health := s.consulHealth
 	s.healthy.Store(true)
 
 	util.Go(func() {
@@ -202,10 +214,23 @@ func (s *Server) startHealthCheckLoop() {
 		for {
 			select {
 			case <-ticker.C:
-				// A6 骨架：当前只打日志。C2/B4 在这里接 Consul agent check 续约
-				// 和 Prometheus gauge 上报。
-				log.DebugTag("health", "heartbeat tick nodeId=%v healthy=%v",
-					tgf.NodeId, s.healthy.Load())
+				if health == nil {
+					// 未接 Consul（WithoutConsul/单进程/注册失败）：维持 A6 行为。
+					log.DebugTag("health", "heartbeat tick nodeId=%v healthy=%v",
+						tgf.NodeId, s.healthy.Load())
+					continue
+				}
+				// F2：真实 Consul TTL 续约。失败置 unhealthy 并在下个 tick 重试
+				// （Renew 内部已含"check 丢失自愈重注册"逻辑）。
+				if err := health.Renew(fmt.Sprintf("nodeId=%v", tgf.NodeId)); err != nil {
+					s.healthy.Store(false)
+					log.WarnTag("health", "Consul TTL 续约失败(下个 tick 重试) nodeId=%v err=%v",
+						tgf.NodeId, err)
+					continue
+				}
+				if !s.healthy.Swap(true) {
+					log.InfoTag("health", "Consul TTL 续约恢复 nodeId=%v", tgf.NodeId)
+				}
 			case <-stop:
 				s.healthy.Store(false)
 				log.InfoTag("health", "heartbeat loop stopped nodeId=%v", tgf.NodeId)
@@ -222,6 +247,49 @@ func (s *Server) stopHealthCheckLoop() {
 	}
 	close(s.healthCheckStop)
 	s.healthCheckStop = nil
+}
+
+// ttlHealthRenewer 是 Consul agent TTL health check 的最小消费接口（F2）。
+// 生产实现是 internal.ConsulTTLHealth；接口化是为了单测可注入桩验证
+// "Run 注册成功后挂载 → 心跳续约 → Destroy 反注册"的完整接线。
+type ttlHealthRenewer interface {
+	// Renew 续约 TTL check（心跳 goroutine 每 tick 调用）。
+	Renew(note string) error
+	// Deregister 从 Consul agent 摘除本节点 service（优雅停机调用）。
+	Deregister() error
+}
+
+// newTTLHealthFn 是 internal.NewConsulTTLHealth 的注入点（单测替换为桩）。
+// 包装函数显式归一错误路径的返回值为无类型 nil，避免 typed-nil 进接口。
+var newTTLHealthFn = func(opt internal.TTLHealthOptions) (ttlHealthRenewer, error) {
+	h, err := internal.NewConsulTTLHealth(opt)
+	if err != nil {
+		return nil, err
+	}
+	return h, nil
+}
+
+// setupConsulTTLHealth 注册 Consul agent TTL health check（F2，Run 的第 5 步）。
+// 失败不阻断启动：KV 注册已成功（自带 session TTL 兜底），agent check 是
+// 健康可观测层——记 Warn 后节点照常服务。
+// 未显式 WithHealthCheck 时以 internal.DefaultTTLHealthInterval 默认开启心跳，
+// 保证"Consul 开启 → 死节点必然在 TTL 内被发现"不依赖业务记得调 Option。
+func (s *Server) setupConsulTTLHealth(ip string, modules []string) {
+	if s.healthInterval <= 0 {
+		s.healthInterval = internal.DefaultTTLHealthInterval
+	}
+	h, err := newTTLHealthFn(internal.TTLHealthOptions{
+		ServiceAddress: ip,
+		Modules:        modules,
+		Interval:       s.healthInterval,
+	})
+	if err != nil {
+		log.WarnTag("init", "Consul TTL health check 注册失败(节点仍可服务,agent 健康检查不可用) err=%v", err)
+		return
+	}
+	s.consulHealth = h
+	log.InfoTag("init", "Consul TTL health check 已挂载 addr=%v interval=%v modules=%v",
+		ip, s.healthInterval, modules)
 }
 
 func (s *Server) WithServerPool(maxWorkers, maxCapacity int) *Server {
@@ -558,41 +626,41 @@ func (s *Server) Run() <-chan bool {
 	// 之后，discovery 为 nil 会导致所有 service 的 Startup 被跳过。
 	// 单进程模式（WithSingleProcess / WithStandalone）明确需要 Startup 被调用，
 	// 所以这里把 Startup 从"注册 discovery"的 if 块里拆出来独立执行。
-
-	// 如果要向 discovery 注册，先装 plugin 并追加 MonitorService——MonitorService
-	// 只在 discovery 开启时存在。
+	//
+	// F2 注册时序修正（v3 审计8 P1：原时序"先注册 Consul → 后 Startup 验证 →
+	// 最后才 Serve 监听"，且 Startup 失败不反注册——节点在 Consul 可见的瞬间
+	// 监听还没起、Startup 失败的服务还残留在注册表，滚动发布期间流量必然打到
+	// 未就绪/已死节点）。新时序：
+	//   1. 全部 service 先 Startup（失败者剔除出注册名单，绝不对外发布——
+	//      比"先注册再反注册"少一个对外可见的脏窗口）；
+	//   2. 同步创建 rpcx 监听（net.Listen 返回即内核开始 accept 排队，
+	//      这是确定性的"Serve 就绪"信号）；
+	//   3. Serve goroutine 接管 accept；
+	//   4. 最后 RegisterName——rpcx 先写本地 serviceMap（带锁）再触发
+	//      ConsulRegisterPlugin.Register 写 KV，节点在 Consul 可见时必然已可服务；
+	//   5. 注册成功后挂 Consul agent TTL health check（心跳 goroutine 续约，
+	//      进程 kill 后 Consul 在 TTL 内置 critical 并自动摘除）。
 	if discovery != nil {
 		// D3：持有 Consul 注册插件引用，优雅停机时调用其 Stop() 完成
 		// 「KV 反注册 + 停止 TTL 刷新 goroutine」（见 Destroy / unregisterFromConsul）。
+		// F2：插件必须在 Serve 之前装入 pluginContainer（rpcx 的 plugins 切片
+		// 无锁，Serve 后 Add 会与连接 accept 回调并发构成 data race）；
+		// "装入"≠"注册"——KV 节点发布要等下方步骤 4 的 RegisterName 触发。
 		s.registryPlugin = discovery.RegisterServer(ip)
 		s.rpcServer.Plugins.Add(s.registryPlugin)
 		s.rpcServer.Plugins.Add(NewRPCXServerHandler())
 		s.service = append(s.service, &MonitorService{})
 	}
 
-	// 统一遍历：所有 service 都要 Startup；额外的 RegisterName 只在 discovery 非 nil 时做。
+	// 1. Startup 先行：全部 service 验证启动，失败者剔除出注册名单。
+	startedServices := make([]IService, 0, len(s.service))
 	for _, service := range s.service {
 		serviceName = fmt.Sprintf("%v", service.GetName())
-		metaData := fmt.Sprintf("version=%s&nodeId=%s", service.GetVersion(), tgf.NodeId)
-
-		if discovery != nil {
-			if err := s.rpcServer.RegisterName(serviceName, service, metaData); err != nil {
-				log.Error("[init] 注册服务发现失败 serviceName=%v metaDat=%v error=%v", serviceName, metaData, err)
-				continue
-			}
-		}
-
 		if startupOK, startupErr := service.Startup(); !startupOK {
-			log.Error("[init] 服务启动异常 serviceName=%v error=%v", serviceName, startupErr)
+			log.Error("[init] 服务启动异常,不注册到服务发现 serviceName=%v error=%v", serviceName, startupErr)
 			continue
 		}
-
-		_logServiceMsg += serviceName + " " + metaData + ","
-		if discovery != nil {
-			log.InfoTag("init", "注册服务发现 serviceName=%v metaDat=%v", serviceName, metaData)
-		} else {
-			log.InfoTag("init", "服务启动 serviceName=%v metaDat=%v (无 discovery)", serviceName, metaData)
-		}
+		startedServices = append(startedServices, service)
 	}
 
 	// 单进程模式：Startup 完成后把 service 注册到本地 dispatcher。
@@ -604,8 +672,20 @@ func (s *Server) Run() <-chan bool {
 		setLocalGateWhiteList(s.whiteServiceList)
 	}
 
+	// 2. 同步创建监听。tgf 的 rpc server 不启用 TLS，net.Listen 等价于 rpcx
+	//    tcpMakeListener 的无 TLS 分支；返回后内核已可接受连接。
+	ln, lnErr := net.Listen("tcp", ip)
+	if lnErr != nil {
+		log.Error("[init] rpcx监听创建失败 addr=%v err=%v", ip, lnErr)
+		// D3：启动/监听失败必须以非零码退出（原实现 os.Exit(0) 会让
+		// 容器编排/发布系统把启动失败误判为正常退出）。
+		os.Exit(1)
+	}
+
+	// 3. Serve goroutine 接管 accept（ServeListener 与 Serve("tcp", ip) 等价，
+	//    仅监听创建被上移到同步路径）。
 	util.Go(func() {
-		if err := s.rpcServer.Serve("tcp", ip); err != nil {
+		if err := s.rpcServer.ServeListener("tcp", ln); err != nil {
 			// D3 / P0-3：优雅停机时 rpcServer.Shutdown 会关闭 listener，
 			// Serve 返回 ErrServerClosed——这是停机的正常路径，绝不能在这里
 			// os.Exit 把仍在执行的停机序列（drain/终末 flush）直接杀死。
@@ -613,13 +693,37 @@ func (s *Server) Run() <-chan bool {
 				log.InfoTag("shutdown", "rpcx listener 已关闭(优雅停机) addr=%v", ip)
 				return
 			}
-			log.Error("[init] rpcx服务启动异常 serviceName=%v addr=%v err=%v", serviceName, ip, err)
-			// D3：启动/监听失败必须以非零码退出（原实现 os.Exit(0) 会让
-			// 容器编排/发布系统把启动失败误判为正常退出）。
+			log.Error("[init] rpcx服务运行异常 addr=%v err=%v", ip, err)
 			os.Exit(1)
 			return
 		}
 	})
+
+	// 4. Serve 就绪后注册：RegisterName 先写本地 serviceMap（带锁，Serve 后调用
+	//    安全）再触发 Consul KV 发布——发布瞬间本节点已经在 accept。
+	registeredModules := make([]string, 0, len(startedServices))
+	for _, service := range startedServices {
+		serviceName = fmt.Sprintf("%v", service.GetName())
+		metaData := fmt.Sprintf("version=%s&nodeId=%s", service.GetVersion(), tgf.NodeId)
+		if discovery != nil {
+			if err := s.rpcServer.RegisterName(serviceName, service, metaData); err != nil {
+				log.Error("[init] 注册服务发现失败 serviceName=%v metaDat=%v error=%v", serviceName, metaData, err)
+				continue
+			}
+			registeredModules = append(registeredModules, serviceName)
+			log.InfoTag("init", "注册服务发现 serviceName=%v metaDat=%v", serviceName, metaData)
+		} else {
+			log.InfoTag("init", "服务启动 serviceName=%v metaDat=%v (无 discovery)", serviceName, metaData)
+		}
+		_logServiceMsg += serviceName + " " + metaData + ","
+	}
+
+	// 5. F2：真实 Consul agent TTL health check（A6 心跳骨架的接线）。
+	//    只有至少一个服务注册成功才有挂健康检查的意义；Startup 全失败 →
+	//    无注册 → 无 agent service 残留。
+	if discovery != nil && len(registeredModules) > 0 {
+		s.setupConsulTTLHealth(ip, registeredModules)
+	}
 
 	// A4: 走 buildPostServeHooks——用户 Hook 先跑，之后默认 RPC Client watch（除非被关闭）。
 	for _, hook := range s.buildPostServeHooks() {
@@ -684,13 +788,17 @@ func (s *Server) Destroy() {
 	}
 }
 
-// unregisterFromConsul 调用 Consul 注册插件的 Stop()：删除本节点全部服务的 KV
-// 注册并停止 TTL 刷新 goroutine。带 consulUnregisterTimeout 超时兜底——
-// Consul 不可达时记日志继续停机（节点 KV 随 TTL 过期），不阻塞后续 drain/flush。
+// unregisterFromConsul 完成 Consul 侧的全部反注册（带 consulUnregisterTimeout
+// 超时兜底——Consul 不可达时记日志继续停机，不阻塞后续 drain/flush）：
+//  1. F2：先摘 agent TTL health service——停机瞬间健康状态即从 Consul 消失，
+//     不等 TTL 过期（失败只告警，DeregisterCriticalServiceAfter 兜底）；
+//  2. D3：调注册插件的 Stop() 删除本节点全部服务的 KV 注册并停止 TTL 刷新
+//     goroutine（节点 KV 随 session TTL 过期兜底）。
 func (s *Server) unregisterFromConsul() {
 	type stopper interface{ Stop() error }
-	sp, ok := s.registryPlugin.(stopper)
-	if !ok {
+	sp, spOK := s.registryPlugin.(stopper)
+	health := s.consulHealth
+	if !spOK && health == nil {
 		// 未接 Consul（WithoutConsul / 单进程 / 单测）——无需反注册。
 		return
 	}
@@ -701,6 +809,18 @@ func (s *Server) unregisterFromConsul() {
 				done <- fmt.Errorf("consul 反注册 panic: %v", r)
 			}
 		}()
+		if health != nil {
+			if herr := health.Deregister(); herr != nil {
+				log.WarnTag("shutdown", "Consul TTL health 反注册失败(将由 critical 自动摘除兜底) nodeId=%v err=%v",
+					tgf.NodeId, herr)
+			} else {
+				log.InfoTag("shutdown", "Consul TTL health 已摘除 nodeId=%v", tgf.NodeId)
+			}
+		}
+		if !spOK {
+			done <- nil
+			return
+		}
 		done <- sp.Stop()
 	})
 	select {

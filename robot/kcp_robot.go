@@ -18,7 +18,6 @@ import (
 
 	"github.com/cornelk/hashmap"
 	"github.com/thkhxm/tgf/log"
-	"github.com/thkhxm/tgf/rpc"
 	"github.com/thkhxm/tgf/util"
 	"google.golang.org/protobuf/proto"
 )
@@ -65,7 +64,10 @@ func (k *kcpRobot) Connect(address string) IRobot {
 		}
 	})
 
-	// 启动 read loop——解码服务端推送帧并分发到 callback
+	// 启动 read loop——解码服务端下行帧并分发到 callback。
+	// F5 修复：原实现用 conn.ReadFrame（请求格式）解码服务端响应，格式不匹配时
+	// 帧已被底层消费只能丢弃（v3 审计 P1）。现在走 ReadServerFrame——
+	// ReadRawFrame 取原始帧字节 + DecodeServerFrame 按响应格式（v2/v1）解码。
 	util.Go(func() {
 		for {
 			select {
@@ -73,25 +75,21 @@ func (k *kcpRobot) Connect(address string) IRobot {
 				return
 			default:
 			}
-			// 读一帧原始字节（readKCPFrame 解出 4 字节长度前缀 + 可选 AEAD 后的 plaintext）
 			_ = k.client.session.SetReadDeadline(time.Now().Add(30 * time.Second))
-			frame, err := k.client.conn.ReadFrame()
+			sf, err := k.client.ReadServerFrame()
 			if err != nil {
-				// ReadFrame 内部调 decodeTgfBinaryFrame 可能会因格式不匹配而失败
-				// 尝试用 response decoder 再解一次——
-				// 但 ReadFrame 已经消费了底层 reader，失败时数据丢了
-				// 所以这里只能记日志继续
-				log.DebugTag("robot", "KCP read 错误（可能是响应格式，非请求格式）: %v", err)
+				log.DebugTag("robot", "KCP read 错误: %v", err)
 				continue
 			}
-			// decodeTgfBinaryFrame 成功——可能是心跳回显
-			if frame.MessageType == rpc.Heartbeat {
+			if sf.IsHeartbeat {
 				continue
 			}
-			// Logic 帧（请求格式成功解码——极少见，大部分服务端推送用响应格式）
-			msgType := frame.Module + "." + frame.Method
-			if f, has := k.callback.Get(msgType); has {
-				f(k, frame.Data)
+			if sf.IsReplaceKick {
+				log.InfoTag("robot", "KCP 收到替换登录通知(账号在别处登录)")
+				continue
+			}
+			if f, has := k.callback.Get(sf.MessageType); has {
+				f(k, sf.Data)
 			}
 		}
 	})
@@ -103,6 +101,16 @@ func (k *kcpRobot) Connect(address string) IRobot {
 func (k *kcpRobot) RegisterCallbackMessage(messageType string, f CallbackLogic) IRobot {
 	k.callback.Insert(messageType, f)
 	return k
+}
+
+// EnableFrameMAC 启用帧级 MAC（F5，实现 FrameMACCapable）：登录拿到
+// LoginRes.ResumeToken 后调用，其后 Send/SendMessage 自动按 LogicMAC 帧编码。
+func (k *kcpRobot) EnableFrameMAC(resumeToken string) {
+	if k.client == nil {
+		log.Warn("KCP robot: 未连接,无法启用帧级MAC")
+		return
+	}
+	k.client.EnableFrameMAC(resumeToken)
 }
 
 func (k *kcpRobot) Send(messageType string, v1 proto.Message) {

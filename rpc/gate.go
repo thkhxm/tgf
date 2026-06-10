@@ -1,8 +1,6 @@
 package rpc
 
 import (
-	"time"
-
 	"github.com/thkhxm/tgf"
 	"github.com/thkhxm/tgf/log"
 	"golang.org/x/net/context"
@@ -26,6 +24,8 @@ type GateService struct {
 	tcpBuilder ITCPBuilder
 	kcpBuilder IKCPBuilder // A8: nil 表示不启用 KCP listener
 	tcpService ITCPService
+	// localAddressFn 覆盖本实例的 gate 地址（F3，仅测试用，见 localAddress）。
+	localAddressFn func() string
 }
 
 func (g *GateService) GetName() string {
@@ -90,11 +90,16 @@ func (g *GateService) UploadUserNodeInfo(ctx context.Context, args *UploadUserNo
 //  0. checkLoginCredential 校验 args.Token（D7，失败立即拒绝）。
 //  1. 通过 Redis 分布式锁（key = tgf:gate:login:lock:<uid>）在 phase1 CAS 之上
 //     再加一层跨节点互斥——只有拿到锁的节点才能进入登录流程。
+//     F3：锁带 watchdog 续期；无 Redis 部署降级为进程内锁（见 login_lock.go）。
 //  2. 锁内读 user:node:meta 里的 gate owner：
 //     - 本地拥有 → 走本地 Offline（phase1 CAS 保证清理幂等）。
 //     - 远端拥有 → 定向 RPC 到 owner 节点发 Offline（不再广播）。
+//     F3：该 RPC 同步带 ack——远端完成全部清理（含旧会话 OfflineHook）后才返回，
+//     取代原先 Oneshot + sleep(200ms) 的时序赌博（审计：本端 200ms < 远端 1s）。
 //     - 无 owner → 跳过踢人。
 //  3. 本地 DoLogin（phase1 CAS 保证 Idle→LoggingIn→Online）。
+//     F3：携带 args.ResumeToken 用于断线重连续联（窗口内缓冲补发），并签发
+//     本次会话的新 resume token 经 reply.ResumeToken 返还给业务转交客户端。
 //  4. 把本地 gate 地址写回 user:node:meta，用于下一次登录时的 owner 判定。
 //  5. defer 释放锁。
 func (g *GateService) Login(ctx context.Context, args *LoginReq, reply *LoginRes) error {
@@ -113,36 +118,57 @@ func (g *GateService) Login(ctx context.Context, args *LoginReq, reply *LoginRes
 	}
 	defer loginCoord.ReleaseLoginLock(lockHandle)
 
-	localAddr := localGateAddress()
+	localAddr := g.localAddress()
 	ownerAddr := loginCoord.GetGateOwner(args.UserId)
+	kicked := false
 
 	switch {
 	case ownerAddr == "":
 		// 首次登录或 meta 已过期：没有需要踢的老连接
 	case ownerAddr == localAddr:
 		// 老连接在本节点——本地 Offline。phase1 CAS 保证并发安全。
+		// F3：Offline(replace=true) 内部已不再固定 sleep 1s，改为有界排空通知队列。
 		g.tcpService.Offline(args.UserId, true)
+		kicked = true
 	default:
-		// 老连接在远端——定向 RPC 踢 owner。
+		// 老连接在远端——定向 RPC 踢 owner（F3：同步带 ack，返回即远端清理完成）。
 		if kickErr := loginCoord.KickRemoteOwner(ownerAddr, args.UserId); kickErr != nil {
 			log.WarnTag("gate", "kick remote owner failed uid=%v owner=%v err=%v",
 				args.UserId, ownerAddr, kickErr)
-			// 不 return——继续尝试本地登录。远端如果真的还占着，最多客户端下一次请求
-			// 会被老节点的残留路由引到错误节点，那是一致性退化而非 panic。
+			// 不 return——继续尝试本地登录。踢失败大概率是 owner 节点已死（网关重启
+			// 残留的脏 owner），登录成功后 SetGateOwner 会覆盖掉死地址；真正的双在线
+			// 风险由登录锁互斥兜底。
 		}
-		// 给远端清理一点时间窗；后续 A6 引入 health check 后可以移除这个 sleep。
-		time.Sleep(remoteKickWait)
+		kicked = true
 	}
 
-	if doErr := g.tcpService.DoLogin(args.UserId, args.TemplateUserId); doErr != nil {
+	newResumeToken, doErr := g.tcpService.DoLogin(args.UserId, args.TemplateUserId, args.ResumeToken)
+	if doErr != nil {
 		reply.ErrorCode = -1
 		log.WarnTag("gate", "DoLogin failed uid=%v err=%v", args.UserId, doErr)
+		// F3（审计：DoLogin 失败不回滚 owner）：老会话已被踢但新会话没立起来——
+		// owner meta 若仍指向被踢的老地址则比对清理，避免残留指向已死会话的脏
+		// owner 拖慢后续每次登录（对死地址发踢人 RPC 等超时）。
+		if kicked && ownerAddr != "" {
+			loginCoord.ClearGateOwner(args.UserId, ownerAddr)
+		}
 		return doErr
 	}
+	reply.ResumeToken = newResumeToken
 
 	// 登录成功后把 owner 写成本节点。下一次登录时别的节点读到这个值就能精准踢。
 	loginCoord.SetGateOwner(args.UserId, localAddr)
 	return nil
+}
+
+// localAddress 返回本网关实例的 rpcx service address。
+// F3：默认透传包级 localGateAddress()；localAddressFn 仅供测试在同一进程内
+// 模拟多个网关节点（每个实例各自的地址），生产路径不设置。
+func (g *GateService) localAddress() string {
+	if g.localAddressFn != nil {
+		return g.localAddressFn()
+	}
+	return localGateAddress()
 }
 
 func (g *GateService) Offline(ctx context.Context, args *OfflineReq, reply *OfflineRes) error {
@@ -238,10 +264,19 @@ type LoginReq struct {
 	// 或由 Server.WithLoginCheck 注入的自定义校验器解释。
 	// 显式 Server.WithoutLoginCheck() 后允许为空（恢复旧的无鉴权行为）。
 	Token string
+	// ResumeToken 是断线重连令牌（F3 新增，可选）。客户端在重连窗口
+	//（默认 30s，见 tcp.go resumeWindow）内重新登录时携带上一次 LoginRes
+	// 返回的令牌，网关会把断线期间缓冲的推送按序补发到新连接；
+	// 缺省 / 不匹配则按全新会话处理（丢弃缓冲）。
+	ResumeToken string
 }
 
 type LoginRes struct {
 	ErrorCode int32
+	// ResumeToken 是本次会话的断线重连令牌（F3 新增）。业务登录服务应把它
+	// 转交给客户端保存；客户端断线重连时填入 LoginReq.ResumeToken 即可在
+	// 重连窗口内不丢推送。每次登录都会签发新令牌（旧令牌随之失效）。
+	ResumeToken string
 }
 
 type OfflineReq struct {

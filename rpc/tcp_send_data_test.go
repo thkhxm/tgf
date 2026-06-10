@@ -27,19 +27,34 @@ import (
 
 // decodeTCPResponseFrame 按 getSendToClientData 的 TCP 编码格式反解一帧，
 // 返回 messageType 与（已按需解压的）payload。
+// F5 后默认是 v2 帧（[251][2][compress][code:4][mtSize:2][dataSize:4][mt][data]），
+// 同时兼容 legacy v1（[compress][mtSize:2][dataSize:4][mt][data]）。
 func decodeTCPResponseFrame(t *testing.T, frame []byte) (messageType string, payload []byte) {
 	t.Helper()
-	if len(frame) < 7 {
-		t.Fatalf("frame too short: %d bytes", len(frame))
+	head := 7
+	var compress byte
+	var mtSize, dataSize int
+	if len(frame) >= 2 && frame[0] == responseMagicNumber && frame[1] == byte(Logic) {
+		head = 13
+		if len(frame) < head {
+			t.Fatalf("v2 frame too short: %d bytes", len(frame))
+		}
+		compress = frame[2]
+		mtSize = int(binary.BigEndian.Uint16(frame[7:9]))
+		dataSize = int(binary.BigEndian.Uint32(frame[9:13]))
+	} else {
+		if len(frame) < head {
+			t.Fatalf("frame too short: %d bytes", len(frame))
+		}
+		compress = frame[0]
+		mtSize = int(binary.BigEndian.Uint16(frame[1:3]))
+		dataSize = int(binary.BigEndian.Uint32(frame[3:7]))
 	}
-	compress := frame[0]
-	mtSize := int(binary.BigEndian.Uint16(frame[1:3]))
-	dataSize := int(binary.BigEndian.Uint32(frame[3:7]))
-	if len(frame) != 7+mtSize+dataSize {
-		t.Fatalf("frame size mismatch: have %d want %d", len(frame), 7+mtSize+dataSize)
+	if len(frame) != head+mtSize+dataSize {
+		t.Fatalf("frame size mismatch: have %d want %d", len(frame), head+mtSize+dataSize)
 	}
-	messageType = string(frame[7 : 7+mtSize])
-	payload = frame[7+mtSize:]
+	messageType = string(frame[head : head+mtSize])
+	payload = frame[head+mtSize:]
 	if compress == 1 {
 		unzipped, err := util2.Unzip(payload)
 		if err != nil {
@@ -48,6 +63,18 @@ func decodeTCPResponseFrame(t *testing.T, frame []byte) (messageType string, pay
 		payload = unzipped
 	}
 	return messageType, payload
+}
+
+// frameCompressFlag 取一帧（v2/v1 自适应）的 compress 标志位。
+func frameCompressFlag(t *testing.T, frame []byte) byte {
+	t.Helper()
+	if len(frame) >= 3 && frame[0] == responseMagicNumber && frame[1] == byte(Logic) {
+		return frame[2]
+	}
+	if len(frame) < 1 {
+		t.Fatalf("empty frame")
+	}
+	return frame[0]
 }
 
 // TestGetSendToClientData_NoAliasing_Sequential 是 P0-1 的核心确定性回归：
@@ -130,8 +157,8 @@ func TestGetSendToClientData_CompressRoundTrip(t *testing.T) {
 	big := bytes.Repeat([]byte("abcdefgh"), compressMinSize/8+1) // > compressMinSize
 	frame := srv.getSendToClientData("game.Big", 7, 0, big)
 
-	if frame[0] != 1 {
-		t.Fatalf("compress flag = %d, want 1 for payload of %d bytes", frame[0], len(big))
+	if got := frameCompressFlag(t, frame); got != 1 {
+		t.Fatalf("compress flag = %d, want 1 for payload of %d bytes", got, len(big))
 	}
 	mt, payload := decodeTCPResponseFrame(t, frame)
 	if mt != "game.Big" {
@@ -147,8 +174,8 @@ func TestGetSendToClientData_SmallNotCompressed(t *testing.T) {
 	srv := newTestServer()
 	small := []byte("tiny")
 	frame := srv.getSendToClientData("game.Small", 1, 0, small)
-	if frame[0] != 0 {
-		t.Fatalf("compress flag = %d, want 0", frame[0])
+	if got := frameCompressFlag(t, frame); got != 0 {
+		t.Fatalf("compress flag = %d, want 0", got)
 	}
 	mt, payload := decodeTCPResponseFrame(t, frame)
 	if mt != "game.Small" || !bytes.Equal(payload, small) {

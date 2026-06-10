@@ -181,6 +181,14 @@ func (s *Server) WithSingleProcess() *Server {
 // registerLocalServices 由 Server.Run 调用，把 service 列表注册到 dispatcher。
 // 幂等：重复注册同一个 module 会覆盖。
 func (s *Server) registerLocalServices() {
+	// C2 子接口的真实消费点（CLEAN / E6）：本方法由 Server.Run 无条件调用，
+	// 是"所有已装载 service 都已 Startup 完毕"后唯一一个能拿到完整 s.service
+	// 列表、且不属于停机/网络热路径的稳定钩子。在这里对全部 service 做
+	// IStatefulService / IUserLifecycleService 接口断言，扇出全局登录/下线钩子
+	// 并盘点 state 通知能力（与单进程/分布式无关，两条路径都会经过）。
+	// 盘点结果存入包级 lastServiceCapabilities，供启动诊断 / 单测断言。
+	setLastServiceCapabilities(wireServiceCapabilities(s.service))
+
 	if !s.inProcessDispatch {
 		return
 	}

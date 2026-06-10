@@ -72,3 +72,15 @@ func ResetDiscoveryForTest() {
 	discovery = nil
 	discoveryOnce = sync.Once{}
 }
+
+// SetDiscoveryForTest 仅用于单测（F2）：把 discovery 单例替换为注入的桩实现，
+// 并消耗 sync.Once——之后 buildPreServeHooks 里默认的 UseConsulDiscovery 调用
+// 会成为 no-op，Server.Run 的"注册时序"可以在无真实 Consul 的环境下被
+// 确定性验证（见 rpc/rpcserver_f2_order_test.go）。生产代码不要调用。
+func SetDiscoveryForTest(d IRPCDiscovery) {
+	discovery = nil
+	discoveryOnce = sync.Once{}
+	discoveryOnce.Do(func() {
+		discovery = d
+	})
+}

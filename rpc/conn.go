@@ -34,6 +34,12 @@ type FrameIn struct {
 	Data        []byte
 	// ReqId 仅 WebSocket 路径有值（客户端请求 id），TCP 路径填 0。
 	ReqId int32
+
+	// Seq / MAC 是帧级防伪字段（F5，仅 LogicMAC 帧有值，解码后 MessageType 仍为
+	// Logic、以 MAC != nil 区分）。校验在 handleConn 分发前由 checkInboundFrameAuth
+	// 完成，见 frame_mac.go。
+	Seq uint64
+	MAC []byte
 }
 
 // IConn 是网关连接的抽象。read/write 粒度是"一帧"，由实现负责分帧与解码。
@@ -89,7 +95,12 @@ func newTCPFramedConn(c net.Conn, readBuf int, writeTimeout time.Duration) *tcpF
 //
 //	[1:magic][1:msgType] { [2:methodSize][2:dataSize][n:method][n:data] }
 //
-// Heartbeat 帧只有前两个字节；Logic 帧有完整头和负载。
+// Heartbeat 帧只有前两个字节；Logic 帧有完整头和负载；LogicMAC（F5 帧级防伪）
+// 在 Logic 基础上于 dataSize 之后插入 [8B seq]、帧尾追加 [16B mac]。
+//
+// F5 文档化：methodSize / dataSize 都是 uint16——单帧上行负载上限 65535 字节，
+// 这是协议硬上限（超过 64KB 的上行数据需业务层分片），同时也天然限制了恶意
+// 超大帧的内存占用。
 func (c *tcpFramedConn) ReadFrame() (*FrameIn, error) {
 	head, err := c.reader.Peek(2)
 	if err != nil {
@@ -106,20 +117,32 @@ func (c *tcpFramedConn) ReadFrame() (*FrameIn, error) {
 		}
 		return &FrameIn{MessageType: Heartbeat}, nil
 
-	case byte(Logic):
+	case byte(Logic), byte(LogicMAC):
 		head, err = c.reader.Peek(int(requestHeadSize))
 		if err != nil {
 			return nil, err
 		}
 		methodSize := binary.BigEndian.Uint16(head[2:4])
 		dataSize := binary.BigEndian.Uint16(head[4:6])
+		withMAC := msgType == byte(LogicMAC)
 		totalLen := int(requestHeadSize) + int(methodSize) + int(dataSize)
+		if withMAC {
+			totalLen += frameMACSeqSize + FrameMACSize
+		}
 		all := make([]byte, totalLen)
 		if _, err := io.ReadFull(c.reader, all); err != nil {
 			return nil, err
 		}
-		reqNameIndex := int(requestHeadSize) + int(methodSize)
-		reqName := util.ConvertStringByByteSlice(all[int(requestHeadSize):reqNameIndex])
+		bodyIndex := int(requestHeadSize)
+		var seq uint64
+		var mac []byte
+		if withMAC {
+			seq = binary.BigEndian.Uint64(all[bodyIndex : bodyIndex+frameMACSeqSize])
+			bodyIndex += frameMACSeqSize
+			mac = all[totalLen-FrameMACSize:]
+		}
+		reqNameIndex := bodyIndex + int(methodSize)
+		reqName := util.ConvertStringByByteSlice(all[bodyIndex:reqNameIndex])
 		ix := strings.LastIndex(reqName, ".")
 		if ix < 0 {
 			return nil, fmt.Errorf("tcp frame malformed method name: %q", reqName)
@@ -128,7 +151,9 @@ func (c *tcpFramedConn) ReadFrame() (*FrameIn, error) {
 			MessageType: Logic,
 			Module:      reqName[:ix],
 			Method:      reqName[ix+1:],
-			Data:        all[reqNameIndex:],
+			Data:        all[reqNameIndex : reqNameIndex+int(dataSize)],
+			Seq:         seq,
+			MAC:         mac,
 		}, nil
 
 	default:
@@ -149,11 +174,21 @@ func (c *tcpFramedConn) SetReadDeadline(t time.Time) error  { return c.conn.SetR
 func (c *tcpFramedConn) SetWriteDeadline(t time.Time) error { return c.conn.SetWriteDeadline(t) }
 
 // EncodeResponse E6：TCP 连接的下行帧编码——tgf 二进制响应帧格式。
-func (c *tcpFramedConn) EncodeResponse(messageType string, _ int32, _ int32, reply []byte) []byte {
-	return encodeBinaryResponseFrame(messageType, reply)
+// F5: v2 帧携带 code（限流/错误码载体），reqId 二进制协议不承载仍忽略。
+func (c *tcpFramedConn) EncodeResponse(messageType string, _ int32, code int32, reply []byte) []byte {
+	return encodeBinaryResponseFrame(messageType, code, reply)
 }
 
+// RequiresFrameMAC F5：裸 TCP 无传输层鉴真，已登录会话要求帧级 MAC
+// （随 frameMACActive 开关，见 frame_mac.go）。
+func (c *tcpFramedConn) RequiresFrameMAC() bool { return true }
+
 // ---- WebSocket 适配器 ----
+
+// wsReadLimit 是 WS 单条消息的字节上限（F4 / 审计 P1：gorilla 默认无上限，未认证
+// 客户端可发任意大的单条 binary 消息，ReadMessage 全量读入内存→远程 OOM 向量）。
+// 与 KCP 的 kcpMaxFrameSize（1MB）对齐。var 便于单测覆盖。
+var wsReadLimit int64 = kcpMaxFrameSize
 
 type wsFramedConn struct {
 	conn         *websocket.Conn
@@ -165,9 +200,19 @@ type wsFramedConn struct {
 // ping/pong/close 的原生 handler（原先散落在 handlerWSConn 里的逻辑收敛到这里）。
 // A2-phase3: writeTimeout 用于每次 WriteFrame 前的 SetWriteDeadline，
 // 替代原先写死的 10 分钟魔数。
+//
+// F4 加固（审计 P1"WS/KCP 缺初始 read deadline + WS 无 SetReadLimit"）：
+//   - SetReadLimit：超限消息使 ReadMessage 报错 → handleConn 走清理，杜绝巨帧 OOM；
+//   - 初始 read deadline：upgrade 后立即生效——原先 idle deadline 只在收到第一帧后
+//     才设置，连上后一字节不发的未认证连接会让 reader goroutine 永久阻塞
+//     （慢速连接耗尽攻击）。收到帧后由 handleConn 统一续期。
 func newWSFramedConn(c *websocket.Conn, deadLineTime, writeTimeout time.Duration) *wsFramedConn {
 	if writeTimeout <= 0 {
 		writeTimeout = defaultWriteDeadline
+	}
+	c.SetReadLimit(wsReadLimit)
+	if deadLineTime > 0 {
+		_ = c.SetReadDeadline(time.Now().Add(deadLineTime))
 	}
 	w := &wsFramedConn{conn: c, deadLineTime: deadLineTime, writeTimeout: writeTimeout}
 	c.SetPingHandler(func(msg string) error {

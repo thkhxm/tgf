@@ -7,6 +7,7 @@ import (
 	"github.com/redis/go-redis/v9"
 	tgfconfig "github.com/thkhxm/tgf/config"
 	"github.com/thkhxm/tgf/log"
+	"go.uber.org/zap"
 	"strings"
 	"time"
 )
@@ -30,7 +31,8 @@ type redisService struct {
 // 至少把失败记录成 WARN 日志保证可观测；redis.Nil 属于正常的 key 不存在，不告警。
 func warnRedisErr(op, key string, err error) {
 	if err != nil && !errors.Is(err, redis.Nil) {
-		log.WarnTag("redis", "%v 操作失败 key=%v err=%v", op, key, err)
+		// B5 热路径迁移：每个 redis 写操作都会经过这里，改零分配 *TagW。
+		log.WarnTagW("redis", "操作失败", zap.String("op", op), zap.String("key", key), zap.Error(err))
 	}
 }
 
@@ -45,7 +47,8 @@ func (r *redisService) Get(key string) (res string) {
 	if res, err = r.client.Get(context.Background(), key).Result(); err == nil || errors.Is(err, redis.Nil) {
 		return
 	}
-	log.Error("[redis] 获取缓存数据异常 key=%v,err=%v", key, err)
+	// B5 热路径迁移：Get 是最高频读操作，异常分支改零分配 *W。
+	log.ErrorTagW("redis", "获取缓存数据异常", zap.String("key", key), zap.Error(err))
 	return
 }
 

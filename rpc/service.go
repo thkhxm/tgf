@@ -1,10 +1,13 @@
 package rpc
 
 import (
+	"sync"
+
 	"github.com/thkhxm/rpcx/v2/client"
 	"github.com/thkhxm/rpcx/v2/share"
 	"github.com/thkhxm/tgf"
 	"github.com/thkhxm/tgf/log"
+	"go.uber.org/zap"
 	"golang.org/x/net/context"
 	"reflect"
 )
@@ -133,6 +136,169 @@ func (m *Module) LoginHook(ctx context.Context, args *DefaultArgs, reply *EmptyR
 		}
 	}
 	return
+}
+
+//***************************************************
+// C2 子接口的真实消费方（CLEAN / E6 半成品清理）
+//
+// 背景：C2 把 StateHandler / Add*Hook 从 Module 基类抽成可选子接口
+// IStatefulService / IUserLifecycleService，但框架生产代码里一直没有任何
+// `svc.(IStatefulService)` 型断言落地——两个子接口是"定义了没人用"的死代码
+// （V3-audit-findings.md C2 缺口：rpc/service.go）。
+//
+// 这里给它们补上真实语义：
+//  1. IUserLifecycleService —— 全局登录/下线钩子的扇出消费方。业务过去必须对
+//     每个 service 单独 AddUserLoginHook；现在通过 RegisterGlobalLoginHook 注册
+//     一次，框架在启动时 type-assert 所有 service，统一分发给满足该子接口的服务。
+//  2. IStatefulService —— Consul state 通知能力盘点。框架不再用"它是不是 Module"
+//     这种反射式判断，而是按接口断言判断某个 service 能否接收 StateHandler 通知，
+//     并把缺失能力的服务在启动日志里显式标出，便于排查"状态推送没生效"。
+//
+// 消费点：wireServiceCapabilities 由 Server.Run 经 registerLocalServices
+//（local_dispatcher.go，Run 无条件调用）触发，对全部已装载 service 生效，
+// 与单进程 / 分布式无关。
+//***************************************************
+
+var (
+	// globalHookMu 保护下面两张全局钩子表。注册一般只在启动前发生，但用锁兜底
+	// 业务在运行期补注册的场景。
+	globalHookMu sync.Mutex
+	// globalLoginHooks / globalOfflineHooks 是"注册一次、扇出到所有
+	// IUserLifecycleService"的全局钩子。wireServiceCapabilities 在启动时消费。
+	globalLoginHooks   []loginHook
+	globalOfflineHooks []offlineHook
+)
+
+// RegisterGlobalLoginHook 注册一个全局用户登录钩子。
+//
+// 与 service 级 AddUserLoginHook 的区别：全局钩子在 Server.Run 时被框架统一
+// 扇出到**所有**满足 IUserLifecycleService 的已装载 service，业务无需对每个
+// service 单独注册。典型用途：跨所有逻辑服的统一登录埋点 / 风控 / 在线人数统计。
+func RegisterGlobalLoginHook(hook func(ctx context.Context, userId string) error) {
+	if hook == nil {
+		return
+	}
+	globalHookMu.Lock()
+	globalLoginHooks = append(globalLoginHooks, hook)
+	globalHookMu.Unlock()
+}
+
+// RegisterGlobalOfflineHook 注册一个全局用户下线钩子。语义同 RegisterGlobalLoginHook，
+// 扇出到所有满足 IUserLifecycleService 的 service。
+func RegisterGlobalOfflineHook(hook func(ctx context.Context, userId string, replace bool) error) {
+	if hook == nil {
+		return
+	}
+	globalHookMu.Lock()
+	globalOfflineHooks = append(globalOfflineHooks, hook)
+	globalHookMu.Unlock()
+}
+
+// resetGlobalHooksForTest 清空全局钩子表（仅供单测隔离用）。
+func resetGlobalHooksForTest() {
+	globalHookMu.Lock()
+	globalLoginHooks = nil
+	globalOfflineHooks = nil
+	globalHookMu.Unlock()
+}
+
+// lastServiceCapabilities 缓存最近一次 wireServiceCapabilities 的盘点结果，
+// 供启动后诊断 / 单测断言读取。用锁保护避免并发启动多个 Server 时的数据竞争。
+var (
+	lastServiceCapMu   sync.RWMutex
+	lastServiceCapData ServiceCapabilityReport
+)
+
+func setLastServiceCapabilities(r ServiceCapabilityReport) {
+	lastServiceCapMu.Lock()
+	lastServiceCapData = r
+	lastServiceCapMu.Unlock()
+}
+
+// LastServiceCapabilities 返回最近一次服务能力盘点结果（C2 子接口断言的产物）。
+// 业务可在 Run 之后读取，确认哪些逻辑服支持 state 通知 / 全局生命周期钩子。
+func LastServiceCapabilities() ServiceCapabilityReport {
+	lastServiceCapMu.RLock()
+	defer lastServiceCapMu.RUnlock()
+	return lastServiceCapData
+}
+
+// ServiceCapabilityReport 是 wireServiceCapabilities 的盘点结果，
+// 描述本次启动里各 service 命中了哪些 C2 子接口。供日志 / 单测断言。
+type ServiceCapabilityReport struct {
+	// Stateful 是满足 IStatefulService（可接收 Consul StateHandler 通知）的 service 名。
+	Stateful []string
+	// Lifecycle 是满足 IUserLifecycleService（可挂载登录/下线钩子）的 service 名。
+	Lifecycle []string
+	// PlainOnly 是两个子接口都不满足的 service 名——它们收不到 state 通知、
+	// 也吃不到全局钩子，多半是裸实现 IService 没嵌 Module，启动日志里要警示。
+	PlainOnly []string
+	// LoginHooksFanned / OfflineHooksFanned 记录本次实际扇出的全局钩子数量×命中服务数。
+	LoginHooksFanned   int
+	OfflineHooksFanned int
+}
+
+// wireServiceCapabilities 是 C2 两个子接口的真实消费方。
+//
+// 对传入的全部 service 做接口断言：
+//   - 命中 IUserLifecycleService：把全局登录/下线钩子（RegisterGlobalHook* 注册的）
+//     扇出注册进去，使一次注册对所有逻辑服生效；
+//   - 命中 IStatefulService：登记到能力盘点，确认它能接收 Consul state 通知；
+//   - 两者都不命中：归入 PlainOnly，启动日志显式警告（state 推送 / 全局钩子对它无效）。
+//
+// 返回的 ServiceCapabilityReport 既写进启动日志，也供单测断言"断言路径真的跑了"。
+func wireServiceCapabilities(services []IService) ServiceCapabilityReport {
+	var report ServiceCapabilityReport
+
+	globalHookMu.Lock()
+	loginHooks := make([]loginHook, len(globalLoginHooks))
+	copy(loginHooks, globalLoginHooks)
+	offlineHooks := make([]offlineHook, len(globalOfflineHooks))
+	copy(offlineHooks, globalOfflineHooks)
+	globalHookMu.Unlock()
+
+	for _, svc := range services {
+		if svc == nil {
+			continue
+		}
+		name := svc.GetName()
+		matched := false
+
+		// IStatefulService：能否接收 Consul StateHandler 通知。
+		if _, ok := svc.(IStatefulService); ok {
+			report.Stateful = append(report.Stateful, name)
+			matched = true
+		}
+
+		// IUserLifecycleService：扇出全局登录/下线钩子。
+		if lifecycle, ok := svc.(IUserLifecycleService); ok {
+			report.Lifecycle = append(report.Lifecycle, name)
+			matched = true
+			for _, h := range loginHooks {
+				lifecycle.AddUserLoginHook(h)
+				report.LoginHooksFanned++
+			}
+			for _, h := range offlineHooks {
+				lifecycle.AddUserOfflineHook(h)
+				report.OfflineHooksFanned++
+			}
+		}
+
+		if !matched {
+			report.PlainOnly = append(report.PlainOnly, name)
+			log.WarnTagW("init", "service 未实现任何 C2 子接口，收不到 state 通知/全局钩子",
+				zap.String("service", name))
+		}
+	}
+
+	log.InfoTagW("init", "C2 服务能力盘点完成",
+		zap.Int("stateful", len(report.Stateful)),
+		zap.Int("lifecycle", len(report.Lifecycle)),
+		zap.Int("plain", len(report.PlainOnly)),
+		zap.Int("loginHooksFanned", report.LoginHooksFanned),
+		zap.Int("offlineHooksFanned", report.OfflineHooksFanned))
+
+	return report
 }
 
 type ServiceAPI[Req, Res any] struct {

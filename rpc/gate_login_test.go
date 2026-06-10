@@ -7,7 +7,6 @@ package rpc
 import (
 	"errors"
 	"testing"
-	"time"
 
 	"github.com/thkhxm/rpcx/v2/client"
 	"golang.org/x/net/context"
@@ -22,11 +21,12 @@ type fakeLoginCoordinator struct {
 	kickErr    error
 
 	// 调用记录
-	acquireCalls int
-	releaseCalls int
-	getOwnerArgs []string
-	setOwnerArgs []fakeSetOwnerCall
-	kickArgs     []fakeKickCall
+	acquireCalls  int
+	releaseCalls  int
+	getOwnerArgs  []string
+	setOwnerArgs  []fakeSetOwnerCall
+	kickArgs      []fakeKickCall
+	clearOwnerArg []fakeClearOwnerCall
 }
 
 type fakeSetOwnerCall struct {
@@ -37,6 +37,11 @@ type fakeSetOwnerCall struct {
 type fakeKickCall struct {
 	Address string
 	UserId  string
+}
+
+type fakeClearOwnerCall struct {
+	UserId        string
+	ExpectAddress string
 }
 
 type fakeLockHandle struct{}
@@ -64,6 +69,10 @@ func (f *fakeLoginCoordinator) SetGateOwner(userId, address string) {
 	f.setOwnerArgs = append(f.setOwnerArgs, fakeSetOwnerCall{UserId: userId, Address: address})
 }
 
+func (f *fakeLoginCoordinator) ClearGateOwner(userId, expectAddress string) {
+	f.clearOwnerArg = append(f.clearOwnerArg, fakeClearOwnerCall{UserId: userId, ExpectAddress: expectAddress})
+}
+
 func (f *fakeLoginCoordinator) KickRemoteOwner(address, userId string) error {
 	f.kickArgs = append(f.kickArgs, fakeKickCall{Address: address, UserId: userId})
 	return f.kickErr
@@ -76,10 +85,14 @@ type fakeTCPService struct {
 	doLoginCalls   []fakeDoLoginCall
 	offlineCalls   []fakeOfflineCall
 	offlineReturns bool
+	// resumeTokenToIssue 是 DoLogin 成功时返回的 resume token（F3）。
+	resumeTokenToIssue string
 }
 
 type fakeDoLoginCall struct {
 	UserId, TemplateUserId string
+	// ResumeToken 是调用方传入的重连令牌（F3）。
+	ResumeToken string
 }
 
 type fakeOfflineCall struct {
@@ -97,9 +110,17 @@ func (f *fakeTCPService) ToUser(userId, messageType string, data []byte) error {
 	return nil
 }
 
-func (f *fakeTCPService) DoLogin(userId, templateUserId string) error {
-	f.doLoginCalls = append(f.doLoginCalls, fakeDoLoginCall{UserId: userId, TemplateUserId: templateUserId})
-	return f.doLoginErr
+func (f *fakeTCPService) DoLogin(userId, templateUserId, resumeToken string) (string, error) {
+	f.doLoginCalls = append(f.doLoginCalls, fakeDoLoginCall{
+		UserId: userId, TemplateUserId: templateUserId, ResumeToken: resumeToken})
+	if f.doLoginErr != nil {
+		return "", f.doLoginErr
+	}
+	token := f.resumeTokenToIssue
+	if token == "" {
+		token = "fake-resume-token"
+	}
+	return token, nil
 }
 
 func (f *fakeTCPService) Offline(userId string, replace bool) (exists bool) {
@@ -127,13 +148,8 @@ func withFakeLocalAddr(t *testing.T, addr string) func() {
 	return func() { globalLocalAddressFn = orig }
 }
 
-// shortenRemoteKickWait 临时把 remoteKickWait 缩到几乎 0，避免测试被 200ms sleep 拖慢。
-func shortenRemoteKickWait(t *testing.T) func() {
-	t.Helper()
-	orig := remoteKickWait
-	remoteKickWait = time.Millisecond
-	return func() { remoteKickWait = orig }
-}
+// F3：remoteKickWait 固定 sleep 已随"同步带 ack 的踢人"移除，
+// 原 shortenRemoteKickWait 测试助手一并删除。
 
 // withLoginCheckDisabled 在测试期间显式关闭 D7 登录凭据校验，返回恢复函数。
 // 本文件的用例专注锁/踢人路径；鉴权自身的安全用例见 login_check_test.go。
@@ -157,7 +173,6 @@ var _ = client.Call{}
 // 路径 1：首次登录，无 owner
 func TestGateLogin_NoOwner(t *testing.T) {
 	defer withLoginCheckDisabled(t)()
-	defer shortenRemoteKickWait(t)()
 	defer withFakeLocalAddr(t, "tcp@local:8082")()
 
 	fc := &fakeLoginCoordinator{ownerAddr: ""}
@@ -197,7 +212,6 @@ func TestGateLogin_NoOwner(t *testing.T) {
 // 路径 2：owner 是本地节点 → 本地踢
 func TestGateLogin_LocalOwner(t *testing.T) {
 	defer withLoginCheckDisabled(t)()
-	defer shortenRemoteKickWait(t)()
 	defer withFakeLocalAddr(t, "tcp@local:8082")()
 
 	fc := &fakeLoginCoordinator{ownerAddr: "tcp@local:8082"}
@@ -227,7 +241,6 @@ func TestGateLogin_LocalOwner(t *testing.T) {
 // 路径 3：owner 是远端 → 定向踢远端
 func TestGateLogin_RemoteOwner(t *testing.T) {
 	defer withLoginCheckDisabled(t)()
-	defer shortenRemoteKickWait(t)()
 	defer withFakeLocalAddr(t, "tcp@local:8082")()
 
 	fc := &fakeLoginCoordinator{ownerAddr: "tcp@remote:9091"}
@@ -261,7 +274,6 @@ func TestGateLogin_RemoteOwner(t *testing.T) {
 // 路径 4：远端踢失败仍继续本地登录（宽松策略）
 func TestGateLogin_RemoteKickErrorContinues(t *testing.T) {
 	defer withLoginCheckDisabled(t)()
-	defer shortenRemoteKickWait(t)()
 	defer withFakeLocalAddr(t, "tcp@local:8082")()
 
 	fc := &fakeLoginCoordinator{
@@ -285,7 +297,6 @@ func TestGateLogin_RemoteKickErrorContinues(t *testing.T) {
 // 路径 5：获取锁失败 → 立刻返回 error 且 DoLogin 不被调用
 func TestGateLogin_AcquireLockFail(t *testing.T) {
 	defer withLoginCheckDisabled(t)()
-	defer shortenRemoteKickWait(t)()
 	defer withFakeLocalAddr(t, "tcp@local:8082")()
 
 	lockErr := errors.New("lock timeout")
@@ -314,7 +325,6 @@ func TestGateLogin_AcquireLockFail(t *testing.T) {
 // 路径 6：DoLogin 失败 → 不写 owner，Release 仍被调用
 func TestGateLogin_DoLoginFail(t *testing.T) {
 	defer withLoginCheckDisabled(t)()
-	defer shortenRemoteKickWait(t)()
 	defer withFakeLocalAddr(t, "tcp@local:8082")()
 
 	fc := &fakeLoginCoordinator{ownerAddr: ""}

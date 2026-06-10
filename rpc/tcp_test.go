@@ -114,13 +114,13 @@ func TestOffline_WriteChanNotClosed(t *testing.T) {
 	}
 }
 
-// TestOffline_ReplaceFlagReflectsFirstCall 验证 replace 字段的语义：
-// Offline 是 sync.Once，只有"第一次调用"的参数会写入 u.replace。
+// TestOffline_ReplaceFlagReflectsFirstCall 验证 replace 标记的语义：
+// Offline 幂等，只有"第一次调用"的参数会写入 u.replaceFlag（F3 改为 atomic.Bool）。
 func TestOffline_ReplaceFlagReflectsFirstCall(t *testing.T) {
 	u := newBareConnectData()
 	u.Offline(true)  // 先发一次 replace=true
 	u.Offline(false) // 再发一次应被 Once 吞掉
-	if !u.replace {
+	if !u.replaceFlag.Load() {
 		t.Errorf("replace flag should remain true (set by first Offline call)")
 	}
 }
@@ -265,7 +265,7 @@ func (m *mockConn) EncodeResponse(messageType string, reqId, code int32, reply [
 	if m.isWS {
 		return encodeWSResponseFrame(messageType, reqId, code, reply)
 	}
-	return encodeBinaryResponseFrame(messageType, reply)
+	return encodeBinaryResponseFrame(messageType, code, reply)
 }
 
 // newTestServer 构造一个最小可用的 TCPServer，跳过 Run 里的真实 listen。
@@ -285,6 +285,8 @@ func newTestServer() *TCPServer {
 		// 而测试不会启动 selectorChan。
 		users:   hashmap.New[string, IUserConnectData](),
 		startup: new(sync.Once),
+		// F3: 断线重连窗口表——f3_resume_test.go 依赖它
+		detached: hashmap.New[string, *detachedSession](),
 	}
 }
 

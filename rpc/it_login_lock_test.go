@@ -88,7 +88,51 @@ func TestIT_LoginCoordinator_GateOwnerMetaRoundTrip(t *testing.T) {
 	if got := coord.GetGateOwner(uid); got != addr {
 		t.Fatalf("GetGateOwner = %q, want %q", got, addr)
 	}
+	// F3（审计8）：SetGateOwner 必须带 TTL——key 不再永久存活。
+	if ttl := db.GetRedisClient().TTL(context.Background(), userNodeMetaKeyForIT(uid)).Val(); ttl <= 0 {
+		t.Fatalf("owner meta key 应带 TTL, got %v", ttl)
+	}
+	// F3：ClearGateOwner 原子比对清理——地址不符不删,相符才删。
+	coord.ClearGateOwner(uid, "tcp@other:9")
+	if got := coord.GetGateOwner(uid); got != addr {
+		t.Fatalf("地址不符的 ClearGateOwner 不应删除 owner, got %q", got)
+	}
+	coord.ClearGateOwner(uid, addr)
+	if got := coord.GetGateOwner(uid); got != "" {
+		t.Fatalf("地址相符的 ClearGateOwner 应删除 owner, got %q", got)
+	}
 	db.DelNow(userNodeMetaKeyForIT(uid))
+}
+
+// TestIT_LoginLock_WatchdogRenewalBeyondTTL F3 审计1 验收：watchdog 续期让锁的
+// 有效持有时间可以超过初始 TTL（5s）——持锁 6.5s 后第二次获取仍然失败（锁未
+// 静默过期），释放后立即可重取。
+func TestIT_LoginLock_WatchdogRenewalBeyondTTL(t *testing.T) {
+	if testing.Short() {
+		t.Skip("续期用例需要等待超过锁 TTL(≈6.5s),-short 跳过")
+	}
+	ensureRedisForLoginLock(t)
+	coord := &defaultLoginCoordinator{}
+	const uid = "it-rpc-lock-renewal-user"
+
+	h, err := coord.AcquireLoginLock(uid)
+	if err != nil {
+		t.Fatalf("取登录锁失败: %v", err)
+	}
+
+	// 等待超过初始 TTL——没有 watchdog 时锁此刻已静默过期。
+	time.Sleep(loginLockTTL + loginLockRefreshInterval)
+
+	if _, err2 := coord.AcquireLoginLock(uid); err2 == nil {
+		t.Fatal("持锁超过初始 TTL 后第二次获取不应成功——watchdog 续期失效(锁静默过期)")
+	}
+
+	coord.ReleaseLoginLock(h)
+	h3, err3 := coord.AcquireLoginLock(uid)
+	if err3 != nil {
+		t.Fatalf("释放后重取登录锁失败: %v", err3)
+	}
+	coord.ReleaseLoginLock(h3)
 }
 
 // userNodeMetaKeyForIT 拼 user:node:meta 的 Redis key（与生产格式一致）。

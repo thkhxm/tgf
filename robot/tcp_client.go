@@ -31,6 +31,19 @@ type tcp struct {
 	callback *hashmap.Map[string, CallbackLogic]
 	buf      *bufio.Reader
 	client   *net.TCPConn
+
+	// macKey / macSeq 是帧级 MAC 状态（F5 帧级防伪，见 EnableFrameMAC）。
+	// macKey 在 EnableFrameMAC 中一次性写入（登录响应回调里调用，与 Send 同属
+	// 业务调用方驱动），其后 Send 只读。
+	macKey []byte
+	macSeq atomic.Uint64
+}
+
+// FrameMACCapable 由支持帧级 MAC（F5 帧级防伪）的 robot 客户端实现。
+// 用法：登录拿到 LoginRes.ResumeToken 后调用 EnableFrameMAC(token)，其后所有
+// Send/SendMessage 自动按 LogicMAC 帧（带防重放 seq + HMAC）编码。
+type FrameMACCapable interface {
+	EnableFrameMAC(resumeToken string)
 }
 
 func (t *tcp) Connect(address string) IRobot {
@@ -55,57 +68,43 @@ func (t *tcp) Connect(address string) IRobot {
 	})
 
 	//handler response
+	// F5 协议修缮：原实现按 8 字节头解析且首字节==1 即当心跳丢弃——与服务端
+	// 7 字节 v1 头根本不匹配（v3 审计 P1"框架自带 TCP 客户端与服务端协议互不
+	// 兼容"），且无法区分心跳 0x01 与 compress=1。现在统一走 ReadServerFrame
+	// （v2/v1 自适应流式解码，见 response_decoder.go）。
 	util.Go(func() {
 		for {
-			// [1][1][2][4][n][n]
-			// message type|compress|request method name size|data size|method name|data
-			head, e := t.buf.Peek(1)
+			sf, e := ReadServerFrame(t.buf)
 			if e != nil {
-				log.InfoTag("robot", "client response data: %v", e)
+				log.InfoTag("robot", "client response read error: %v", e)
 				return
 			}
-			mt := head[0]
-			//心跳响应，跳过这个包
-			if mt == byte(rpc.Heartbeat) {
-				t.buf.Discard(1)
+			if sf.IsHeartbeat {
 				log.InfoTag("robot", "收到服务器响应的心跳包")
 				continue
 			}
-			//非心跳包，先捕获头
-			head, e = t.buf.Peek(8)
-			if e != nil {
-				log.InfoTag("robot", "client response data: %v", e)
-				panic(e)
-			}
-			compress := head[1]
-			requestSize := binary.BigEndian.Uint16(head[2:4])
-			dataSize := binary.BigEndian.Uint32(head[4:8])
-			allSize := 8 + uint32(requestSize) + dataSize
-			//数据没接收完整
-			if t.buf.Buffered() < int(allSize) {
+			if sf.IsReplaceKick {
+				log.InfoTag("robot", "收到服务器的替换登录通知(账号在别处登录)")
 				continue
 			}
-			data := make([]byte, allSize)
-			n, e := t.buf.Read(data)
-			if e != nil || n != int(allSize) {
-				log.InfoTag("robot", "client read data : %v", e)
+			if f, has := t.callback.Get(sf.MessageType); has {
+				f(t, sf.Data)
 			}
-			if compress == 1 {
-				data, e = util2.Unzip(data)
-				if e != nil {
-					log.InfoTag("robot", "client data compress : %v", e)
-				}
-			}
-			message := util.ConvertStringByByteSlice(data[8 : 8+requestSize])
-			res := util.ConvertStringByByteSlice(data[8+requestSize:])
-			if f, has := t.callback.Get(message); has {
-				f(t, data[8+requestSize:])
-			}
-			log.InfoTag("robot", "收到服务器的响应数据 messageType:%v 数据:%v", message, res)
+			log.InfoTag("robot", "收到服务器的响应数据 messageType:%v code:%v 数据:%v",
+				sf.MessageType, sf.Code, util.ConvertStringByByteSlice(sf.Data))
 		}
 	})
 	//
 	return t
+}
+
+// EnableFrameMAC 启用帧级 MAC（F5）：登录拿到 LoginRes.ResumeToken 后调用，
+// 其后 Send/SendMessage 自动按 LogicMAC 帧（带防重放 seq + HMAC-SHA256 截断）
+// 编码。与服务端 rpc.DeriveFrameMACKey 使用同一派生算法。
+func (t *tcp) EnableFrameMAC(resumeToken string) {
+	t.macKey = rpc.DeriveFrameMACKey(resumeToken)
+	t.macSeq.Store(0)
+	log.InfoTag("robot", "帧级MAC已启用")
 }
 
 func (t *tcp) RegisterCallbackMessage(messageType string, f CallbackLogic) IRobot {
@@ -115,6 +114,18 @@ func (t *tcp) RegisterCallbackMessage(messageType string, f CallbackLogic) IRobo
 
 func (t *tcp) Send(messageType string, v1 proto.Message) {
 	data, _ := proto.Marshal(v1)
+	// F5: 启用帧级 MAC 后按 LogicMAC 帧编码（防重放 seq 严格递增）。
+	if t.macKey != nil {
+		ix := strings.LastIndex(messageType, ".")
+		if ix < 0 {
+			log.Warn("robot Send: messageType 格式必须是 module.method, 实际 %s", messageType)
+			return
+		}
+		frame := rpc.EncodeTgfBinaryMACFrame(messageType[:ix], messageType[ix+1:], data, t.macSeq.Add(1), t.macKey)
+		t.client.Write(frame)
+		log.InfoTag("robot", "发送MAC请求 messageType:%v len:%v", messageType, len(frame))
+		return
+	}
 	reqName := []byte(messageType)
 	tmp := make([]byte, 0, 6+len(data)+len(reqName))
 	buff := bytes.NewBuffer(tmp)

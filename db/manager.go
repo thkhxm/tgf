@@ -9,6 +9,7 @@ import (
 	"github.com/thkhxm/tgf"
 	"github.com/thkhxm/tgf/log"
 	"github.com/thkhxm/tgf/util"
+	"go.uber.org/zap"
 	"golang.org/x/net/context"
 	"golang.org/x/sync/singleflight"
 	"reflect"
@@ -196,7 +197,7 @@ func (h *hashAutoCacheManager[Val]) loadCache(key ...string) (keys []string, err
 	localKey := h.image.HashCachePkKey(key...)
 	defer func() {
 		if r := recover(); r != nil {
-			log.ErrorTag("cache", "load cache error:%v", r)
+			log.ErrorTagW("cache", "load cache error", zap.Any("recover", r))
 			return
 		}
 		if keys != nil {
@@ -685,7 +686,7 @@ func (a *autoCacheManager[Key, Val]) autoClear() {
 		if err := recover(); err != nil {
 			buf := make([]byte, 1024)
 			buf = buf[:runtime.Stack(buf, true)]
-			log.ErrorTag("cache", "autoClear error:%v,%v", string(buf), err)
+			log.ErrorTagW("cache", "autoClear error", zap.Any("recover", err), zap.ByteString("stack", buf))
 			return
 		}
 	}()
@@ -715,7 +716,7 @@ func (a *autoCacheManager[Key, Val]) autoClear() {
 			}
 		}
 	}
-	log.DebugTag("cache", "remove timeout keys len: %v", len(removeKeys))
+	log.DebugTagW("cache", "remove timeout keys", zap.Int("len", len(removeKeys)))
 }
 
 func (a *autoCacheManager[Key, Val]) getCacheKey(key string) string {
@@ -729,7 +730,7 @@ func (a *autoCacheManager[Key, Val]) toLongevity() {
 		if err := recover(); err != nil {
 			buf := make([]byte, 1024)
 			buf = buf[:runtime.Stack(buf, true)]
-			log.ErrorTag("cache", "toLongevity error:%v,%v", string(buf), err)
+			log.ErrorTagW("cache", "toLongevity error", zap.Any("recover", err), zap.ByteString("stack", buf))
 			return
 		}
 	}()
@@ -738,7 +739,8 @@ func (a *autoCacheManager[Key, Val]) toLongevity() {
 	}
 	// 本轮抢不到锁，说明有另一轮正在执行。直接返回，脏标志保留在内存里，下一轮 timer 会再来。
 	if !a.longevityLock.TryLock() {
-		log.WarnTag("orm", "toLongevity skipped: another flush in progress, table=%s", a.sb.tableName)
+		// B5 热路径迁移：每个 timer 窗口都可能命中（已有 flush 进行中），改零分配 *TagW。
+		log.WarnTagW("orm", "toLongevity skipped: another flush in progress", zap.String("table", a.sb.tableName))
 		return
 	}
 	defer a.longevityLock.Unlock()
@@ -750,9 +752,10 @@ func (a *autoCacheManager[Key, Val]) toLongevity() {
 	}
 
 	mill := time.Since(start).Milliseconds()
-	log.DebugTag("orm",
-		"execute table name [%s] longevity logic, success=%d fail=%d consume=%dms",
-		a.sb.tableName, successCount, failCount, mill)
+	// B5 热路径迁移：每个 longevity flush 窗口落库后都打这条，改零分配 *TagW。
+	log.DebugTagW("orm", "longevity flush 完成",
+		zap.String("table", a.sb.tableName), zap.Int("success", successCount),
+		zap.Int("fail", failCount), zap.Int64("costMs", mill))
 }
 
 // flushDirtyLocked 执行一轮"收集脏数据 → 分批落库 → 成功清脏 / 失败进补偿队列"。
@@ -814,9 +817,9 @@ func (a *autoCacheManager[Key, Val]) flushDirtyLocked() (successCount, failCount
 	for _, b := range batches {
 		mcFlushBatchTotal().Inc()
 		if ferr := a.flushBatch(b.values, len(b.dirty)); ferr != nil {
-			log.ErrorTag("orm",
-				"longevity batch failed, keeping dirty flag for next round, table=%s size=%d err=%v",
-				a.sb.tableName, len(b.dirty), ferr)
+			// B5 热路径迁移：落库失败分支，改零分配 *TagW。
+			log.ErrorTagW("orm", "longevity batch failed, keeping dirty flag for next round",
+				zap.String("table", a.sb.tableName), zap.Int("size", len(b.dirty)), zap.Error(ferr))
 			failCount += len(b.dirty)
 			errs = append(errs, ferr)
 			mcFlushBatchFailTotal().Inc()
@@ -825,9 +828,9 @@ func (a *autoCacheManager[Key, Val]) flushDirtyLocked() (successCount, failCount
 			if failureQueue != nil {
 				payload, perr := encodeFailurePayload(a.sb.tableName, b.values, len(b.dirty))
 				if perr != nil {
-					log.WarnTag("orm", "longevity failure encode error table=%s err=%v", a.sb.tableName, perr)
+					log.WarnTagW("orm", "longevity failure encode error", zap.String("table", a.sb.tableName), zap.Error(perr))
 				} else if eerr := failureQueue.Enqueue(payload); eerr != nil {
-					log.WarnTag("orm", "longevity failure enqueue error table=%s err=%v", a.sb.tableName, eerr)
+					log.WarnTagW("orm", "longevity failure enqueue error", zap.String("table", a.sb.tableName), zap.Error(eerr))
 				} else {
 					mcFailureEnqueueTotal().Inc()
 				}
@@ -844,8 +847,8 @@ func (a *autoCacheManager[Key, Val]) flushDirtyLocked() (successCount, failCount
 			}
 		}
 		if kept > 0 {
-			log.DebugTag("orm",
-				"flush 窗口内发生并发修改, 保留脏标志待下一轮 table=%s kept=%d", a.sb.tableName, kept)
+			log.DebugTagW("orm", "flush 窗口内发生并发修改, 保留脏标志待下一轮",
+				zap.String("table", a.sb.tableName), zap.Int("kept", kept))
 		}
 		successCount += len(b.dirty)
 		mcFlushRowsSuccessTotal().Add(float64(len(b.dirty)))
@@ -1189,13 +1192,13 @@ func (s *sqlBuilder[Val]) queryOne(args ...any) (val Val, err error) {
 
 	if s.querySql == "" {
 		// D5: 返回真实错误而不是 (零值, nil)——否则调用方会把零值当"查询成功"缓存。
-		log.WarnTag("orm", "query script is empty")
+		log.WarnTagW("orm", "query script is empty")
 		return val, errors.New("orm: query script is empty, initStruct not called?")
 	}
 	// D5: 连接不可用时返回 error 而不是在 nil conn 上 panic。
 	conn, err := getMysqlConn()
 	if err != nil {
-		log.WarnTag("orm", "query connection unavailable script=%v err=%v", s.querySql, err)
+		log.WarnTagW("orm", "query connection unavailable", zap.String("sql", s.querySql), zap.Error(err))
 		return val, err
 	}
 	defer conn.Close()
@@ -1204,18 +1207,19 @@ func (s *sqlBuilder[Val]) queryOne(args ...any) (val Val, err error) {
 	// 旧实现在 defer 阶段 nil 解引用 panic（queryList 修了、queryOne 漏了的同源 bug）。
 	stmt, err := conn.PrepareContext(context.Background(), s.querySql)
 	if err != nil {
-		log.WarnTag("orm", "query script=%v error=%v", s.querySql, err)
+		log.WarnTagW("orm", "query prepare error", zap.String("sql", s.querySql), zap.Error(err))
 		return
 	}
 	defer stmt.Close()
 	rows, err := stmt.Query(args...)
 	if err != nil {
-		log.WarnTag("orm", "query params=%v  error=%v", args, err)
+		log.WarnTagW("orm", "query error", zap.Any("params", args), zap.Error(err))
 		return
 	}
 	defer rows.Close()
 	ex := time.Since(start)
-	log.DebugTag("orm", "query=%v params=%v time=%v/ms", s.querySql, args, ex)
+	// B5 热路径迁移：queryOne 每次缓存穿透读 DB 都会打这条，改零分配 *TagW。
+	log.DebugTagW("orm", "query", zap.String("sql", s.querySql), zap.Any("params", args), zap.Duration("cost", ex))
 	if rows.Next() {
 		v := reflect.ValueOf(val)
 		if v.IsNil() {
@@ -1229,7 +1233,7 @@ func (s *sqlBuilder[Val]) queryOne(args ...any) (val Val, err error) {
 		}
 		err = rows.Scan(resPointer...)
 		if err != nil {
-			log.WarnTag("orm", "query rows error: %v", err)
+			log.WarnTagW("orm", "query rows error", zap.Error(err))
 			return
 		}
 		for i, name := range s.modelFieldName {
@@ -1248,31 +1252,32 @@ func (s *sqlBuilder[Val]) queryList(args ...any) (values []Val, err error) {
 
 	if s.queryListSql == "" {
 		// D5: 返回真实错误而不是 (nil, nil)——否则调用方会把空结果当"加载成功"缓存。
-		log.WarnTag("orm", "query script is empty")
+		log.WarnTagW("orm", "query script is empty")
 		return nil, errors.New("orm: query list script is empty, initStruct not called?")
 	}
 	// D5: 连接不可用时返回 error 而不是在 nil conn 上 panic。
 	conn, err := getMysqlConn()
 	if err != nil {
-		log.WarnTag("orm", "query connection unavailable script=%v err=%v", s.queryListSql, err)
+		log.WarnTagW("orm", "query connection unavailable", zap.String("sql", s.queryListSql), zap.Error(err))
 		return nil, err
 	}
 	defer conn.Close()
 
 	stmt, err := conn.PrepareContext(context.Background(), s.queryListSql)
 	if err != nil {
-		log.WarnTag("orm", "query script=%v error=%v", s.queryListSql, err)
+		log.WarnTagW("orm", "query prepare error", zap.String("sql", s.queryListSql), zap.Error(err))
 		return
 	}
 	defer stmt.Close()
 	rows, err := stmt.Query(args...)
 	if err != nil {
-		log.WarnTag("orm", "query params=%v  error=%v", args, err)
+		log.WarnTagW("orm", "query error", zap.Any("params", args), zap.Error(err))
 		return
 	}
 	defer rows.Close()
 	ex := time.Since(start)
-	log.DebugTag("orm", "query=%v params=%v time=%v/ms", s.queryListSql, args, ex)
+	// B5 热路径迁移：queryList 每次批量加载读 DB 都会打这条，改零分配 *TagW。
+	log.DebugTagW("orm", "query list", zap.String("sql", s.queryListSql), zap.Any("params", args), zap.Duration("cost", ex))
 	var val Val
 	values = make([]Val, 0)
 	for rows.Next() {
@@ -1288,7 +1293,7 @@ func (s *sqlBuilder[Val]) queryList(args ...any) (values []Val, err error) {
 		}
 		err = rows.Scan(resPointer...)
 		if err != nil {
-			log.WarnTag("orm", "query rows error: %v", err)
+			log.WarnTagW("orm", "query rows error", zap.Error(err))
 			return
 		}
 		for i, name := range s.modelFieldName {

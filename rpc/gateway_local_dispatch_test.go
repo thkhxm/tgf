@@ -244,23 +244,35 @@ func TestLocalGateDispatch_IncompatibleParam(t *testing.T) {
 // ---- 端到端：真实 TCP 客户端消息 ----
 
 // readTCPResponseFrame 从 conn 流式读出一个完整响应帧（带超时）。
+// F5 后默认是 v2 帧：[251][2][compress][code:4][mtSize:2][dataSize:4][mt][data]。
 func readTCPResponseFrame(t *testing.T, conn net.Conn) (messageType string, payload []byte) {
 	t.Helper()
+	mt, payload, _ := readTCPResponseFrameWithCode(t, conn)
+	return mt, payload
+}
+
+// readTCPResponseFrameWithCode 同 readTCPResponseFrame 并返回 v2 帧的 code 字段。
+func readTCPResponseFrameWithCode(t *testing.T, conn net.Conn) (messageType string, payload []byte, code int32) {
+	t.Helper()
 	_ = conn.SetReadDeadline(time.Now().Add(3 * time.Second))
-	head := make([]byte, 7)
+	head := make([]byte, 13)
 	if _, err := io.ReadFull(conn, head); err != nil {
 		t.Fatalf("read response head: %v", err)
 	}
-	mtSize := int(binary.BigEndian.Uint16(head[1:3]))
-	dataSize := int(binary.BigEndian.Uint32(head[3:7]))
+	if head[0] != responseMagicNumber || head[1] != byte(Logic) {
+		t.Fatalf("unexpected v2 frame leading bytes: %v", head[:2])
+	}
+	if head[2] == 1 {
+		t.Fatalf("unexpected compressed frame in test (payload too small to compress)")
+	}
+	code = int32(binary.BigEndian.Uint32(head[3:7]))
+	mtSize := int(binary.BigEndian.Uint16(head[7:9]))
+	dataSize := int(binary.BigEndian.Uint32(head[9:13]))
 	body := make([]byte, mtSize+dataSize)
 	if _, err := io.ReadFull(conn, body); err != nil {
 		t.Fatalf("read response body: %v", err)
 	}
-	if head[0] == 1 {
-		t.Fatalf("unexpected compressed frame in test (payload too small to compress)")
-	}
-	return string(body[:mtSize]), body[mtSize:]
+	return string(body[:mtSize]), body[mtSize:], code
 }
 
 // startEphemeralGateway 在 127.0.0.1 的随机端口上启动一个真实 TCPServer，返回地址。
@@ -344,7 +356,8 @@ func TestTCPServer_CloseListeners(t *testing.T) {
 		t.Fatalf("write first heartbeat: %v", err)
 	}
 	_ = conn.SetReadDeadline(time.Now().Add(3 * time.Second))
-	one := make([]byte, 1)
+	// F5: v2 心跳响应是 [responseMagicNumber, Heartbeat] 两字节
+	one := make([]byte, len(heartbeatData))
 	if _, err := io.ReadFull(conn, one); err != nil {
 		t.Fatalf("first heartbeat round trip: %v", err)
 	}
@@ -368,17 +381,17 @@ func TestTCPServer_CloseListeners(t *testing.T) {
 		_ = c2.Close()
 	}
 
-	// 已建立的连接不受影响：心跳往返
+	// 已建立的连接不受影响：心跳往返（F5: v2 心跳响应两字节 [251,1]）
 	if _, err := conn.Write(EncodeTgfHeartbeatFrame()); err != nil {
 		t.Fatalf("write heartbeat on existing conn: %v", err)
 	}
 	_ = conn.SetReadDeadline(time.Now().Add(3 * time.Second))
-	buf := make([]byte, 1)
+	buf := make([]byte, len(heartbeatData))
 	if _, err := io.ReadFull(conn, buf); err != nil {
 		t.Fatalf("existing conn should survive CloseListeners, read err = %v", err)
 	}
-	if buf[0] != byte(Heartbeat) {
-		t.Errorf("heartbeat response = %v, want %v", buf[0], byte(Heartbeat))
+	if !bytes.Equal(buf, heartbeatData) {
+		t.Errorf("heartbeat response = %v, want %v", buf, heartbeatData)
 	}
 }
 

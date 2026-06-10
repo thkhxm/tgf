@@ -24,9 +24,9 @@ func withLoginSecret(t *testing.T, secret string) func() {
 }
 
 // newSecuredTestGate 构造测试网关 + 标准 fake 环境（锁恒成功、无 owner）。
+// F3：remoteKickWait 固定 sleep 已移除（踢人改为同步带 ack），无需再缩短等待。
 func newSecuredTestGate(t *testing.T) (*GateService, *fakeTCPService, func()) {
 	t.Helper()
-	restoreKick := shortenRemoteKickWait(t)
 	restoreAddr := withFakeLocalAddr(t, "tcp@local:8082")
 	fc := &fakeLoginCoordinator{ownerAddr: ""}
 	restoreCoord := withFakeLoginCoord(t, fc)
@@ -34,7 +34,6 @@ func newSecuredTestGate(t *testing.T) (*GateService, *fakeTCPService, func()) {
 	return newTestGate(ts), ts, func() {
 		restoreCoord()
 		restoreAddr()
-		restoreKick()
 	}
 }
 

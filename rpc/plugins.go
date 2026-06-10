@@ -16,6 +16,7 @@ import (
 	"github.com/thkhxm/tgf/exp/admin"
 	"github.com/thkhxm/tgf/log"
 	"github.com/thkhxm/tgf/util"
+	"go.uber.org/zap"
 	"net/url"
 	"strings"
 	"time"
@@ -181,7 +182,7 @@ func (c *CustomSelector) processNode(ctx context.Context, uid string, selected s
 				NodeId:      selected,
 				ServicePath: servicePath,
 			}, &UploadUserNodeInfoRes{ErrorCode: 0})); err != nil {
-				log.Warn("[rpc] 节点更新异常 %v", err)
+				log.WarnTagW("rpc", "节点更新异常", zap.String("uid", uid), zap.String("node", selected), zap.Error(err))
 			}
 		})
 	}
@@ -211,20 +212,22 @@ func (c *CustomSelector) UpdateServer(servers map[string]string) {
 			c.h.Remove(k)
 			c.servers.Del(k)
 			clearUserCache = true
-			log.DebugTag("discovery", "remove server %v", v)
+			log.DebugTagW("discovery", "remove server",
+				zap.String("node", k), zap.String("nodeId", v.NodeId), zap.String("state", v.State))
 		}
 		if v.State == string(client2.ConsulServerStatePause) {
 			c.h.Remove(k)
-			log.DebugTag("discovery", "server %v state is %v", v, v.State)
+			log.DebugTagW("discovery", "server paused",
+				zap.String("node", k), zap.String("state", v.State))
 		}
 		return true
 	})
 
 	if clearUserCache {
 		c.clearAllUserCache()
-		log.DebugTag("discovery", "moduleName=%v 更新服务节点", c.moduleName)
+		log.DebugTagW("discovery", "更新服务节点", log.Module(c.moduleName))
 	}
-	log.DebugTag("discovery", "moduleName=%v 节点数据%v", c.moduleName, serverInfos)
+	log.DebugTagW("discovery", "节点数据", log.Module(c.moduleName), zap.String("servers", serverInfos))
 }
 
 func (c *CustomSelector) checkServerAlive(server string) (h bool) {
@@ -256,8 +259,14 @@ func (r *XClientHandler) PreCall(ctx context.Context, serviceName, methodName st
 		traceId = sc.GetReqMetaDataByKey(tgf.ContextKeyTRACEID)
 		sc.SetValue(tgf.ContextKeyNodeId, tgf.NodeId)
 	}
-	argStr, _ := sonic.MarshalString(args)
-	log.DebugTag("trace", "[%s] client [%s] 发送 [%v-%v] 请求 , 参数 [%v]", traceId, tgf.NodeId, serviceName, methodName, argStr)
+	// B5 热路径迁移：trace 是高频且生产默认关闭的 tag。先用 CheckLogTag 短路，
+	// 命中才做 sonic.MarshalString（最贵的一步）+ 零分配 *TagW 结构化输出，
+	// 避免 tag 关闭时仍然无条件 marshal 整个 args。
+	if log.CheckLogTag("trace") {
+		argStr, _ := sonic.MarshalString(args)
+		log.DebugTagWT("trace", traceId, "client 发送请求",
+			log.NodeID(), log.Module(serviceName), log.Method(methodName), zap.String("args", argStr))
+	}
 	return nil
 }
 
@@ -266,8 +275,11 @@ func (r *XClientHandler) PostCall(ctx context.Context, servicePath, serviceMetho
 	if sc, ok := ctx.(*share.Context); ok {
 		traceId = sc.GetReqMetaDataByKey(tgf.ContextKeyTRACEID)
 	}
-	replyStr, _ := sonic.MarshalString(reply)
-	log.DebugTag("trace", "[%s] client [%s] 接收 [%v-%v] 响应 , 返回结果 [%v] ", traceId, tgf.NodeId, servicePath, serviceMethod, replyStr)
+	if log.CheckLogTag("trace") {
+		replyStr, _ := sonic.MarshalString(reply)
+		log.DebugTagWT("trace", traceId, "client 接收响应",
+			log.NodeID(), log.Module(servicePath), log.Method(serviceMethod), zap.String("reply", replyStr))
+	}
 	return err
 }
 
@@ -280,8 +292,11 @@ func (r *XServerHandler) PreCall(ctx context.Context, serviceName, methodName st
 		traceId = sc.GetReqMetaDataByKey(tgf.ContextKeyTRACEID)
 		sc.SetValue("timestamp", time.Now().UnixMilli())
 	}
-	argStr, _ := sonic.MarshalString(args)
-	log.DebugTag("trace", "[%s] server [%s] 接收 [%v-%v] 请求 , 参数 [%v]", traceId, tgf.NodeId, serviceName, methodName, argStr)
+	if log.CheckLogTag("trace") {
+		argStr, _ := sonic.MarshalString(args)
+		log.DebugTagWT("trace", traceId, "server 接收请求",
+			log.NodeID(), log.Module(serviceName), log.Method(methodName), zap.String("args", argStr))
+	}
 	return args, nil
 }
 
@@ -295,8 +310,12 @@ func (r *XServerHandler) PostCall(ctx context.Context, servicePath, serviceMetho
 			d = time.Now().UnixMilli() - t.(int64)
 		}
 	}
-	replyStr, _ := sonic.MarshalString(reply)
-	log.DebugTag("trace", "[%s] server [%s] 执行 [%v-%v] 完毕 耗时[%d], 返回结果 [%v] ", traceId, tgf.NodeId, servicePath, serviceMethod, d, replyStr)
+	if log.CheckLogTag("trace") {
+		replyStr, _ := sonic.MarshalString(reply)
+		log.DebugTagWT("trace", traceId, "server 执行完毕",
+			log.NodeID(), log.Module(servicePath), log.Method(serviceMethod),
+			zap.Int64("costMs", d), zap.String("reply", replyStr))
+	}
 	return reply, err
 }
 

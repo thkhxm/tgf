@@ -3,8 +3,8 @@ module github.com/thkhxm/tgf
 go 1.24.7
 
 // fork 已迁移为带 /v2 主版本后缀的自有 module path（github.com/thkhxm/rpcx/v2、
-// github.com/thkhxm/rpcx-consul/v2），并发布 v2.0.1 tag。下游 go get 本框架无需手抄 replace：
-// 下面的 path replace 只在本主模块生效，依赖方会忽略它，按 require 的 v2.0.1 从 fork 远端拉取。
+// github.com/thkhxm/rpcx-consul/v2）。下游 go get 本框架无需手抄 replace：
+// 下面的 path replace 只在本主模块生效，依赖方会忽略它，按下方 require 的对应 tag 从 fork 远端拉取。
 // 本块仅用于本仓库脱离 go.work（GOWORK=off）时解析同工作区 fork 源码。
 replace (
 	github.com/thkhxm/rpcx/v2 => ../rpcx
@@ -22,6 +22,10 @@ require (
 	github.com/fsnotify/fsnotify v1.9.0
 	github.com/go-sql-driver/mysql v1.9.3
 	github.com/gorilla/websocket v1.5.3
+	// consul/api 钉在 v1.8.1（与 libkv→rpcx-consul 栈同版）：F2 的 agent TTL
+	// health check 只用 ServiceRegister/ServiceDeregister/UpdateTTL 这组自
+	// v1.x 起稳定的 API，刻意不升版避免拖动 libkv 的兼容性（升级议题见审计6 P2）。
+	github.com/hashicorp/consul/api v1.8.1
 	github.com/joho/godotenv v1.5.1
 	github.com/panjf2000/ants/v2 v2.12.0
 	github.com/prometheus/client_golang v1.21.1
@@ -31,7 +35,7 @@ require (
 	github.com/rpcxio/libkv v0.5.1
 	github.com/rs/cors v1.11.1
 	github.com/testcontainers/testcontainers-go v0.32.0
-	github.com/thkhxm/rpcx/v2 v2.0.1
+	github.com/thkhxm/rpcx/v2 v2.0.2
 	github.com/thkhxm/rpcx-consul/v2 v2.0.1
 	github.com/xtaci/kcp-go v5.4.20+incompatible
 	github.com/xuri/excelize/v2 v2.10.1
@@ -87,7 +91,6 @@ require (
 	github.com/google/pprof v0.0.0-20240430035430-e4905b036c4e // indirect
 	github.com/google/uuid v1.6.0 // indirect
 	github.com/grandcat/zeroconf v1.0.0 // indirect
-	github.com/hashicorp/consul/api v1.8.1 // indirect
 	github.com/hashicorp/errwrap v1.1.0 // indirect
 	github.com/hashicorp/go-cleanhttp v0.5.2 // indirect
 	github.com/hashicorp/go-hclog v0.16.0 // indirect

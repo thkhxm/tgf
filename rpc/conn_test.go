@@ -185,7 +185,7 @@ func TestTCPFramedConn_EncodeResponse(t *testing.T) {
 		t.Errorf("tcpFramedConn 不应被识别为 WS 传输")
 	}
 	frame := fc.EncodeResponse("game.Hi", 1, 0, []byte("payload"))
-	want := encodeBinaryResponseFrame("game.Hi", []byte("payload"))
+	want := encodeBinaryResponseFrame("game.Hi", 0, []byte("payload"))
 	if !bytes.Equal(frame, want) {
 		t.Errorf("tcpFramedConn.EncodeResponse 应输出二进制响应帧")
 	}

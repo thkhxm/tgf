@@ -253,7 +253,11 @@ func startTestKCPServer(t *testing.T, port string, key []byte) (builder *KCPServ
 			session.SetNoDelay(1, 10, 2, 1)
 			session.SetStreamMode(true)
 			session.SetACKNoDelay(true)
-			fc := newKCPFramedConn(session, builder)
+			fc, connErr := newKCPFramedConn(session, builder)
+			if connErr != nil {
+				_ = session.Close()
+				continue
+			}
 			select {
 			case ready <- fc:
 			default:
@@ -317,7 +321,10 @@ func TestKCPFramedConn_ReadFrame_LogicWithAEAD(t *testing.T) {
 	client.SetACKNoDelay(true)
 	defer client.Close()
 
-	clientFC := newKCPFramedConn(client, builder)
+	clientFC, err := newKCPFramedConn(client, builder)
+	if err != nil {
+		t.Fatalf("client conn init: %v", err)
+	}
 
 	// 客户端发送 Logic 帧
 	payload := []byte("hello-kcp-aead")
@@ -366,7 +373,10 @@ func TestKCPFramedConn_AEADMismatchFails(t *testing.T) {
 	defer client.Close()
 
 	clientBuilder := NewKCPBuilder("0").WithAEADKey(keyClient)
-	clientFC := newKCPFramedConn(client, clientBuilder)
+	clientFC, err := newKCPFramedConn(client, clientBuilder)
+	if err != nil {
+		t.Fatalf("client conn init: %v", err)
+	}
 
 	raw := EncodeTgfBinaryFrame("a", "B", []byte("x"))
 	if err := clientFC.WriteFrame(raw); err != nil {

@@ -106,12 +106,22 @@ func NewKCPBuilder(port string) *KCPServerConfig {
 	}
 }
 
-// WithAEADKey 设置预共享 32 字节密钥。传 nil 或长度不对会忽略。
-// A8: 生产环境必须调用此方法开启加密；不调用则走明文（仅限开发/内网）。
+// WithAEADKey 设置预共享 32 字节密钥。传 nil/空切片显式表示明文模式（仅限开发/内网）。
+//
+// F5 fail-fast（审计 P2"AEAD 静默降级明文"）：长度非法（≠32 且 ≠0）直接 panic
+// 拒绝启动——原实现静默忽略，运维传错 key（典型：64 字节 hex 字符串没解码）后
+// 服务"正常"启动但全部 KCP 流量实为明文，属 fail-open 安全设计。配置错误必须
+// 在启动期炸出来，而不是上线后裸奔。
 func (k *KCPServerConfig) WithAEADKey(key []byte) *KCPServerConfig {
-	if len(key) == aeadKeySize {
-		k.aeadKey = key
+	if len(key) == 0 {
+		k.aeadKey = nil
+		return k
 	}
+	if len(key) != aeadKeySize {
+		panic(fmt.Sprintf("tgf/rpc: KCP AEAD key 长度必须是 %d 字节,实际 %d 字节(若是 hex/base64 字符串请先解码;明文模式请传 nil)",
+			aeadKeySize, len(key)))
+	}
+	k.aeadKey = key
 	return k
 }
 
@@ -155,14 +165,23 @@ type kcpFramedConn struct {
 	writeMu sync.Mutex
 }
 
-func newKCPFramedConn(conn net.Conn, builder IKCPBuilder) *kcpFramedConn {
+// newKCPFramedConn 把一个 KCP 会话包装为 IConn。
+//
+// F5 fail-closed（审计 P2）：原实现 sealer 初始化失败仅 Warn 后降级 plaintextSealer
+// ——配置了密钥的连接静默变明文。现在初始化失败返回 error，调用方必须关闭会话。
+// F4：构造时立即设置初始 read deadline——KCP accept 后若客户端一字节不发，
+// reader goroutine 原先会永久阻塞（与 WS 的同类问题一并修复）。
+func newKCPFramedConn(conn net.Conn, builder IKCPBuilder) (*kcpFramedConn, error) {
 	var sealer aeadSealer = plaintextSealer{}
-	if key := builder.AEADKey(); len(key) == aeadKeySize {
-		if cs, err := newChaChaSealer(key); err == nil {
-			sealer = cs
-		} else {
-			log.WarnTag("init", "KCP AEAD 初始化失败,降级明文模式 err=%v", err)
+	if key := builder.AEADKey(); len(key) > 0 {
+		cs, err := newChaChaSealer(key)
+		if err != nil {
+			return nil, fmt.Errorf("tgf/rpc: KCP AEAD 初始化失败(fail-closed,拒绝降级明文): %w", err)
 		}
+		sealer = cs
+	}
+	if d := builder.DeadLineTime(); d > 0 {
+		_ = conn.SetReadDeadline(time.Now().Add(d))
 	}
 	return &kcpFramedConn{
 		conn:         conn,
@@ -170,7 +189,7 @@ func newKCPFramedConn(conn net.Conn, builder IKCPBuilder) *kcpFramedConn {
 		deadLineTime: builder.DeadLineTime(),
 		writeTimeout: builder.WriteTimeout(),
 		remote:       conn.RemoteAddr().String(),
-	}
+	}, nil
 }
 
 // ReadFrame 读一帧：先读外层长度前缀 + AEAD payload，Open 后再按 tgf
@@ -198,8 +217,20 @@ func (c *kcpFramedConn) SetWriteDeadline(t time.Time) error { return c.conn.SetW
 
 // EncodeResponse E6：KCP 走和 TCP 一样的二进制响应帧编码（不是 WS 的 WSResponse
 // 协议）。原 IsWebSocket() 临时方法已随编码下沉移除。
-func (c *kcpFramedConn) EncodeResponse(messageType string, _ int32, _ int32, reply []byte) []byte {
-	return encodeBinaryResponseFrame(messageType, reply)
+// F5: v2 帧携带 code（限流/错误码载体）。
+func (c *kcpFramedConn) EncodeResponse(messageType string, _ int32, code int32, reply []byte) []byte {
+	return encodeBinaryResponseFrame(messageType, code, reply)
+}
+
+// RequiresFrameMAC F5：AEAD 已提供帧级认证加密时豁免应用层 MAC；
+// 明文 KCP 与裸 TCP 同等对待，要求帧级 MAC。
+func (c *kcpFramedConn) RequiresFrameMAC() bool { return !c.sealer.Enabled() }
+
+// ReadRawFrame 读取一个完整的外层长度前缀帧并返回 AEAD Open 后的原始字节，
+// 不做 tgf 帧解码。供 robot / 客户端读取服务端下行帧——下行是"响应格式"
+// （robot/response_decoder.go），与 ReadFrame 解码的"请求格式"不同。
+func (c *kcpFramedConn) ReadRawFrame() ([]byte, error) {
+	return readKCPFrame(c.conn, c.sealer)
 }
 
 // ---- 二进制帧解码（从 tcpFramedConn 抽出来供 kcpFramedConn 复用）----
@@ -221,19 +252,35 @@ func decodeTgfBinaryFrame(raw []byte) (*FrameIn, error) {
 	switch msgType {
 	case byte(Heartbeat):
 		return &FrameIn{MessageType: Heartbeat}, nil
-	case byte(Logic):
+	case byte(Logic), byte(LogicMAC):
 		if len(raw) < int(requestHeadSize) {
 			return nil, fmt.Errorf("tgf/rpc: logic frame header truncated")
 		}
 		// 复用 encoding/binary 解析头部（和 tcpFramedConn 完全一致）
 		methodSize := uint16(raw[2])<<8 | uint16(raw[3])
 		dataSize := uint16(raw[4])<<8 | uint16(raw[5])
+		withMAC := msgType == byte(LogicMAC)
 		expected := int(requestHeadSize) + int(methodSize) + int(dataSize)
+		if withMAC {
+			// F5 帧级防伪：LogicMAC 在 dataSize 后插入 8B seq、帧尾追加 16B mac
+			expected += frameMACSeqSize + FrameMACSize
+		}
 		if len(raw) < expected {
 			return nil, fmt.Errorf("tgf/rpc: logic frame truncated: have %d want %d", len(raw), expected)
 		}
-		reqNameIndex := int(requestHeadSize) + int(methodSize)
-		reqName := util.ConvertStringByByteSlice(raw[int(requestHeadSize):reqNameIndex])
+		bodyIndex := int(requestHeadSize)
+		var seq uint64
+		var mac []byte
+		if withMAC {
+			seq = uint64(raw[bodyIndex])<<56 | uint64(raw[bodyIndex+1])<<48 |
+				uint64(raw[bodyIndex+2])<<40 | uint64(raw[bodyIndex+3])<<32 |
+				uint64(raw[bodyIndex+4])<<24 | uint64(raw[bodyIndex+5])<<16 |
+				uint64(raw[bodyIndex+6])<<8 | uint64(raw[bodyIndex+7])
+			bodyIndex += frameMACSeqSize
+			mac = raw[expected-FrameMACSize : expected]
+		}
+		reqNameIndex := bodyIndex + int(methodSize)
+		reqName := util.ConvertStringByByteSlice(raw[bodyIndex:reqNameIndex])
 		ix := strings.LastIndex(reqName, ".")
 		if ix < 0 {
 			return nil, fmt.Errorf("tgf/rpc: malformed method name %q", reqName)
@@ -242,7 +289,9 @@ func decodeTgfBinaryFrame(raw []byte) (*FrameIn, error) {
 			MessageType: Logic,
 			Module:      reqName[:ix],
 			Method:      reqName[ix+1:],
-			Data:        raw[reqNameIndex:expected],
+			Data:        raw[reqNameIndex : reqNameIndex+int(dataSize)],
+			Seq:         seq,
+			MAC:         mac,
 		}, nil
 	default:
 		return nil, fmt.Errorf("tgf/rpc: unknown message type %d", msgType)
@@ -256,6 +305,12 @@ func decodeTgfBinaryFrame(raw []byte) (*FrameIn, error) {
 func (t *TCPServer) startKCPListener(builder IKCPBuilder) error {
 	if builder == nil {
 		return nil
+	}
+	// F5 fail-fast：自定义 IKCPBuilder 实现可能绕过 KCPServerConfig.WithAEADKey 的
+	// panic 校验——listener 启动前再兜底校验一次，密钥非法拒绝启动（fail-closed），
+	// 杜绝"配了密钥却明文裸奔"。
+	if key := builder.AEADKey(); len(key) != 0 && len(key) != aeadKeySize {
+		return fmt.Errorf("tgf/rpc: KCP AEAD key 长度非法: %d(期望 %d 或 0=明文)——拒绝启动 KCP listener", len(key), aeadKeySize)
 	}
 	// KCP 的 block 参数是 BlockCrypt，我们用自己的 AEAD 层，所以传 nil。
 	// 两个 shards 参数是 FEC，A8 先不开（dataShards=0, parityShards=0）。
@@ -306,7 +361,13 @@ func (t *TCPServer) startKCPListener(builder IKCPBuilder) error {
 				_ = session.SetWriteBuffer(builder.WriteBufferSize())
 			}
 
-			fc := newKCPFramedConn(session, builder)
+			fc, connErr := newKCPFramedConn(session, builder)
+			if connErr != nil {
+				// F5 fail-closed：AEAD 初始化失败的会话直接关闭，绝不降级明文。
+				log.Error("[tcp] KCP 连接初始化失败,关闭会话 addr=%v err=%v", session.RemoteAddr(), connErr)
+				_ = session.Close()
+				continue
+			}
 			util.Go(func() {
 				t.handleConn(fc)
 			})
@@ -319,7 +380,8 @@ func (t *TCPServer) startKCPListener(builder IKCPBuilder) error {
 // NewKCPFramedConnForRobot 是 newKCPFramedConn 的导出别名，供 robot / 测试
 // 侧构造 IConn 使用（生产路径走 accept loop 内部的 newKCPFramedConn）。
 // 参数 conn 必须是已连接的 net.Conn（通常是 *kcp.UDPSession）。
-func NewKCPFramedConnForRobot(conn net.Conn, builder IKCPBuilder) IConn {
+// F5：签名增加 error——AEAD 初始化失败 fail-closed，不再静默降级明文。
+func NewKCPFramedConnForRobot(conn net.Conn, builder IKCPBuilder) (IConn, error) {
 	return newKCPFramedConn(conn, builder)
 }
 
