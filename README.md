@@ -52,7 +52,7 @@ tgf 一套框架覆盖三类场景，各有对应示例：
 - **构建基线** — Makefile / .golangci.yml / Dockerfile / GitHub Actions CI 全套
 - **可观测性接口** — `tgf/metrics` 和 `tgf/trace` 两个新包，零外部依赖，默认 NoOp，业务按需写 Prometheus / OpenTelemetry adapter
 - **日志热路径优化** — `log.*Tag` 系列加 level + tag 前置过滤，新增 `InfoTagW` 等 `zap.Field` 风格 API，避免 Sprintf 分配
-- **依赖升级** — Go 1.24.7、go-sql-driver/mysql、ants、excelize、protobuf 等保守升级到主线
+- **依赖升级** — Go 1.26.4（最新稳定线）、go-sql-driver/mysql、ants、excelize、protobuf 等保守升级到主线
 
 ### 🌐 HTTP 一等公民（G 档）
 
@@ -563,7 +563,7 @@ go run .
 
 ## 技术选型
 
-**Go 工具链**：Go 1.24+（v2 升级）
+**Go 工具链**：Go 1.26+（v3 升级到最新稳定线，go.mod 声明 `go 1.26.0` / `toolchain go1.26.4`）
 
 | 类别 | 库 | 版本 | 用途 |
 |------|----|------|------|

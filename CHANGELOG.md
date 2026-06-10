@@ -11,6 +11,14 @@
 可观测性接入：`doc/observability.md`
 v3 整改路线图：`reports/V3-evaluation-and-roadmap.md`
 
+### Changed
+
+- **Go 版本升级到 1.26**：`go.work` 与三个 `go.mod`（tgf / rpcx / rpcx-consul）统一声明
+  `go 1.26.0` + `toolchain go1.26.4`（2026-06 最新稳定线，Go 1.24 已脱离支持窗口）。
+  实测 sonic v1.15.0 在 1.26 下编译/测试全绿（v2 早期因 sonic 与 1.26 不兼容而锁定 1.24.7，
+  该问题已随 sonic 升级消除）。CI `setup-go` 同步到 `1.26.x`。fork tag 随之 bump 到
+  `rpcx/v2 v2.0.3`、`rpcx-consul/v2 v2.0.2`。
+
 ### v3-D 档 · 止血与发布可用（进行中）
 
 > 目标：消灭全部 P0，让框架"对外存在"。详见路线图 `reports/V3-evaluation-and-roadmap.md` 第 3.1 节。

@@ -1,14 +1,16 @@
 module github.com/thkhxm/tgf
 
-go 1.24.7
+go 1.26.0
+
+toolchain go1.26.4
 
 // fork 已迁移为带 /v2 主版本后缀的自有 module path（github.com/thkhxm/rpcx/v2、
 // github.com/thkhxm/rpcx-consul/v2）。下游 go get 本框架无需手抄 replace：
 // 下面的 path replace 只在本主模块生效，依赖方会忽略它，按下方 require 的对应 tag 从 fork 远端拉取。
 // 本块仅用于本仓库脱离 go.work（GOWORK=off）时解析同工作区 fork 源码。
 replace (
-	github.com/thkhxm/rpcx/v2 => ../rpcx
 	github.com/thkhxm/rpcx-consul/v2 => ../rpcx-consul
+	github.com/thkhxm/rpcx/v2 => ../rpcx
 )
 
 require (
@@ -35,8 +37,8 @@ require (
 	github.com/rpcxio/libkv v0.5.1
 	github.com/rs/cors v1.11.1
 	github.com/testcontainers/testcontainers-go v0.32.0
-	github.com/thkhxm/rpcx/v2 v2.0.2
-	github.com/thkhxm/rpcx-consul/v2 v2.0.1
+	github.com/thkhxm/rpcx-consul/v2 v2.0.2
+	github.com/thkhxm/rpcx/v2 v2.0.3
 	github.com/xtaci/kcp-go v5.4.20+incompatible
 	github.com/xuri/excelize/v2 v2.10.1
 	go.uber.org/zap v1.27.1

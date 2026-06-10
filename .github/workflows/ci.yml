@@ -16,7 +16,7 @@ name: ci
 # 两条测试 job：
 #   - unit：无外部依赖的单元测试（集成测试以 //go:build integration 隔离，不跑）
 #   - integration：带 integration tag 的集成测试，起 redis/mysql/consul 容器后跑
-# Go 工具链统一 1.24.x（与 go.mod 的 go 1.24.7 对齐）。
+# Go 工具链统一 1.26.x（与 go.mod 的 go 1.26.0 / toolchain go1.26.4 对齐）。
 #
 # 注意：若 fork 仓库为私有，需为下面的 fork checkout 步骤配置具备读权限的 token
 # （actions/checkout 的 `token:` 入参）。fork 为公开仓库时无需额外配置。
@@ -62,7 +62,7 @@ jobs:
       - name: setup go
         uses: actions/setup-go@v5
         with:
-          go-version: '1.24.x'
+          go-version: '1.26.x'
           cache: true
           cache-dependency-path: tgf/go.sum
 
@@ -143,7 +143,7 @@ jobs:
       - name: setup go
         uses: actions/setup-go@v5
         with:
-          go-version: '1.24.x'
+          go-version: '1.26.x'
           cache: true
           cache-dependency-path: tgf/go.sum
 
@@ -175,7 +175,7 @@ jobs:
 
       - uses: actions/setup-go@v5
         with:
-          go-version: '1.24.x'
+          go-version: '1.26.x'
           cache: true
           cache-dependency-path: tgf/go.sum
 
