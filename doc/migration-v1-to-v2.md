@@ -56,13 +56,19 @@ _ = user.Send(payload)
 `WithWriteTimeout(d) *tcpBuilder` 方法。
 
 **影响**：实现了 `ITCPBuilder` 的自定义 builder 需要补这两个方法。
-大多数业务方直接用框架内置的 `newTCPBuilder()`，**零改动**。
+大多数业务方直接用框架内置的 builder（未导出的 `newTCPBuilder()`），**零改动**。
 
-默认值从 v1 的硬编码 10 分钟魔数改为 5 秒，可配置：
+默认值从 v1 的硬编码 10 分钟魔数改为 5 秒。框架内置的 TCP builder 未导出，业务方
+通过环境变量调整该超时（毫秒），无需自己实现 `ITCPBuilder`：
 
-```go
-builder := rpc.NewTCPBuilder().WithWriteTimeout(10 * time.Second)
+```bash
+# .env.<module> 中设置（单位：毫秒）；0 或不设则用默认 5 秒
+TCPWriteTimeoutMs=10000
 ```
+
+对应配置常量为 `tgf.EnvironmentTCPWriteTimeoutMs`，在 `rpc.newTCPBuilder()`
+构造时读取（见 `tgf/rpc/tcp.go`）。若你确实自定义实现了 `ITCPBuilder`，则在自己的
+实现里调用 `WithWriteTimeout(d)` 设置。
 
 ### A3 · 跨节点登录协调
 
@@ -311,7 +317,9 @@ timeout 策略）。
   显式延后
 - **GameConfig 更细粒度的单文件热更**：当前是全量 reload
 - **RPC Adaptive rate limiting / 分布式断路器**：C6 只做了单节点
-- **sonic v1.15 升级**：Windows + Go 1.24 下历史有回归，保留 v1.12.7
+
+> 注：早期迁移文档曾建议保留 sonic v1.12.7（担心 Windows + Go 1.24 回归），
+> 但当前 `go.mod` 已升级到 sonic v1.15.0（commit 22963eb，实测无回归）。
 
 ---
 

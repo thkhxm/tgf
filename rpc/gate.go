@@ -54,6 +54,17 @@ func (g *GateService) Startup() (bool, error) {
 	return true, nil
 }
 
+// StopAccept 停止网关接收新连接并关闭全部 listener（TCP/WS/KCP）。幂等。
+// D 档（v3）暴露给优雅停机编排（Wave2 / Server.Destroy）的钩子：
+// 编排方应当先调用本方法停止 accept，再做 in-flight drain 与在线连接的 Offline 清理。
+// 在 Startup 之前调用（tcpService 尚未创建）安全返回 nil。
+func (g *GateService) StopAccept() error {
+	if g.tcpService == nil {
+		return nil
+	}
+	return g.tcpService.CloseListeners()
+}
+
 func (g *GateService) UploadUserNodeInfo(ctx context.Context, args *UploadUserNodeInfoReq, reply *UploadUserNodeInfoRes) error {
 	var ()
 	if ok := g.tcpService.UpdateUserNodeInfo(args.UserId, args.ServicePath, args.NodeId); !ok {
@@ -69,7 +80,14 @@ func (g *GateService) UploadUserNodeInfo(ctx context.Context, args *UploadUserNo
 // 有三个问题：广播不精准（打扰无关节点）、没有互斥（两个节点同时登同一 uid）、
 // 没有等待远端清理就继续本地 DoLogin。
 //
+// D7 / P0-6（v3）：登录前强制凭据校验（fail-closed）。原实现直接信任客户端
+// 自报的 args.UserId 完成身份绑定——任何 socket 可冒充任意账号。现在 LoginReq
+// 必须携带 Token，由 ILoginCheck（默认 HMAC token，可注入自定义）校验并比对
+// 身份；旧的无鉴权行为需显式 Server.WithoutLoginCheck() 才保留。
+// 详见 login_check.go。
+//
 // 新流程：
+//  0. checkLoginCredential 校验 args.Token（D7，失败立即拒绝）。
 //  1. 通过 Redis 分布式锁（key = tgf:gate:login:lock:<uid>）在 phase1 CAS 之上
 //     再加一层跨节点互斥——只有拿到锁的节点才能进入登录流程。
 //  2. 锁内读 user:node:meta 里的 gate owner：
@@ -80,6 +98,13 @@ func (g *GateService) UploadUserNodeInfo(ctx context.Context, args *UploadUserNo
 //  4. 把本地 gate 地址写回 user:node:meta，用于下一次登录时的 owner 判定。
 //  5. defer 释放锁。
 func (g *GateService) Login(ctx context.Context, args *LoginReq, reply *LoginRes) error {
+	// D7: 凭据校验放在登录锁之前——非法请求不应消耗分布式锁与踢人流程。
+	if credErr := checkLoginCredential(args); credErr != nil {
+		reply.ErrorCode = -1
+		log.WarnTag("gate", "login credential rejected uid=%v err=%v", args.UserId, credErr)
+		return credErr
+	}
+
 	lockHandle, err := loginCoord.AcquireLoginLock(args.UserId)
 	if err != nil {
 		reply.ErrorCode = -1
@@ -208,6 +233,11 @@ type ToUserRes struct {
 type LoginReq struct {
 	UserId         string
 	TemplateUserId string
+	// Token 是登录凭据（D7 / P0-6 新增）。默认鉴权开启时必填：
+	// 由业务登录服务在账号验证后通过 rpc.GenerateLoginToken 签发（默认 HMAC 实现），
+	// 或由 Server.WithLoginCheck 注入的自定义校验器解释。
+	// 显式 Server.WithoutLoginCheck() 后允许为空（恢复旧的无鉴权行为）。
+	Token string
 }
 
 type LoginRes struct {

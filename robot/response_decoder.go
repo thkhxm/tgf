@@ -15,7 +15,7 @@ import (
 	"encoding/binary"
 	"fmt"
 
-	util2 "github.com/smallnest/rpcx/util"
+	util2 "github.com/thkhxm/rpcx/util"
 )
 
 // ServerFrame 是从服务端收到的一帧解码后的结构。

@@ -6,10 +6,10 @@ import (
 	"github.com/bytedance/sonic"
 	"github.com/cornelk/hashmap"
 	"github.com/edwingeng/doublejump"
-	client2 "github.com/smallnest/rpcx/client"
-	"github.com/smallnest/rpcx/protocol"
-	"github.com/smallnest/rpcx/server"
-	"github.com/smallnest/rpcx/share"
+	client2 "github.com/thkhxm/rpcx/client"
+	"github.com/thkhxm/rpcx/protocol"
+	"github.com/thkhxm/rpcx/server"
+	"github.com/thkhxm/rpcx/share"
 	"github.com/thkhxm/tgf"
 	"github.com/thkhxm/tgf/db"
 	"github.com/thkhxm/tgf/exp/admin"
@@ -309,6 +309,17 @@ func (r *XServerHandler) PostReadRequest(ctx context.Context, m *protocol.Messag
 	return nil
 }
 
+// ILoginCheck 是登录凭据校验接口（D7 / P0-6 起为 gate.Login 的强制接线点）。
+//
+// CheckLogin(token) 返回 (是否通过, 凭据绑定的 userId)：
+//   - false → 登录被拒绝；
+//   - true 且 userId 非空 → gate.Login 强制其与 LoginReq.UserId 一致（防冒充）；
+//   - true 且 userId 为空 → 只验凭据有效性、不绑定身份（由业务实现自行保证安全）。
+//
+// 默认实现是 HMAC 签名 token（login_check.go hmacLoginCheck，密钥来自
+// WithLoginTokenSecret / 环境变量 LoginTokenSecret，未配置时 fail-closed 拒绝）。
+// 业务通过 Server.WithLoginCheck 注入自定义实现；Server.WithoutLoginCheck 显式
+// 关闭校验（仅限可信环境）。
 type ILoginCheck interface {
 	CheckLogin(token string) (bool, string)
 }

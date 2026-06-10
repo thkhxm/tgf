@@ -19,6 +19,15 @@
 //   - config.Load                   → 新配置系统
 //   - metrics.NewMemoryProvider     → 内存 metrics 观察埋点
 //   - log.InfoTagW                  → zap.Field 零分配日志
+//
+// v3 / D4 说明：单进程 + 网关组合已可用——TCP 客户端发来的 Logic 帧会经
+// localDispatcher 直通本地 service（v3 之前这条路径首条消息即 panic）。
+// 网关可达的方法参数必须是 rpc.Args[T]/rpc.Reply[T] 形式；本示例的方法是
+// 普通 struct 参数（进程内 RPC 风格），客户端帧不可直达，详见 README。
+//
+// v3 / D7 说明：框架默认开启登录鉴权（gate.Login 要求 LoginReq.Token）。
+// 本示例不走 gate.Login，无需配置；需要客户端登录的项目参考 README 的
+// 「登录鉴权」一节（GenerateLoginToken / UserLoginWithToken / WithoutLoginCheck）。
 package main
 
 import (
@@ -28,6 +37,7 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/thkhxm/tgf"
 	"github.com/thkhxm/tgf/config"
 	"github.com/thkhxm/tgf/log"
 	"github.com/thkhxm/tgf/metrics"
@@ -199,6 +209,8 @@ func main() {
 	done := rpc.NewRPCServer().
 		// C8: 单进程模式 = 不挂 Consul + 进程内 RPC 直通
 		WithSingleProcess().
+		// 本示例无需持久化，关闭缓存层避免 db.Run 尝试连 Redis/MySQL
+		WithCache(tgf.CacheModuleClose).
 		// B4: 注入 metrics provider
 		WithMetrics(memMetrics).
 		// C6: 给 shop.GiveGift 加限流（演示策略化）

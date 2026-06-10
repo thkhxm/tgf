@@ -1,49 +1,187 @@
 name: ci
 
+# tgf 主模块 CI。
+#
+# tgf 依赖 fork 版 rpcx / rpcx-consul。模块路径已迁移为 github.com/thkhxm/rpcx[-consul]，
+# tgf/go.mod 直接 require 自有 path，并保留 `=> ../rpcx`、`=> ../rpcx-consul` 两条本地
+# path replace 供单仓构建解析本地源码。因此 CI 必须把三个仓库都检出成同级目录布局：
+#
+#   <workspace>/tgf          ← 本仓库
+#   <workspace>/rpcx         ← thkhxm/rpcx fork
+#   <workspace>/rpcx-consul  ← thkhxm/rpcx-consul fork
+#
+# 这样 go.mod 的 ../rpcx 才能解析。待 fork 远端发布携带新 module path 的 tag 后，可删除
+# 这两条 path replace、把本 workflow 的 fork checkout 步骤一并去掉，回归单仓构建。
+#
+# 两条测试 job：
+#   - unit：无外部依赖的单元测试（集成测试以 //go:build integration 隔离，不跑）
+#   - integration：带 integration tag 的集成测试，起 redis/mysql/consul 容器后跑
+# Go 工具链统一 1.24.x（与 go.mod 的 go 1.24.7 对齐）。
+#
+# 注意：若 fork 仓库为私有，需为下面的 fork checkout 步骤配置具备读权限的 token
+# （actions/checkout 的 `token:` 入参）。fork 为公开仓库时无需额外配置。
+
 on:
   push:
     branches:
       - main
+      - master
       - develop
       - 'feature/**'
   pull_request:
     branches:
       - main
+      - master
       - develop
 
 jobs:
-  test:
-    name: vet + test
+  unit:
+    name: vet + unit test
     runs-on: ubuntu-latest
     env:
       GOPROXY: https://proxy.golang.org,direct
       GOSUMDB: sum.golang.org
     steps:
-      - uses: actions/checkout@v4
+      - name: checkout tgf
+        uses: actions/checkout@v4
+        with:
+          path: tgf
+
+      - name: checkout rpcx fork
+        uses: actions/checkout@v4
+        with:
+          repository: thkhxm/rpcx
+          path: rpcx
+
+      - name: checkout rpcx-consul fork
+        uses: actions/checkout@v4
+        with:
+          repository: thkhxm/rpcx-consul
+          path: rpcx-consul
 
       - name: setup go
         uses: actions/setup-go@v5
         with:
           go-version: '1.24.x'
           cache: true
+          cache-dependency-path: tgf/go.sum
 
       - name: go vet
+        working-directory: tgf
         run: go vet ./...
 
-      - name: go test
+      # 默认 build tag：集成测试（//go:build integration）被自动排除，不需要外部服务。
+      - name: go test (unit)
+        working-directory: tgf
         run: go test -race -count=1 -timeout=10m ./...
+
+  integration:
+    name: integration test
+    runs-on: ubuntu-latest
+    env:
+      GOPROXY: https://proxy.golang.org,direct
+      GOSUMDB: sum.golang.org
+      # 集成测试通过环境变量连下面起的服务容器。
+      TGFMODULE: test
+      RedisAddr: 127.0.0.1:6379
+      RedisPassword: ""
+      MySqlUser: root
+      MySqlPwd: root
+      MySqlAddr: 127.0.0.1
+      MySqlPort: "3306"
+      MySqlDB: tgf_game_test
+      ConsulAddress: 127.0.0.1:8500
+    services:
+      redis:
+        image: redis:7
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 5s
+          --health-timeout 3s
+          --health-retries 10
+      mysql:
+        image: mysql:8.0
+        ports:
+          - 3306:3306
+        env:
+          MYSQL_ROOT_PASSWORD: root
+          MYSQL_DATABASE: tgf_game_test
+        options: >-
+          --health-cmd "mysqladmin ping -h 127.0.0.1 -proot"
+          --health-interval 5s
+          --health-timeout 3s
+          --health-retries 20
+      consul:
+        image: hashicorp/consul:1.18
+        ports:
+          - 8500:8500
+        options: >-
+          --health-cmd "consul members"
+          --health-interval 5s
+          --health-timeout 3s
+          --health-retries 10
+    steps:
+      - name: checkout tgf
+        uses: actions/checkout@v4
+        with:
+          path: tgf
+
+      - name: checkout rpcx fork
+        uses: actions/checkout@v4
+        with:
+          repository: thkhxm/rpcx
+          path: rpcx
+
+      - name: checkout rpcx-consul fork
+        uses: actions/checkout@v4
+        with:
+          repository: thkhxm/rpcx-consul
+          path: rpcx-consul
+
+      - name: setup go
+        uses: actions/setup-go@v5
+        with:
+          go-version: '1.24.x'
+          cache: true
+          cache-dependency-path: tgf/go.sum
+
+      # 集成测试以 //go:build integration 隔离，需显式 -tags 才会编译运行。
+      - name: go test (integration)
+        working-directory: tgf
+        run: go test -tags integration -count=1 -timeout=15m ./...
 
   lint:
     name: golangci-lint
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - name: checkout tgf
+        uses: actions/checkout@v4
+        with:
+          path: tgf
+
+      - name: checkout rpcx fork
+        uses: actions/checkout@v4
+        with:
+          repository: thkhxm/rpcx
+          path: rpcx
+
+      - name: checkout rpcx-consul fork
+        uses: actions/checkout@v4
+        with:
+          repository: thkhxm/rpcx-consul
+          path: rpcx-consul
+
       - uses: actions/setup-go@v5
         with:
           go-version: '1.24.x'
           cache: true
+          cache-dependency-path: tgf/go.sum
+
       - name: golangci-lint
         uses: golangci/golangci-lint-action@v6
         with:
           version: v1.61.0
           args: --timeout=5m
+          working-directory: tgf

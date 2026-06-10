@@ -16,7 +16,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/smallnest/rpcx/share"
+	"github.com/thkhxm/rpcx/share"
 	"golang.org/x/net/context"
 )
 

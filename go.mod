@@ -2,10 +2,13 @@ module github.com/thkhxm/tgf
 
 go 1.24.7
 
+// fork 已迁移为自有 module path（github.com/thkhxm/rpcx / github.com/thkhxm/rpcx-consul），
+// 下游 go get 本框架不再需要手抄任何 replace（go-echarts 钉 v2.3.3 已改由 rpcx 的 require 向下游传播）。
+// 下面两条 path replace 仅用于本仓库脱离 go.work（GOWORK=off）时解析同工作区的 fork 源码；
+// fork 仓库发布带新 module path 的 tag 后，把 require 升到对应 tag 并删除本块即为最终发布形态。
 replace (
-	github.com/go-echarts/go-echarts/v2 => github.com/go-echarts/go-echarts/v2 v2.3.3
-	github.com/rpcxio/rpcx-consul v0.1.1 => github.com/thkhxm/rpcx-consul v1.0.1
-	github.com/smallnest/rpcx v1.8.36 => github.com/thkhxm/rpcx v1.0.6
+	github.com/thkhxm/rpcx => ../rpcx
+	github.com/thkhxm/rpcx-consul => ../rpcx-consul
 )
 
 require (
@@ -22,10 +25,9 @@ require (
 	github.com/rcrowley/go-metrics v0.0.0-20201227073835-cf1acfcdf475
 	github.com/redis/go-redis/v9 v9.7.0
 	github.com/rpcxio/libkv v0.5.1
-	github.com/rpcxio/rpcx-consul v0.1.1
 	github.com/rs/cors v1.11.1
-	github.com/smallnest/rpcx v1.8.36
-	github.com/valyala/bytebufferpool v1.0.0
+	github.com/thkhxm/rpcx v1.0.7
+	github.com/thkhxm/rpcx-consul v1.0.1
 	github.com/xtaci/kcp-go v5.4.20+incompatible
 	github.com/xuri/excelize/v2 v2.10.1
 	go.uber.org/zap v1.27.1
@@ -55,7 +57,7 @@ require (
 	github.com/dgryski/go-rendezvous v0.0.0-20200823014737-9f7001d12a5f // indirect
 	github.com/facebookgo/clock v0.0.0-20150410010913-600d898af40a // indirect
 	github.com/fatih/color v1.18.0 // indirect
-	github.com/go-echarts/go-echarts/v2 v2.4.6 // indirect
+	github.com/go-echarts/go-echarts/v2 v2.3.3 // indirect
 	github.com/go-ole/go-ole v1.2.4 // indirect
 	github.com/go-ping/ping v1.2.0 // indirect
 	github.com/go-task/slim-sprig/v3 v3.0.0 // indirect

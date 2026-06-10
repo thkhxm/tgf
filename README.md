@@ -55,10 +55,14 @@
 
 ### 📊 验证指标
 
-- **188 个新增单测 / 集成测试**（A 档 78 + B 档 27 + C 档 83）
-- `go test -race -count=1 -timeout=5m ./...` 全绿
+- **265 个单测 / 集成测试**（集成测试以 `//go:build integration` tag 隔离，默认不跑）
+- `go test -race -count=1 ./...` 在 **workspace 内**（仓库外 `go.work` 同时检出 tgf/rpcx/rpcx-consul 三仓）全绿
 - `go vet` 零告警
 - 14 处 pre-existing bug / race 顺带修复
+
+> 上述构建/测试结果在 go.work workspace 内与 `GOWORK=off` 单仓模式下均成立
+> （`go.mod` 内置指向同工作区 fork 目录的 path replace，见下文「从源码构建」）。
+> 无本机 Consul/Redis/MySQL 的纯单元测试可独立跑通；集成测试需对应外部服务。
 
 ---
 
@@ -66,13 +70,44 @@
 
 ### 1. 安装
 
-```bash
-go get github.com/thkhxm/tgf@v2-alpha.2
-```
-
 要求 Go **1.24+**。
 
-### 2. Hello, tgf（单进程模式，不需要 Consul / Redis / MySQL）
+tgf 依赖的 rpcx / rpcx-consul fork 已迁移为自有 module path
+（`github.com/thkhxm/rpcx` / `github.com/thkhxm/rpcx-consul`），由 tgf 的
+`go.mod` 直接 `require` 引入——**下游业务工程不再需要手抄任何 replace 块**：
+
+```bash
+go get github.com/thkhxm/tgf@latest
+```
+
+> ⚠️ 上述命令生效的前提是两个 fork 仓库已发布**携带新 module path 的 tag**
+> （即该 tag 树内 `go.mod` 的 `module` 行为 `github.com/thkhxm/rpcx[-consul]`）。
+> 该发布动作见路线图 D1；发布前请使用下面「从源码构建」的 workspace 方式接入。
+
+#### 从源码构建（贡献者）
+
+本仓库与 fork 一起放在一个 Go **workspace**（仓库外的 `go.work` 同时 `use`
+`tgf/`、`rpcx/`、`rpcx-consul/` 三个目录）。`tgf/go.mod` 另内置两条指向
+`../rpcx`、`../rpcx-consul` 的 path replace，因此只要按
+[`doc/architecture.md`](doc/architecture.md) 的布局把三个仓库检出到同级目录，
+workspace 内与 `GOWORK=off` 单仓模式均可直接构建。
+
+### 2. 配置与凭据（重要）
+
+tgf 按 `TGFMODULE` 环境变量加载 `.env.<module>` 文件（缺省 `dev`），里面是 Consul /
+Redis / MySQL 的地址与口令。**真实凭据绝不入库**：
+
+- 仓库只提供占位值模板 `.env.example` / `.env.test.example` / `.env.release.example`（被跟踪，安全）。
+- 复制模板为对应的 `.env.dev` / `.env.test` / `.env.release` 并填入本地/生产真实值：
+
+  ```bash
+  cp .env.example .env.dev          # 然后改 RedisPassword / MySqlPwd 等真实口令
+  ```
+
+- `.env`、`.env.dev`、`.env.test`、`.env.release` 等已被 `.gitignore` 忽略，`git add .` 不会把它们提交。
+- 生产环境推荐通过容器编排 / 密钥管理（Vault、K8s Secret 等）注入这些值，而不是落盘提交。
+
+### 3. Hello, tgf（单进程模式，不需要 Consul / Redis / MySQL）
 
 ```go
 package main
@@ -235,9 +270,9 @@ go run main.go
 |------|-----|------|
 | 环境变量加载 | `config.Load()` | struct tag 驱动 |
 | 当前快照 | `config.Current()` | 原子读 |
-| 热更 | `config.Reload()` + `OnReload(fn)` | SIGHUP / HTTP admin 触发 |
+| 热更 | `config.Reload()` + `OnReload(fn)` | 业务侧手动调用触发（框架未内置信号/HTTP 触发器） |
 | 游戏配置 | `component.GetGameConf[Val](id)` | 泛型查询 |
-| 游戏配置热更 | `component.ReloadGameConf()` + `StartConfigWatcher()` | 手动 / fsnotify |
+| 游戏配置热更 | `component.ReloadGameConf()` + `StartConfigWatcher()` | 手动调用 / fsnotify 目录监听 |
 
 ---
 
@@ -296,15 +331,15 @@ go run .
 
 | 类别 | 库 | 版本 | 用途 |
 |------|----|------|------|
-| RPC | [rpcx](https://github.com/smallnest/rpcx) | v1.8.36（fork） | 底层 RPC 引擎 |
-| 服务发现 | [rpcx-consul](https://github.com/rpcxio/rpcx-consul) | v0.1.1（fork） | Consul 适配 |
+| RPC | [thkhxm/rpcx](https://github.com/thkhxm/rpcx) | fork 自 smallnest/rpcx，已迁移为自有 module path 直接 require | 底层 RPC 引擎 |
+| 服务发现 | [thkhxm/rpcx-consul](https://github.com/thkhxm/rpcx-consul) | fork 自 rpcxio/rpcx-consul，已迁移为自有 module path 直接 require | Consul 适配 |
 | 缓存 | [go-redis/v9](https://github.com/redis/go-redis) | v9.7.0 | Redis 客户端 |
 | 分布式锁 | [bsm/redislock](https://github.com/bsm/redislock) | v0.9.4 | 基于 Redis 的锁 |
 | 数据库 | [go-sql-driver/mysql](https://github.com/go-sql-driver/mysql) | v1.9.3 | MySQL 驱动 |
 | 日志 | [zap](https://go.uber.org/zap) | v1.27.1 | 结构化日志 |
 | 日志切割 | [lumberjack.v2](https://gopkg.in/natefinch/lumberjack.v2) | v2.2.1 | 滚动归档 |
 | 并发 | [ants/v2](https://github.com/panjf2000/ants) | v2.12.0 | 协程池 |
-| JSON | [sonic](https://github.com/bytedance/sonic) | v1.12.7 | 高性能 JSON |
+| JSON | [sonic](https://github.com/bytedance/sonic) | v1.15.0 | 高性能 JSON |
 | 线程安全集合 | [cornelk/hashmap](https://github.com/cornelk/hashmap) | v1.0.8 | 无锁 map |
 | ID 生成 | [bwmarrin/snowflake](https://github.com/bwmarrin/snowflake) | v0.3.0 | Snowflake |
 | 一致性哈希 | [edwingeng/doublejump](https://github.com/edwingeng/doublejump) | v1.0.1 | jump consistent hash |
@@ -331,13 +366,14 @@ go run .
 
 ### 路线图
 
-- ✅ v2-alpha：A / B / C 档完整落地，188 个新测试
-- ⏳ v2-beta：业务反馈驱动的稳定性收敛
-- ⏳ v2.0.0：正式发布
-- 📅 后续迭代：
+- ✅ v2-alpha：A / B / C 档落地（稳定性修复 + 工程化 + API 演进），265 个测试
+- ⏳ **v3-D 档（进行中）止血与发布可用**：消灭 P0（串包、单进程网关、优雅停机、
+  下游可消费、凭据卫生、登录鉴权地基），让框架"对外存在"
+- 📅 v3-E 档：接线收尾（策略管道全覆盖、配置系统收敛、可观测性落地、数据层故障路径）
+- 📅 v3-F 档：生产化地基（fork 治理、Consul TTL check、会话与踢人收尾、过载保护）
+- 📅 v3-G 档：定位对齐（HTTP web 能力，按需启动）
+- 📅 更远期：
   - DB 层真正的分库分表（sqlBuilder 重构）
-  - Consul Agent TTL check 续约
-  - rpcx / rpcx-consul fork 依赖升级
   - OpenTelemetry / Prometheus adapter 官方 subpackage
 
 ---
@@ -348,4 +384,4 @@ MIT License — 见 [LICENSE](LICENSE)。
 
 ---
 
-*tgf v2-alpha.2 · 最后更新 2026-04-12*
+*tgf v2-alpha（D 档止血中）· 最后更新 2026-06-10*

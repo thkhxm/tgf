@@ -66,10 +66,10 @@ type KCPServerConfig struct {
 	aeadKey         []byte
 }
 
-func (k *KCPServerConfig) Address() string            { return k.address }
-func (k *KCPServerConfig) Port() string               { return k.port }
-func (k *KCPServerConfig) ReadBufferSize() int        { return k.readBufferSize }
-func (k *KCPServerConfig) WriteBufferSize() int       { return k.writeBufferSize }
+func (k *KCPServerConfig) Address() string      { return k.address }
+func (k *KCPServerConfig) Port() string         { return k.port }
+func (k *KCPServerConfig) ReadBufferSize() int  { return k.readBufferSize }
+func (k *KCPServerConfig) WriteBufferSize() int { return k.writeBufferSize }
 func (k *KCPServerConfig) DeadLineTime() time.Duration {
 	if k.deadLineTime <= 0 {
 		return defaultDeadLineTime
@@ -82,10 +82,10 @@ func (k *KCPServerConfig) WriteTimeout() time.Duration {
 	}
 	return k.writeTimeout
 }
-func (k *KCPServerConfig) NoDelay() int   { return k.noDelay }
-func (k *KCPServerConfig) Interval() int  { return k.interval }
-func (k *KCPServerConfig) Resend() int    { return k.resend }
-func (k *KCPServerConfig) Nc() int        { return k.nc }
+func (k *KCPServerConfig) NoDelay() int    { return k.noDelay }
+func (k *KCPServerConfig) Interval() int   { return k.interval }
+func (k *KCPServerConfig) Resend() int     { return k.resend }
+func (k *KCPServerConfig) Nc() int         { return k.nc }
 func (k *KCPServerConfig) AEADKey() []byte { return k.aeadKey }
 
 // NewKCPBuilder 返回一个默认参数的 KCP builder。
@@ -191,10 +191,10 @@ func (c *kcpFramedConn) WriteFrame(data []byte) error {
 	return writeKCPFrame(c.conn, c.sealer, data)
 }
 
-func (c *kcpFramedConn) Close() error                        { return c.conn.Close() }
-func (c *kcpFramedConn) RemoteAddr() string                  { return c.remote }
-func (c *kcpFramedConn) SetReadDeadline(t time.Time) error   { return c.conn.SetReadDeadline(t) }
-func (c *kcpFramedConn) SetWriteDeadline(t time.Time) error  { return c.conn.SetWriteDeadline(t) }
+func (c *kcpFramedConn) Close() error                       { return c.conn.Close() }
+func (c *kcpFramedConn) RemoteAddr() string                 { return c.remote }
+func (c *kcpFramedConn) SetReadDeadline(t time.Time) error  { return c.conn.SetReadDeadline(t) }
+func (c *kcpFramedConn) SetWriteDeadline(t time.Time) error { return c.conn.SetWriteDeadline(t) }
 
 // IsWebSocket 返回 false：KCP 走和 TCP 一样的二进制编码路径（getSendToClientData
 // 的 TCP 分支），不是 WebSocket 的 WSMessage 协议。
@@ -268,6 +268,12 @@ func (t *TCPServer) startKCPListener(builder IKCPBuilder) error {
 	if builder.WriteBufferSize() > 0 {
 		_ = listener.SetWriteBuffer(builder.WriteBufferSize())
 	}
+	// D 档（v3）：listener 句柄存入 TCPServer，供 CloseListeners 优雅停机关闭。
+	// 注意 kcp-go 的服务端会话与 listener 共享 UDP socket，关 listener 会同时
+	// 中断既有 KCP 会话（语义说明见 TCPServer.CloseListeners 注释）。
+	t.listenerMu.Lock()
+	t.kcpListener = listener
+	t.listenerMu.Unlock()
 	log.InfoTag("init", "KCP网关启动成功 addr=%s aead=%v",
 		addr, len(builder.AEADKey()) == aeadKeySize)
 
@@ -275,7 +281,16 @@ func (t *TCPServer) startKCPListener(builder IKCPBuilder) error {
 		for {
 			session, acceptErr := listener.AcceptKCP()
 			if acceptErr != nil {
-				log.DebugTag("tcp", "KCP AcceptKCP error: %v", acceptErr)
+				// D 档（v3）：原实现任何 accept 错误都只打 DebugTag 即退出——
+				// KCP 网关静默死亡且无告警。现在区分：停机关闭 → Info 正常退出；
+				// 其他错误 → Error 级日志（kcp-go 的 AcceptKCP 错误基本只有
+				// listener/socket 已关闭一类，无可重试的临时错误，故仍退出循环，
+				// 但保证可观测）。
+				if t.acceptClosed.Load() {
+					log.InfoTag("tcp", "KCP listener 已关闭,accept 循环退出")
+				} else {
+					log.Error("[tcp] KCP AcceptKCP 错误,accept 循环退出 err=%v", acceptErr)
+				}
 				return
 			}
 			// 应用 KCP 参数（每 session 配置）

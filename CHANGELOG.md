@@ -1,14 +1,34 @@
 # Changelog
 
 本文件记录 tgf 主模块的版本变更。格式参考 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)，
-版本号采用语义化版本（SemVer）。v2 大版本允许破坏性 API 变更，具体迁移指引见各 A/B/C 档阶段报告
-与未来的 `doc/migration-v1-to-v2.md`。
+版本号采用语义化版本（SemVer）。v2 大版本允许破坏性 API 变更，具体迁移指引见
+`doc/migration-v1-to-v2.md` 与各 A/B/C 档阶段报告。
 
 ## [Unreleased]
 
 迁移指南：`doc/migration-v1-to-v2.md`
 架构图：`doc/architecture.md`
 可观测性接入：`doc/observability.md`
+v3 整改路线图：`reports/V3-evaluation-and-roadmap.md`
+
+### v3-D 档 · 止血与发布可用（进行中）
+
+> 目标：消灭全部 P0，让框架"对外存在"。详见路线图 `reports/V3-evaluation-and-roadmap.md` 第 3.1 节。
+
+- **D1 文档与发布**（Owner C）：
+  - README 安装段去掉指向不存在远端 tag 的 `go get ...@v2-alpha.2`，改为
+    `go get ...@latest` + 下游必须复制的 replace 块模板（fork 迁移完成后可省略）。
+  - 删除文档中虚构的 SIGHUP / HTTP admin 热更触发表述（框架未内置信号处理）。
+  - 修正迁移指南中不存在的 `rpc.NewTCPBuilder()` 示例，改为环境变量 `TCPWriteTimeoutMs`。
+  - 技术选型表 sonic 版本对齐到 v1.15.0；rpcx/rpcx-consul 标注 fork tag。
+  - README "全绿"声明补 workspace 前置条件说明。
+- **D6 凭据卫生**（Owner C）：
+  - `.gitignore` 新增 `.env` / `.env.*`（保留 `*.example` 模板例外）、`log/`、`common/`、`*.md5`。
+  - 新增占位值模板 `.env.example` / `.env.test.example` / `.env.release.example`（可提交）。
+  - README 新增"配置与凭据"段：真实凭据放 `.env.<module>`（已 gitignore），从模板复制。
+- **CI**（Owner C）：workflow 使用 `setup-go 1.24.x`，区分 unit（无依赖）与 integration（带 tag）两条 job。
+- 其余 D 档项（D2 串包 / D3 优雅停机 / D4 单进程网关 / D5 吞错止血 / D7 登录鉴权）见
+  各自 Owner 的代码改动与本档收尾汇总。
 
 ### C9 · 配置参数暴露 + 硬编码审计
 

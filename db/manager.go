@@ -65,6 +65,69 @@ const (
 	defaultLongevityRetryBackoff = 50 * time.Millisecond
 )
 
+// ErrDBFault D5: 持久层真实故障（连接不可用、查询/扫描失败等），
+// 与 tgf.DBEmpty（数据确实不存在）严格区分。
+// 业务侧用 errors.Is(err, db.ErrDBFault) 判定是否处于"DB 故障"——命中时
+// 绝不能把结果当"新数据"处理（例如用默认存档覆盖老档），应当走故障保护分支。
+var ErrDBFault = errors.New("db fault")
+
+// FlushResult 一次终末 flush（FlushNow / FlushAll）的执行结果。
+type FlushResult struct {
+	// Table 该管理器对应的落库表名
+	Table string
+	// Success 本次成功落库并清除脏标志的条数
+	Success int
+	// Failed 重试耗尽仍失败的条数（脏标志保留在内存，且已尝试写入补偿队列）
+	Failed int
+	// Err 失败时的聚合错误（含 panic 转换）；全部成功时为 nil
+	Err error
+}
+
+// IFlushable D 档停机钩子：把该管理器当前所有脏数据同步落库。
+// 所有开启 longevity 的 autoCacheManager / hashAutoCacheManager 都实现该接口，
+// 业务持有 IAutoCacheService 时可类型断言到 IFlushable 后调用。
+type IFlushable interface {
+	// FlushNow 阻塞式终末 flush：等待正在进行的周期 flush 完成（阻塞 Lock，
+	// 非 TryLock 尽力而为），随后把全部脏数据分批落库并返回结果。
+	FlushNow() FlushResult
+}
+
+// flushRegistry 进程内所有 longevity 管理器的注册表，供 FlushAll 在停机时统一收口。
+var (
+	flushRegistry   []IFlushable
+	flushRegistryMu sync.Mutex
+)
+
+func registerFlushable(f IFlushable) {
+	flushRegistryMu.Lock()
+	defer flushRegistryMu.Unlock()
+	flushRegistry = append(flushRegistry, f)
+}
+
+// FlushAll D 档停机钩子（供 SIGTERM/SIGINT 优雅停机路径调用）：
+// 同步把进程内所有 longevity 管理器的脏数据立即落库，逐个返回结果。
+//
+// 语义保证：
+//   - 阻塞等待每个管理器正在进行的周期 flush 完成后再执行终末 flush（非 TryLock 尽力而为）；
+//   - 单个管理器 flush 失败（含 panic）不会中断其余管理器，失败信息记录在对应 FlushResult.Err；
+//   - 失败 batch 的脏标志保留，并已尝试写入该管理器配置的补偿队列（FailureQueue）。
+//
+// 调用方（停机流程）应在 drain 完业务流量后、进程退出前调用，并对 Err != nil 的结果打日志告警。
+// flush 内部带有限次重试与退避（每批最多 defaultLongevityRetry 次），不会无限阻塞；
+// 如需硬性时限，调用方可自行用 goroutine + 超时包裹。
+func FlushAll() []FlushResult {
+	flushRegistryMu.Lock()
+	targets := make([]IFlushable, len(flushRegistry))
+	copy(targets, flushRegistry)
+	flushRegistryMu.Unlock()
+
+	results := make([]FlushResult, 0, len(targets))
+	for _, t := range targets {
+		results = append(results, t.FlushNow())
+	}
+	return results
+}
+
 const StateName = "state"
 
 type autoCacheManager[Key cacheKey, Val any] struct {
@@ -115,12 +178,16 @@ func (h *hashAutoCacheManager[Val]) PostClear(key string) {
 
 }
 
-func (h *hashAutoCacheManager[Val]) loadCache(key ...string) (keys []string) {
+// loadCache 加载主键下的全部 hash 数据并返回 cacheKey 列表。
+// D5: 返回值增加 err——DB 真实故障（errors.Is(err, ErrDBFault)）时 keys 为 nil
+// 且不会把空列表当"已加载"缓存进 group manager，下一次访问会重新尝试加载，
+// 避免故障期间数据被误判为"不存在"（进而被默认数据覆盖）。
+func (h *hashAutoCacheManager[Val]) loadCache(key ...string) (keys []string, err error) {
 	//获取主键key
 	localKey := h.image.HashCachePkKey(key...)
 	defer func() {
-		if err := recover(); err != nil {
-			log.ErrorTag("cache", "load cache error:%v", err)
+		if r := recover(); r != nil {
+			log.ErrorTag("cache", "load cache error:%v", r)
 			return
 		}
 		if keys != nil {
@@ -128,7 +195,7 @@ func (h *hashAutoCacheManager[Val]) loadCache(key ...string) (keys []string) {
 		}
 	}()
 
-	v, _, _ := h.sf.Do("loadCache:"+localKey, func() (interface{}, error) {
+	v, err, _ := h.sf.Do("loadCache:"+localKey, func() (interface{}, error) {
 		//从cache缓存中获取
 		if h.cache() {
 			//根据主键Key组合成redis的Key,获取hash数据
@@ -153,21 +220,24 @@ func (h *hashAutoCacheManager[Val]) loadCache(key ...string) (keys []string) {
 			for i, k := range key {
 				d[i] = k
 			}
-			val, err := h.sb.queryList(d...)
-			if err == nil {
-				ak := make([]string, len(val))
-				for i, v := range val {
-					lk := h.getLocalKey(localKey, v.HashCacheFieldByVal())
-					h.set(lk, v)
-					PutMap(h.getCacheKey(localKey), v.HashCacheFieldByVal(), v, h.cacheTimeOut())
-					ak[i] = lk
-				}
-				return ak, nil
+			val, qerr := h.sb.queryList(d...)
+			if qerr != nil {
+				// D5: DB 故障 ≠ 无数据。返回 nil keys（不缓存"已加载"状态），
+				// 并把原始错误包上 ErrDBFault 向上抛。
+				return []string(nil), fmt.Errorf("%w: %w", ErrDBFault, qerr)
 			}
+			ak := make([]string, len(val))
+			for i, v := range val {
+				lk := h.getLocalKey(localKey, v.HashCacheFieldByVal())
+				h.set(lk, v)
+				PutMap(h.getCacheKey(localKey), v.HashCacheFieldByVal(), v, h.cacheTimeOut())
+				ak[i] = lk
+			}
+			return ak, nil
 		}
 		return make([]string, 0), errors.New("not found in cache")
 	})
-	keys = v.([]string)
+	keys, _ = v.([]string)
 	return
 }
 
@@ -175,7 +245,10 @@ func (h *hashAutoCacheManager[Val]) Get(key ...string) (val Val, err error) {
 	mKey := h.image.HashCachePkKey(key...)
 	//是否首次加载，如果是
 	if _, has := h.groupAutoCacheManager.Get(mKey); has != nil {
-		h.loadCache(key...)
+		if _, lerr := h.loadCache(key...); lerr != nil && errors.Is(lerr, ErrDBFault) {
+			// D5: DB 真实故障必须原样向上抛，不能伪装成"数据不存在"。
+			return val, lerr
+		}
 	}
 	//
 	localKey := h.getLocalKey(mKey, h.image.HashCacheFieldByKeys(key...))
@@ -192,7 +265,7 @@ func (h *hashAutoCacheManager[Val]) Set(val Val, key ...string) (success bool) {
 	var has error
 	//是否首次加载
 	if keys, has = h.groupAutoCacheManager.Get(mKey); has != nil {
-		keys = h.loadCache(key...)
+		keys, _ = h.loadCache(key...)
 	}
 	//
 	fieldKey := val.HashCacheFieldByVal()
@@ -247,7 +320,7 @@ func (h *hashAutoCacheManager[Val]) Remove(key ...string) (success bool) {
 	var has error
 	//是否首次加载
 	if keys, has = h.groupAutoCacheManager.Get(mKey); has != nil {
-		keys = h.loadCache(key...)
+		keys, _ = h.loadCache(key...)
 	}
 	keys = util.RemoveOneKey(keys, localKey)
 
@@ -278,7 +351,12 @@ func (h *hashAutoCacheManager[Val]) GetAll(key ...string) (val []Val, err error)
 	mKey := h.image.HashCachePkKey(key...)
 	var keys []string
 	if keys, err = h.groupAutoCacheManager.Get(mKey); err != nil {
-		keys = h.loadCache(key...)
+		var lerr error
+		keys, lerr = h.loadCache(key...)
+		if lerr != nil && errors.Is(lerr, ErrDBFault) {
+			// D5: DB 故障时不缓存空列表、不返回 DBEmpty——把故障如实抛给业务。
+			return nil, lerr
+		}
 		if len(keys) == 0 {
 			err = tgf.DBEmpty
 			h.groupAutoCacheManager.Set(make([]string, 0), mKey)
@@ -391,8 +469,12 @@ func (a *autoCacheManager[Key, Val]) Get(key ...Key) (val Val, err error) {
 			if err == nil {
 				a.set(localKey, val)
 				Set(a.getCacheKey(localKey), val, a.cacheTimeOut())
-			} else {
-				err = tgf.DBEmpty
+			} else if !errors.Is(err, tgf.DBEmpty) {
+				// D5: 区分"DB 故障"与"无数据"。旧实现把查询超时/连接失败等
+				// 真实故障一律改写成 DBEmpty，业务会把故障当新玩家并用默认档
+				// 覆盖 DB 里的真实存档。现在仅"查无此行"返回 DBEmpty，
+				// 真实故障包上 ErrDBFault 原样向上抛。
+				err = fmt.Errorf("%w: %w", ErrDBFault, err)
 			}
 			return val, err
 		}
@@ -469,8 +551,13 @@ func (a *autoCacheManager[Key, Val]) Reset() IAutoCacheService[Key, Val] {
 }
 
 func (a *autoCacheManager[Key, Val]) Destroy() {
-	var ()
-	a.toLongevity()
+	// D3/D5: 终末 flush 改为阻塞可靠版本（FlushNow），不再用 TryLock 尽力而为——
+	// 关停瞬间若有周期 flush 正在执行，等它完成后再补一轮终末 flush，
+	// 确保最后一个落库窗口的脏数据不随进程退出丢失。
+	if res := a.FlushNow(); res.Err != nil {
+		log.ErrorTag("orm", "destroy final flush failed table=%s success=%d failed=%d err=%v",
+			res.Table, res.Success, res.Failed, res.Err)
+	}
 }
 
 func (a *autoCacheManager[Key, Val]) getLocalKey(key ...Key) (ck string) {
@@ -569,6 +656,21 @@ func (a *autoCacheManager[Key, Val]) toLongevity() {
 	defer a.longevityLock.Unlock()
 
 	start := time.Now()
+	successCount, failCount, _ := a.flushDirtyLocked()
+	if successCount == 0 && failCount == 0 {
+		return
+	}
+
+	mill := time.Since(start).Milliseconds()
+	log.DebugTag("orm",
+		"execute table name [%s] longevity logic, success=%d fail=%d consume=%dms",
+		a.sb.tableName, successCount, failCount, mill)
+}
+
+// flushDirtyLocked 执行一轮"收集脏数据 → 分批落库 → 成功清脏 / 失败进补偿队列"。
+// 调用方必须已持有 longevityLock（toLongevity 用 TryLock，FlushNow 用阻塞 Lock）。
+// 返回成功/失败条数与失败 batch 的聚合错误。
+func (a *autoCacheManager[Key, Val]) flushDirtyLocked() (successCount, failCount int, err error) {
 	groupSize := a.builder.longevityGroupSize
 	if groupSize <= 0 {
 		groupSize = defaultUpdateGroupSize
@@ -599,7 +701,7 @@ func (a *autoCacheManager[Key, Val]) toLongevity() {
 	}
 
 	if len(batches) == 0 {
-		return
+		return 0, 0, nil
 	}
 
 	// Phase 2: 逐批落库。成功才清 data_update；失败打 ERROR 日志并保留脏标志，
@@ -609,14 +711,15 @@ func (a *autoCacheManager[Key, Val]) toLongevity() {
 	// 业务启动阶段可以 ReplayFailureQueue 重放。脏标志依然保留（队列是补救通道，
 	// 不是替代通道），下一轮 timer 还会重试。重试成功时 queue 里的重复条目靠
 	// SQL 的 UPSERT 幂等性兜底。
-	successCount, failCount := 0, 0
+	var errs []error
 	failureQueue := a.resolveFailureQueue()
 	for _, b := range batches {
-		if err := a.flushBatch(b.values, len(b.dirty)); err != nil {
+		if ferr := a.flushBatch(b.values, len(b.dirty)); ferr != nil {
 			log.ErrorTag("orm",
 				"longevity batch failed, keeping dirty flag for next round, table=%s size=%d err=%v",
-				a.sb.tableName, len(b.dirty), err)
+				a.sb.tableName, len(b.dirty), ferr)
 			failCount += len(b.dirty)
+			errs = append(errs, ferr)
 			// 补偿队列降级——即便 enqueue 失败也不影响下一轮 timer 重试。
 			if failureQueue != nil {
 				payload, perr := encodeFailurePayload(a.sb.tableName, b.values, len(b.dirty))
@@ -633,11 +736,33 @@ func (a *autoCacheManager[Key, Val]) toLongevity() {
 		}
 		successCount += len(b.dirty)
 	}
+	return successCount, failCount, errors.Join(errs...)
+}
 
-	mill := time.Since(start).Milliseconds()
-	log.DebugTag("orm",
-		"execute table name [%s] longevity logic, success=%d fail=%d consume=%dms",
-		a.sb.tableName, successCount, failCount, mill)
+// FlushNow D 档停机钩子：阻塞式终末 flush，实现 IFlushable。
+// 与周期性 toLongevity 的区别：
+//   - 用阻塞 Lock 而非 TryLock——若有周期 flush 正在执行，等它完成后再补一轮，
+//     绝不"尽力而为"地放弃；
+//   - 返回结构化结果（成功/失败条数 + 聚合错误），调用方（优雅停机流程）可据此告警；
+//   - 内部 panic 被转换为 FlushResult.Err，不会击穿停机流程导致后续管理器漏 flush。
+func (a *autoCacheManager[Key, Val]) FlushNow() (res FlushResult) {
+	if a.sb != nil {
+		res.Table = a.sb.tableName
+	}
+	defer func() {
+		if r := recover(); r != nil {
+			buf := make([]byte, 1024)
+			buf = buf[:runtime.Stack(buf, false)]
+			res.Err = fmt.Errorf("db: FlushNow panic: %v\n%s", r, buf)
+		}
+	}()
+	if !a.longevity() {
+		return
+	}
+	a.longevityLock.Lock()
+	defer a.longevityLock.Unlock()
+	res.Success, res.Failed, res.Err = a.flushDirtyLocked()
+	return
 }
 
 func (a *autoCacheManager[Key, Val]) longevityInterval() time.Duration {
@@ -814,6 +939,9 @@ func (a *autoCacheManager[Key, Val]) InitStruct() {
 				}
 			}
 		})
+		// D 档停机钩子：注册进 flushRegistry，停机流程通过 db.FlushAll()
+		// 把全部 longevity 管理器的脏数据可靠落库。
+		registerFlushable(a)
 	}
 	tgf.AddDestroyHandler(a)
 }
@@ -953,24 +1081,32 @@ func (s *sqlBuilder[Val]) queryOne(args ...any) (val Val, err error) {
 	)
 
 	if s.querySql == "" {
+		// D5: 返回真实错误而不是 (零值, nil)——否则调用方会把零值当"查询成功"缓存。
 		log.WarnTag("orm", "query script is empty")
-		return
+		return val, errors.New("orm: query script is empty, initStruct not called?")
 	}
-	conn := dbService.getConnection()
+	// D5: 连接不可用时返回 error 而不是在 nil conn 上 panic。
+	conn, err := getMysqlConn()
+	if err != nil {
+		log.WarnTag("orm", "query connection unavailable script=%v err=%v", s.querySql, err)
+		return val, err
+	}
 	defer conn.Close()
 
+	// D5: defer 必须放在 err 检查之后——Prepare/Query 失败时 stmt/rows 为 nil，
+	// 旧实现在 defer 阶段 nil 解引用 panic（queryList 修了、queryOne 漏了的同源 bug）。
 	stmt, err := conn.PrepareContext(context.Background(), s.querySql)
-	defer stmt.Close()
 	if err != nil {
 		log.WarnTag("orm", "query script=%v error=%v", s.querySql, err)
 		return
 	}
+	defer stmt.Close()
 	rows, err := stmt.Query(args...)
-	defer rows.Close()
 	if err != nil {
 		log.WarnTag("orm", "query params=%v  error=%v", args, err)
 		return
 	}
+	defer rows.Close()
 	ex := time.Since(start)
 	log.DebugTag("orm", "query=%v params=%v time=%v/ms", s.querySql, args, ex)
 	if rows.Next() {
@@ -1004,10 +1140,16 @@ func (s *sqlBuilder[Val]) queryList(args ...any) (values []Val, err error) {
 	)
 
 	if s.queryListSql == "" {
+		// D5: 返回真实错误而不是 (nil, nil)——否则调用方会把空结果当"加载成功"缓存。
 		log.WarnTag("orm", "query script is empty")
-		return
+		return nil, errors.New("orm: query list script is empty, initStruct not called?")
 	}
-	conn := dbService.getConnection()
+	// D5: 连接不可用时返回 error 而不是在 nil conn 上 panic。
+	conn, err := getMysqlConn()
+	if err != nil {
+		log.WarnTag("orm", "query connection unavailable script=%v err=%v", s.queryListSql, err)
+		return nil, err
+	}
 	defer conn.Close()
 
 	stmt, err := conn.PrepareContext(context.Background(), s.queryListSql)
@@ -1104,7 +1246,13 @@ func (s *sqlBuilder[Val]) flushBatch(values []any, count int) error {
 
 // execBatchOnce 执行一次 upsert 事务，不做重试。
 func (s *sqlBuilder[Val]) execBatchOnce(updateSql string, values []any) (err error) {
-	conn := dbService.getConnection()
+	// D5: MySQL 宕机/未初始化时返回 error 走故障路径——flushBatch 的重试与
+	// toLongevity 的补偿队列（FailureQueue）由此真正接管，而不是 nil conn panic
+	// 穿透 batch 循环、旁路掉 C4 补偿队列。
+	conn, err := getMysqlConn()
+	if err != nil {
+		return err
+	}
 	defer conn.Close()
 
 	tx, err := conn.BeginTx(context.Background(), &sql.TxOptions{

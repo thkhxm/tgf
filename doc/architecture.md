@@ -152,10 +152,15 @@ autoCacheManager
 
 | 对象 | 热更路径 | 触发方式 |
 |------|---------|---------|
-| 游戏配置（JSON） | `component.ReloadGameConf` | fsnotify watcher / 手动调用 / SIGHUP |
-| 环境配置（env） | `config.Reload` | 手动调用 / SIGHUP |
+| 游戏配置（JSON） | `component.ReloadGameConf` | fsnotify watcher / 业务侧手动调用 |
+| 环境配置（env） | `config.Reload` | 业务侧手动调用 |
 | RPC 策略 | `rpc.SetMethodPolicy` | 运行时任意调用 |
 | 日志级别 | 暂无——zap 包初始化时一次性读 | 重启生效 |
+
+> 说明：框架**未内置** SIGHUP 信号处理或 HTTP admin 的 reload 端点，
+> `config.Reload` / `ReloadGameConf` 需业务侧自行决定触发时机（如自己挂信号
+> handler 或 admin 路由后调用）。`StartConfigWatcher()` 提供的 fsnotify 目录监听
+> 是唯一框架自带的自动触发器，仅作用于游戏配置 JSON 目录。
 
 ## 单机模式 / 单进程模式
 

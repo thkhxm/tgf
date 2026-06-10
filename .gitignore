@@ -15,3 +15,20 @@
 # Dependency directories (remove the comment below to include it)
 # vendor/
 /.idea/
+
+# 凭据卫生（D6）：所有环境配置文件都不入库，避免真实生产口令随提交泄漏。
+# 真实凭据放在 .env.<module>（如 .env.dev / .env.test / .env.release），由本规则忽略。
+# 仅保留占位值模板（*.example）被跟踪，供新人复制为对应 .env.<module> 后填入真实值。
+.env
+.env.*
+!.env.example
+!.env.test.example
+!.env.release.example
+
+# 运行期产物与工作区污染（审计 P1/P3）：
+# - 示例/测试运行时框架会在 cwd 生成 log/ 目录树
+# - util/config.md5 由配置工具运行期生成
+# - common/ 由 tgf 代码生成器运行期写入模块树
+log/
+common/
+*.md5

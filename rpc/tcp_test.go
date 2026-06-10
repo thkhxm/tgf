@@ -16,7 +16,7 @@ import (
 	"time"
 
 	"github.com/cornelk/hashmap"
-	"github.com/smallnest/rpcx/share"
+	"github.com/thkhxm/rpcx/share"
 	"github.com/thkhxm/tgf"
 	"golang.org/x/net/context"
 )

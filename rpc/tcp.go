@@ -14,15 +14,14 @@ import (
 
 	"github.com/cornelk/hashmap"
 	"github.com/gorilla/websocket"
-	"github.com/smallnest/rpcx/client"
-	"github.com/smallnest/rpcx/share"
-	util2 "github.com/smallnest/rpcx/util"
+	"github.com/thkhxm/rpcx/client"
+	"github.com/thkhxm/rpcx/share"
+	util2 "github.com/thkhxm/rpcx/util"
 	"github.com/thkhxm/tgf"
 	"github.com/thkhxm/tgf/log"
 	"github.com/thkhxm/tgf/metrics"
 	"github.com/thkhxm/tgf/rpc/internal"
 	"github.com/thkhxm/tgf/util"
-	"github.com/valyala/bytebufferpool"
 	"golang.org/x/net/context"
 	"google.golang.org/protobuf/proto"
 	"google.golang.org/protobuf/reflect/protoreflect"
@@ -43,8 +42,10 @@ import (
 type RequestHeader []byte
 
 // ResponseHeader
-// [1][1][2][4][n][n]
-// message type|compress|request method name size|data size|method name|data
+// [1][2][4][n][n]
+// compress|request method name size|data size|method name|data
+// （注意：响应帧没有 message type 引导字节；心跳响应是独立的单字节 0x01。
+// 该歧义的协议版本化修缮归属 F5，这里仅让注释与实际编码一致。）
 type ResponseHeader []byte
 
 type HeaderMessageType byte
@@ -205,6 +206,12 @@ type ITCPService interface {
 	DoLogin(userId, templateUserId string) (err error)
 
 	Offline(userId string, replace bool) (exists bool)
+
+	// CloseListeners 停止接收新连接并关闭全部 listener（TCP/WS/KCP）。幂等。
+	// D 档（v3）新增的优雅停机钩子——停机编排方（Wave2 / Server.Destroy）先调它
+	// 停止 accept，再做 in-flight drain 与在线连接清理。已建立的 TCP/WS 连接
+	// **不会**被本方法断开；KCP 例外（见 TCPServer.CloseListeners 的注释）。
+	CloseListeners() error
 }
 
 type ITCPBuilder interface {
@@ -234,10 +241,24 @@ type TCPServer struct {
 	config  ITCPBuilder       //tcp连接配置
 	conChan chan *net.TCPConn //客户端连接chan
 
-	closeChan chan bool //关闭chan
-	users     *hashmap.Map[string, IUserConnectData]
+	users *hashmap.Map[string, IUserConnectData]
 	//
 	startup *sync.Once //是否已经启动
+
+	// ---- D 档（v3）优雅停机钩子相关 ----
+	// listenerMu 保护下面三个 listener 句柄的读写（Run/startKCPListener 写，
+	// CloseListeners 读）。
+	listenerMu  sync.Mutex
+	tcpListener *net.TCPListener // TCP listener；未启动或 WS 模式为 nil
+	wsServer    *http.Server     // WS/WSS 的 http server；非 WS 模式为 nil
+	kcpListener io.Closer        // KCP listener（*kcp.Listener）；未启用 KCP 为 nil
+
+	// acceptClosed 置位后表示 CloseListeners 已执行，accept 循环据此区分
+	// "正常停机" 与 "异常 accept 错误"。
+	acceptClosed atomic.Bool
+	// stopAccept 在 CloseListeners 时关闭：唤醒 selectorChan 与 accept 循环的
+	// select 分支，保证停机后没有残留的 accept goroutine。
+	stopAccept chan struct{}
 }
 
 type ServerConfig struct {
@@ -448,12 +469,53 @@ func (t *TCPServer) selectorChan() {
 				fc := newTCPFramedConn(c, t.config.ReadBufferSize(), t.config.WriteTimeout())
 				t.handleConn(fc)
 			})
+		case <-t.stopAccept:
+			// D 档（v3）：CloseListeners 后 selector 退出，不再消费新连接。
+			log.InfoTag("tcp", "tcp selector 退出(网关已停止接收新连接)")
+			return
 		}
 	}
 }
 
-func (t *TCPServer) onDestroy() {
-	t.closeChan <- true
+// CloseListeners 停止接收新连接：关闭 TCP listener、WS http server、KCP listener，
+// 并通知 selector / accept goroutine 退出。幂等——重复调用直接返回 nil。
+//
+// D 档（v3）优雅停机钩子。语义边界：
+//   - 已建立的 TCP/WS 连接**不受影响**（http.Server.Close 不触碰被 hijack 的
+//     WebSocket 连接；net.TCPListener.Close 只停 accept）——在线会话的清理由
+//     停机编排方随后通过 Offline 链路处理；
+//   - KCP 是例外：kcp-go 的服务端会话与 listener 共享同一个 UDP socket，
+//     关闭 listener 会同时中断既有 KCP 会话。优雅停机场景下网关连接本就要
+//     随之断开，可接受；如需先 drain 再断，编排方应在调用本方法前完成。
+func (t *TCPServer) CloseListeners() error {
+	if !t.acceptClosed.CompareAndSwap(false, true) {
+		return nil
+	}
+	close(t.stopAccept)
+
+	t.listenerMu.Lock()
+	tcpL, wsS, kcpL := t.tcpListener, t.wsServer, t.kcpListener
+	t.listenerMu.Unlock()
+
+	var firstErr error
+	if tcpL != nil {
+		if e := tcpL.Close(); e != nil && !errors.Is(e, net.ErrClosed) {
+			firstErr = e
+		}
+	}
+	if wsS != nil {
+		// Close 立刻关闭 listener；已升级（hijack）的 WS 连接不受影响。
+		if e := wsS.Close(); e != nil && !errors.Is(e, http.ErrServerClosed) && firstErr == nil {
+			firstErr = e
+		}
+	}
+	if kcpL != nil {
+		if e := kcpL.Close(); e != nil && firstErr == nil {
+			firstErr = e
+		}
+	}
+	log.InfoTag("tcp", "网关已停止接收新连接(listener 已全部关闭) err=%v", firstErr)
+	return firstErr
 }
 
 func checkOrigin(r *http.Request) bool {
@@ -686,67 +748,70 @@ func (t *TCPServer) doLogic(data *RequestData) {
 	}
 }
 
+// getSendToClientData 把一次逻辑响应编码成客户端帧。
+//
+// D2 / P0-1 修复（v3）：原实现用 bytebufferpool 编码后 `res = bp.Bytes()` 直接返回
+// 池化 buffer 的内部切片，函数返回（defer Put）即归还池——而调用方 doLogic / ToUser
+// 随后才把 res 推入 writeChan，由 writer goroutine 在之后任意时刻异步写出。期间任何
+// 其他连接从池里 Get 到同一 buffer 并写入，就会篡改仍在队列里的帧，造成跨连接串包
+// （A 玩家收到 B 玩家的数据）。修复方式：彻底移除该处 bytebufferpool，按精确容量
+// 一次性分配独立切片返回——返回值与任何共享存储零别名，可被安全地异步消费。
+//
+// 顺手修复（原 P3）：压缩失败原先 TCP 分支 return 空帧（客户端该请求的响应静默消失）、
+// WS 分支吞错仍标 Zip=true 发坏数据——现在两分支统一降级为发送未压缩原文；
+// 两分支压缩阈值统一为 `>= compressMinSize`。
 func (t *TCPServer) getSendToClientData(messageType string, reqId, code int32, reply []byte) (res []byte) {
-	var (
-		compress byte = 0
-		err      error
-	)
+	var compress byte = 0
 
 	//逻辑响应
 	if t.config.IsWebSocket() {
 		data := &WSResponse{}
 		data.MessageType = messageType
-		if len(reply) > compressMinSize {
-			reply, err = util2.Zip(reply)
-			data.Zip = true
+		if len(reply) >= compressMinSize {
+			if zipped, zipErr := util2.Zip(reply); zipErr == nil {
+				reply = zipped
+				data.Zip = true
+			} else {
+				log.WarnTag("tcp", "WS响应压缩失败,降级发送未压缩数据 msgType=%v err=%v", messageType, zipErr)
+			}
 		}
 
 		data.Data = reply
 		data.ReqId = reqId
 		data.Code = code
-		//b, _ := proto.Marshal(data)
-		//bp.Write(b)
 		res, _ = proto.Marshal(data)
 		return
 	}
 
-	// [1][1][2][4][n][n]
-	// message type|compress|request method name size|data size|method name|data
-	bp := bytebufferpool.Get()
-	//放回池子
-	defer bytebufferpool.Put(bp)
-
+	// TCP / KCP 响应帧格式：
+	// [1][2][4][n][n]
+	// compress|request method name size|data size|method name|data
 	if len(reply) >= compressMinSize {
-		compress = 1
-	}
-
-	//是否压缩
-	bp.WriteByte(compress)
-	//压缩数据
-	if compress == 1 {
-		reply, err = util2.Zip(reply)
-		if err != nil {
-			log.WarnTag("tcp", "数据压缩异常 压缩数据 [%v] [%v]", reply, err)
-			return
+		if zipped, zipErr := util2.Zip(reply); zipErr == nil {
+			reply = zipped
+			compress = 1
+		} else {
+			log.WarnTag("tcp", "TCP响应压缩失败,降级发送未压缩数据 msgType=%v err=%v", messageType, zipErr)
 		}
 	}
 
-	//响应函数长度
 	mtSize := len(messageType)
-	rqBytes := make([]byte, 2)
-	binary.BigEndian.PutUint16(rqBytes, uint16(mtSize))
-	bp.Write(rqBytes)
+	// 1B compress + 2B method size + 4B data size + method + data，精确容量一次分配
+	res = make([]byte, 0, 1+2+4+mtSize+len(reply))
+	//是否压缩
+	res = append(res, compress)
+	//响应函数长度
+	var rqBytes [2]byte
+	binary.BigEndian.PutUint16(rqBytes[:], uint16(mtSize))
+	res = append(res, rqBytes[:]...)
 	//响应内容长度
-	dataBytes := make([]byte, 4)
-	binary.BigEndian.PutUint32(dataBytes, uint32(len(reply)))
-	bp.Write(dataBytes)
+	var dataBytes [4]byte
+	binary.BigEndian.PutUint32(dataBytes[:], uint32(len(reply)))
+	res = append(res, dataBytes[:]...)
 	//响应函数名
-	bp.WriteString(messageType)
+	res = append(res, messageType...)
 	//响应内容
-	bp.Write(reply)
-
-	//输出最终bytes数据
-	res = bp.Bytes()
+	res = append(res, reply...)
 	return
 }
 
@@ -770,32 +835,52 @@ func (t *TCPServer) Run() {
 	//保证每个tcp只会被启动一次,避免误操作
 	t.startup.Do(func() {
 		if t.config.IsWebSocket() {
+			// D 档（v3）：WS 改用专属 mux + 可关闭的 http.Server，不再向全局
+			// DefaultServeMux 注册（避免与 pprof / 其他组件的全局路由互相污染），
+			// 并把 server 句柄存下来供 CloseListeners 优雅停机使用。
+			mux := http.NewServeMux()
+			mux.HandleFunc("/"+t.config.WsPath(), t.wsHandler)
+			srv := &http.Server{
+				Addr:    t.config.Address() + ":" + t.config.Port(),
+				Handler: mux,
+			}
+			t.listenerMu.Lock()
+			t.wsServer = srv
+			t.listenerMu.Unlock()
+
 			util.Go(func() {
 				log.InfoTag("init", "启动ws服务 %v", t.config.Address()+":"+t.config.Port()+"/"+t.config.WsPath())
-				// 定义 WebSocket 路由
-				http.HandleFunc("/"+t.config.WsPath(), t.wsHandler)
 				// 启动服务器
 				var err error
 				if t.config.IsWss() {
-					err = http.ListenAndServeTLS(t.config.Address()+":"+t.config.Port(), t.config.WssCertFile(), t.config.WssKeyFile(), nil)
+					err = srv.ListenAndServeTLS(t.config.WssCertFile(), t.config.WssKeyFile())
 				} else {
-					err = http.ListenAndServe(t.config.Address()+":"+t.config.Port(), nil)
+					err = srv.ListenAndServe()
 				}
 
-				if err != nil {
-					log.Info("服务器启动失败：%v", err)
+				if err != nil && !errors.Is(err, http.ErrServerClosed) {
+					// 端口被占等启动失败必须是显式错误而不是静默——原实现只打 Info。
+					log.Error("[init] ws服务 启动失败 addr=%v err=%v", srv.Addr, err)
 					return
 				}
 			})
 		} else {
-			//
-			add, _ := net.ResolveTCPAddr("tcp", fmt.Sprintf("%v:%v", t.config.Address(), t.config.Port()))
-			listen, err := net.ListenTCP("tcp", add)
-			if err != nil {
-				log.DebugTag("init", "tcp服务 启动异常 %v", err)
+			add, resolveErr := net.ResolveTCPAddr("tcp", fmt.Sprintf("%v:%v", t.config.Address(), t.config.Port()))
+			if resolveErr != nil {
+				log.Error("[init] tcp服务 地址解析失败 addr=%v:%v err=%v",
+					t.config.Address(), t.config.Port(), resolveErr)
 				return
 			}
-			log.InfoTag("init", "tcp服务 启动成功 %v", add)
+			listen, err := net.ListenTCP("tcp", add)
+			if err != nil {
+				// 原实现是 DebugTag——端口被占时进程"健康"运行但网关没监听，无从感知。
+				log.Error("[init] tcp服务 启动异常 addr=%v err=%v", add, err)
+				return
+			}
+			t.listenerMu.Lock()
+			t.tcpListener = listen
+			t.listenerMu.Unlock()
+			log.InfoTag("init", "tcp服务 启动成功 %v", listen.Addr())
 
 			//启动selector线程，等待连接接入
 			util.Go(func() {
@@ -805,14 +890,44 @@ func (t *TCPServer) Run() {
 
 			util.Go(func() {
 				log.InfoTag("init", "tcp 开始监听连接")
+				// D 档（v3）accept 循环加固：
+				//   - 原实现 `tcp, _ := listen.AcceptTCP()` 吞错误——出错时 nil 连接
+				//     被推进 conChan 引发 handleConn panic + users 表泄漏，持续性错误
+				//     （fd 耗尽等）下变成 CPU 热循环；
+				//   - 现在错误分级：listener 关闭 → 正常退出；其他错误 → 指数退避重试；
+				//     nil 连接永不入管道。
+				var tempDelay time.Duration
 				for {
-					tcp, _ := listen.AcceptTCP()
+					tcp, acceptErr := listen.AcceptTCP()
+					if acceptErr != nil {
+						if t.acceptClosed.Load() || errors.Is(acceptErr, net.ErrClosed) {
+							log.InfoTag("tcp", "tcp listener 已关闭,accept 循环退出")
+							return
+						}
+						if tempDelay == 0 {
+							tempDelay = 5 * time.Millisecond
+						} else {
+							tempDelay *= 2
+						}
+						if tempDelay > time.Second {
+							tempDelay = time.Second
+						}
+						log.WarnTag("tcp", "AcceptTCP 错误,%v 后重试 err=%v", tempDelay, acceptErr)
+						time.Sleep(tempDelay)
+						continue
+					}
+					tempDelay = 0
 					tcp.SetNoDelay(true)                           //无延迟
 					tcp.SetKeepAlive(true)                         //保持激活
 					tcp.SetReadBuffer(t.config.ReadBufferSize())   //设置读缓冲区大小
 					tcp.SetWriteBuffer(t.config.WriteBufferSize()) //设置写缓冲区大小
 					tcp.SetDeadline(time.Now().Add(t.config.DeadLineTime()))
-					t.conChan <- tcp //将链接放入管道中
+					select {
+					case t.conChan <- tcp: //将链接放入管道中
+					case <-t.stopAccept:
+						_ = tcp.Close()
+						return
+					}
 				}
 			})
 		}
@@ -885,6 +1000,7 @@ func (u *UserConnectData) GetChannel() chan *client.Call {
 	var ()
 	return u.reqChan
 }
+
 // Offline 是下线清理的唯一入口。
 // A2-phase1 用 sync.Once 保证幂等；A3-phase1 把幂等语义提升到完整的 sessionState 状态机：
 // "任一状态 → Offlining" 的 CAS 恰好成功一次，同时防御"DoLogin 到一半被强制下线"
@@ -950,6 +1066,7 @@ func (u *UserConnectData) Login(userId string) {
 		}
 	}
 }
+
 // Send 把 data 推入 writeChan 交给 writer goroutine 异步写出。
 // A2-phase3 签名变化：返回 error 而非静默丢弃。
 //   - writeChan 有空位 → 立即入队，返回 nil
@@ -1030,8 +1147,8 @@ func newDefaultTCPServer(builder ITCPBuilder) *TCPServer {
 	server := &TCPServer{}
 	server.config = builder
 	server.conChan = make(chan *net.TCPConn, maxSynChanConn)
-	server.closeChan = make(chan bool, 1)
 	server.startup = new(sync.Once)
 	server.users = hashmap.New[string, IUserConnectData]()
+	server.stopAccept = make(chan struct{})
 	return server
 }

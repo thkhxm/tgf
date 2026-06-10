@@ -5,9 +5,9 @@ import (
 	"github.com/cornelk/hashmap"
 	"github.com/rcrowley/go-metrics"
 	"github.com/rpcxio/libkv/store"
-	"github.com/rpcxio/rpcx-consul/client"
-	"github.com/rpcxio/rpcx-consul/serverplugin"
-	"github.com/smallnest/rpcx/server"
+	"github.com/thkhxm/rpcx-consul/client"
+	"github.com/thkhxm/rpcx-consul/serverplugin"
+	"github.com/thkhxm/rpcx/server"
 	"github.com/thkhxm/tgf"
 	"github.com/thkhxm/tgf/log"
 	"time"
@@ -67,6 +67,12 @@ func (c *ConsulDiscovery) RegisterServer(ip string) server.Plugin {
 	return r
 }
 
+// newConsulDiscoveryFn 是 client.NewConsulDiscovery 的注入点。
+// D5: 拆出来是为了让单测可以在无 Consul 的干净环境下注入桩实现，
+// 覆盖"创建失败不缓存 nil / 失败后可重试 / 并发竞争 loser 关闭"等路径。
+// 生产路径永远是真实的 client.NewConsulDiscovery。
+var newConsulDiscoveryFn = client.NewConsulDiscovery
+
 func (c *ConsulDiscovery) RegisterDiscovery(moduleName string) *client.ConsulDiscovery {
 	// A6: 幂等化。同一 moduleName 重复调用直接返回已有实例，避免浪费 Consul 连接。
 	// 原实现每次都 new 一个 ConsulDiscovery 并覆盖 map，被覆盖的老实例会泄漏一条
@@ -90,13 +96,26 @@ func (c *ConsulDiscovery) RegisterDiscovery(moduleName string) *client.ConsulDis
 		Username:          "",
 		Password:          "",
 	}
-	d, _ := client.NewConsulDiscovery(basePath, moduleName, address, conf)
+	d, err := newConsulDiscoveryFn(basePath, moduleName, address, conf)
+	if err != nil || d == nil {
+		// D5 / P0 吞错止血：原实现 `d, _ :=` 把错误吞掉，Consul 不可达时 nil 被
+		// Insert 进 discoveryMap 永久占位——后续 GetDiscovery 恒返 nil，且每次
+		// RegisterDiscovery 重新 new 的实例永远存不进 map（幂等检查只认 nil 条目），
+		// 形成"先挂后恢复"场景下的永久故障 + 实例泄漏。
+		// 现在：失败绝不写 map、记错误日志、返回 nil——下一次调用会重新尝试创建（可重试）。
+		log.Error("[init] 创建rpcx discovery失败(不缓存,下次调用重试) moduleName=%v consulAddress=%v err=%v",
+			moduleName, address, err)
+		return nil
+	}
 
 	// 并发 RegisterDiscovery 同一个 moduleName 的情况下，两个 goroutine 都会走到
 	// 这里——hashmap.Set 是原子的但后写者会覆盖先写者，可能产生一个无人引用的
 	// ConsulDiscovery 泄漏。Insert 在已存在时不覆盖，所以先用它。
 	if !c.discoveryMap.Insert(moduleName, d) {
 		if existing, ok := c.discoveryMap.Get(moduleName); ok && existing != nil {
+			// D5: 竞争失败的 loser 实例主动 Close（关闭 watch goroutine 与 kv 连接），
+			// 修复 A6 审计指出的"loser 实例从不 Close 导致 stopCh/kv 连接泄漏"。
+			d.Close()
 			return existing
 		}
 	}

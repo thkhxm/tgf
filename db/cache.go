@@ -571,10 +571,22 @@ func init() {
 	}
 }
 
+// setCacheService D5: 只有初始化成功才把 *redisService 装进包级 cache 接口。
+// 失败时让 cache 保持"真 nil"——绝不能把 typed-nil 指针塞进接口，
+// 否则所有 `cache == nil` 防御全部失效，首次缓存操作即 nil receiver panic。
+// 抽成独立函数是为了单测能锁住这条 typed-nil 防线。
+func setCacheService(svc *redisService, err error) {
+	if err != nil || svc == nil {
+		log.ErrorTag("init", "redis 初始化失败,二级缓存降级为关闭(cache=nil) err=%v", err)
+		return
+	}
+	cache = svc
+}
+
 func run() {
 	switch cacheModule {
 	case tgf.CacheModuleRedis:
-		cache = newRedisService()
+		setCacheService(newRedisService())
 	case tgf.CacheModuleClose:
 		return
 	}
