@@ -68,6 +68,39 @@ type Config struct {
 	Security SecurityConfig
 	// G1 新增：HTTP 服务（tgf/web 包，经 rpc.Server.WithHTTPService 装载）
 	HTTP HTTPConfig
+	// H1 新增：第三方平台（tgf/platform 合约层）凭据与应用标识
+	Platform PlatformConfig
+}
+
+// PlatformConfig H1 新增：第三方平台（tgf/platform）凭据与应用标识。
+//
+// 各平台实现是独立 go module（github.com/thkhxm/tgf-platform/*），这里只把
+// 框架侧的通用配置位备好——平台实现的 New(cfg) 从 config.Current().Platform
+// 取值，绝不 os.Getenv 直读（E2 唯一真源纪律）。
+//
+// Secret 类字段（WechatAppSecret / TiktokAppSecret / ApplePrivateKey /
+// FacebookAppSecret）已登记 tgf/config.go sensitiveEnvKeys，启动日志打印
+// 快照时自动脱敏为 ******。默认值全部为空：未配置的平台保持零值，
+// 由平台实现在 New 时做 fail-fast 校验。
+type PlatformConfig struct {
+	// WechatAppID 微信小游戏 / 公众平台 AppID
+	WechatAppID string `env:"WechatAppID" default:""`
+	// WechatAppSecret 微信 AppSecret（凭据，日志脱敏）
+	WechatAppSecret string `env:"WechatAppSecret" default:""`
+	// TiktokAppID 抖音 / TikTok 小游戏 AppID
+	TiktokAppID string `env:"TiktokAppID" default:""`
+	// TiktokAppSecret 抖音 / TikTok AppSecret（凭据，日志脱敏）
+	TiktokAppSecret string `env:"TiktokAppSecret" default:""`
+	// AppleTeamID Apple Developer Team ID（Sign in with Apple / App Store Server API）
+	AppleTeamID string `env:"AppleTeamID" default:""`
+	// AppleKeyID App Store Connect API / Sign in with Apple 私钥的 Key ID
+	AppleKeyID string `env:"AppleKeyID" default:""`
+	// ApplePrivateKey p8 私钥内容（PEM 文本；凭据，日志脱敏）
+	ApplePrivateKey string `env:"ApplePrivateKey" default:""`
+	// FacebookAppID Facebook 应用 ID
+	FacebookAppID string `env:"FacebookAppID" default:""`
+	// FacebookAppSecret Facebook App Secret（凭据，日志脱敏）
+	FacebookAppSecret string `env:"FacebookAppSecret" default:""`
 }
 
 // HTTPConfig G1 新增：HTTP 服务（tgf/web）运行参数。

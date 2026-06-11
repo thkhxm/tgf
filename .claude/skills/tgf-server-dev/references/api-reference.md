@@ -20,6 +20,7 @@
 | `WithDefaultRPCTimeout(d)` / `WithMethodTimeout(m, d)` | RPC 超时 | 默认 5s（RPCDefaultTimeoutMs） |
 | `WithMetrics(p metrics.Provider)` | 注入 metrics | `metrics.NewMemoryProvider()`（内存/单测）、`metrics/prometheus.NewProvider()`（生产） |
 | `WithTracer(t trace.Tracer)` | 注入 tracer | |
+| `WithPlatform(p platform.Provider)` | 注册第三方平台 Provider（可多次注册多平台） | 重名/nil 启动期 fail-fast；注册自动套 metrics 包装；详见 §10 |
 | `WithHealthCheck(interval)` | Consul TTL 心跳周期（建议 2~10s） | Consul 模式不调也默认开启（5s）；TTL=3×interval |
 | `WithLoginTokenSecret(s)` | 登录 HMAC 密钥（优先于 env LoginTokenSecret） | |
 | `WithLoginCheck(c ILoginCheck)` | 自定义登录校验（标准 JWT/平台 SDK） | 传 nil 恢复默认 HMAC |
@@ -206,3 +207,43 @@ bot.SendMessage("game", "GetRole", pbReq)  // pbReq 为 proto.Message
 ```
 
 完整用法见 tgf 仓库 `example/robot_test/main.go`。
+
+## 10. 平台 SDK 合约层（`tgf/platform` 包，v2.1 H1）
+
+```go
+// 注册（builder；重名 / nil / 空 Name 启动期 fail-fast 非零码退出）
+rpc.NewRPCServer().
+    WithPlatform(wechat.New(...)).   // 平台实现是独立 module：github.com/thkhxm/tgf-platform/*
+    WithPlatform(tiktok.New(...)).   // 可多次注册多平台
+    Run()
+
+// 任意处按平台名 + 能力切面取用（平台实现了该能力才 ok=true）
+lp, ok := platform.Login("wechat")    // (LoginProvider, bool)        VerifyLogin(ctx, credential)
+pp, ok := platform.Payment("tiktok")  // (PaymentProvider, bool)      VerifyPayment(ctx, receipt)
+ap, ok := platform.Audit("wechat")    // (ContentAuditProvider, bool) AuditText / AuditImage
+wv, ok := platform.Webhook("tiktok")  // (WebhookVerifier, bool)      VerifyWebhook(r)
+all := platform.List()                // 全量（按平台名字典序）
+
+// 支付回调路由验签门禁（验签失败 401 / nil verifier 503 fail-closed；
+// 防重放——时间窗 + nonce 去重——由 VerifyWebhook 实现内完成）
+r.Group("/pay/tiktok", web.Middleware(platform.WebhookMiddleware(wv))).
+    POST("/notify", notifyHandler)    // 与 web.Middleware 同构，platform 包不 import web
+
+// 业务测试：可编程 Fake（全能力；未注入的字段函数走确定性默认返回）
+f := &platform.Fake{
+    FakeName: "wechat",
+    VerifyLoginFunc: func(ctx context.Context, c string) (*platform.PlatformIdentity, error) {
+        return &platform.PlatformIdentity{Platform: "wechat", OpenID: "u1"}, nil
+    },
+}
+```
+
+- **类型**：`PlatformIdentity`（OpenID/UnionID/SessionKey/Raw）、`PaymentReceipt` /
+  `PaymentResult`（金额单位=最小货币单位「分/cents」）、`AuditResult`
+  （Suggestion ∈ `SuggestionPass` / `SuggestionReview` / `SuggestionReject`）。
+- **凭据**：走 `config.Current().Platform`（WechatAppID / WechatAppSecret / TiktokAppID /
+  TiktokAppSecret / AppleTeamID / AppleKeyID / ApplePrivateKey / FacebookAppID /
+  FacebookAppSecret），Secret 类启动日志自动脱敏；绝不 `os.Getenv` 直读。
+- **metrics**：注册时自动包装，指标 `tgf_platform_{login,payment,audit,webhook}_{calls_total,fail_total,latency_ms}`。
+- **平台实现纪律**（硬规则）：每个 endpoint 注释附官方文档链接+拉取日期；接入完成
+  必须真凭据端到端验证——`go build` 通过不等于接通（见 tgf 仓库 `doc/platform-sdk-design.md` 第四节）。

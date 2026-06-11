@@ -45,6 +45,11 @@ var sensitiveEnvKeys = map[string]bool{
 	string(EnvironmentAdminToken):       true,
 	string(EnvironmentRedisPassword):    true,
 	string(EnvironmentMySqlPwd):         true,
+	// H1 新增：平台凭据类配置（tgf/platform，见 config.PlatformConfig）
+	string(EnvironmentWechatAppSecret):   true,
+	string(EnvironmentTiktokAppSecret):   true,
+	string(EnvironmentApplePrivateKey):   true,
+	string(EnvironmentFacebookAppSecret): true,
 }
 
 // warnedConfigKeys 用于"未注册 key / 类型转换失败"警告的去重（每个 key 只打一次）。

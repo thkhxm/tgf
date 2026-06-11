@@ -23,6 +23,7 @@ import (
 	"github.com/thkhxm/tgf/v2/db"
 	"github.com/thkhxm/tgf/v2/log"
 	"github.com/thkhxm/tgf/v2/metrics"
+	"github.com/thkhxm/tgf/v2/platform"
 	"github.com/thkhxm/tgf/v2/rpc/internal"
 	"github.com/thkhxm/tgf/v2/trace"
 	"github.com/thkhxm/tgf/v2/util"
@@ -747,6 +748,47 @@ func (s *Server) WithMetrics(p metrics.Provider) *Server {
 func (s *Server) WithTracer(t trace.Tracer) *Server {
 	trace.SetTracer(t)
 	log.InfoTag("init", "装载 tracer=%v", trace.GetTracer().Name())
+	return s
+}
+
+// ---------------------------------------------------------------------------
+// H1：第三方平台合约层（tgf/platform 包的 rpc 侧接线）
+// ---------------------------------------------------------------------------
+
+// platformExitFn 是 WithPlatform 注册失败 fail-fast 的退出注入点
+// （生产恒为 os.Exit；单测替换以断言退出码——与 shutdownFlushFn 同一注入模式）。
+var platformExitFn = os.Exit
+
+// WithPlatform 注册一个第三方平台 Provider 到 platform 全局注册表（H1）。
+//
+// 行为：
+//   - 立即注册（与 WithMetrics 同为即时生效型选项，不进 beforeOptionals 队列）——
+//     业务在 Run 之前即可经 platform.Login / Payment / Audit / Webhook 取用；
+//   - platform.Register 注册时自动套 metrics 包装（成功/失败/时延），业务无感；
+//   - 多次调用注册多平台；
+//   - 重名 / nil / 空 Name 等注册失败 → 启动报错并以非零码退出（fail-fast，
+//     与 rpcx 监听失败、client-only 配置冲突同语义：不允许“进程活着但平台
+//     注册表形态不对”的半启动状态）。
+//
+// 典型用法（平台实现是独立 module github.com/thkhxm/tgf-platform/*，
+// 凭据从 config.Current().Platform 读取，详见 doc/platform-sdk-design.md）：
+//
+//	rpc.NewRPCServer().
+//	    WithPlatform(wechat.New(wechat.Config{ /* AppID/Secret 取自 config.Current().Platform */ })).
+//	    WithPlatform(tiktok.New(tiktok.Config{ /* ... */ })).
+//	    Run()
+//
+// 任意处按平台名 + 能力取用：
+//
+//	lp, ok := platform.Login("wechat")   // (platform.LoginProvider, bool)
+//	pp, ok := platform.Payment("tiktok") // (platform.PaymentProvider, bool)
+func (s *Server) WithPlatform(p platform.Provider) *Server {
+	if err := platform.Register(p); err != nil {
+		log.Error("[init] 平台注册失败(fail-fast) err=%v", err)
+		platformExitFn(1)
+		return s // 仅单测注入不退出的 exitFn 时可达
+	}
+	log.InfoTag("init", "装载平台 provider=%v", p.Name())
 	return s
 }
 

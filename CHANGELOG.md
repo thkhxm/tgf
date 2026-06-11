@@ -11,6 +11,26 @@
 可观测性接入：`doc/observability.md`
 发版流程：`doc/release-process.md`
 
+## [2.1.0] - 2026-06-11
+
+### Added
+
+- **H1 · 第三方平台 SDK 合约层**（`tgf/platform`）：为 TikTok / 微信 / Apple / Google / Facebook
+  等平台接入提供统一地基。设计见 `doc/platform-sdk-design.md`。
+  - 能力切面接口：`Provider` / `LoginProvider`（登录凭据校验）/ `PaymentProvider`（支付校验）/
+    `ContentAuditProvider`（内容安全）/ `WebhookVerifier`（回调验签）——平台实现其支持的子集，
+    框架用类型断言探测能力（同 C2 可选子接口模式）。
+  - 标准化类型：`PlatformIdentity` / `PaymentReceipt` / `PaymentResult` / `AuditResult`。
+  - 并发安全注册表：`Register` + 按能力取用 `Login/Payment/Audit/Webhook/List`；`rpc.Server.WithPlatform(p)`
+    builder 选项（重名 / nil / 空名 fail-fast 非零码退出，多平台可链式）。
+  - `platform.Fake`：可编程全能力实现，供业务侧测试。
+  - `platform.WebhookMiddleware(v)`：与 `web.Middleware` 同构（不 import web 包），验签失败 401 /
+    nil verifier 503 fail-closed / 防重放接入位。
+  - 注册时自动 metrics 包装：`tgf_platform_{login,payment,audit,webhook}_{calls_total,fail_total,latency_ms}`。
+  - `config.Config.Platform` 配置组（Wechat / Tiktok / Facebook 的 AppID+AppSecret、Apple TeamID/KeyID/PrivateKey
+    共 9 项；Secret 类登记 `sensitiveEnvKeys` 启动日志脱敏）。
+  - 各平台**具体实现**作为独立 go module（`github.com/thkhxm/tgf-platform/*`）后续接入，保证依赖卫生。
+
 ## [2.0.0] - 2026-06-11
 
 tgf 首个正式发布版本。在 v2-alpha（A/B/C 档：稳定性修复 + 工程化 + API 演进）的基础上，

@@ -156,6 +156,28 @@ const (
 	EnvironmentHTTPReadHeaderTimeoutSec Environment = "HTTPReadHeaderTimeoutSec"
 	// EnvironmentHTTPShutdownTimeoutSec HTTP 优雅停机 drain 超时（秒），默认 10
 	EnvironmentHTTPShutdownTimeoutSec Environment = "HTTPShutdownTimeoutSec"
+
+	// ---- H1 新增：第三方平台（tgf/platform）凭据与应用标识 ----
+	// 类型化读取走 config.Current().Platform；Secret 类已登记 sensitiveEnvKeys 脱敏。
+
+	// EnvironmentWechatAppID 微信小游戏/公众平台 AppID
+	EnvironmentWechatAppID Environment = "WechatAppID"
+	// EnvironmentWechatAppSecret 微信 AppSecret（凭据，日志脱敏）
+	EnvironmentWechatAppSecret Environment = "WechatAppSecret"
+	// EnvironmentTiktokAppID 抖音/TikTok 小游戏 AppID
+	EnvironmentTiktokAppID Environment = "TiktokAppID"
+	// EnvironmentTiktokAppSecret 抖音/TikTok AppSecret（凭据，日志脱敏）
+	EnvironmentTiktokAppSecret Environment = "TiktokAppSecret"
+	// EnvironmentAppleTeamID Apple Developer Team ID
+	EnvironmentAppleTeamID Environment = "AppleTeamID"
+	// EnvironmentAppleKeyID App Store Connect API / Sign in with Apple 私钥的 Key ID
+	EnvironmentAppleKeyID Environment = "AppleKeyID"
+	// EnvironmentApplePrivateKey p8 私钥内容（PEM 文本；凭据，日志脱敏）
+	EnvironmentApplePrivateKey Environment = "ApplePrivateKey"
+	// EnvironmentFacebookAppID Facebook 应用 ID
+	EnvironmentFacebookAppID Environment = "FacebookAppID"
+	// EnvironmentFacebookAppSecret Facebook App Secret（凭据，日志脱敏）
+	EnvironmentFacebookAppSecret Environment = "FacebookAppSecret"
 )
 
 type CacheModule int

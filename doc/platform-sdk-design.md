@@ -1,6 +1,7 @@
 # 第三方平台 SDK 接入设计（TikTok / 微信 / Facebook / Apple …）
 
-> 状态：设计定稿，实现排期为 v2.1（H 档）。
+> 状态：H1 已实现（`tgf/platform` 合约包 + 注册表 + Fake + `WithPlatform` +
+> `PlatformConfig` 配置组 + Webhook 中间件桥，2026-06-11）；H2 起的平台实现待排期。
 > 决策日期：2026-06-11。
 
 ## 一、结论
