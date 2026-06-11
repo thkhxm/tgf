@@ -1,6 +1,6 @@
 # tgf v2 API 速查（业务侧）
 
-> 本表内容逐项核对自 tgf 源码（feature/v2，v2.0.0）。遇到本表没覆盖的 API，
+> 本表内容逐项核对自 tgf 源码（feature/v2，v2.1.0）。遇到本表没覆盖的 API，
 > 去读 tgf 源码与 `example/` 真实示例，**禁止凭记忆杜撰**。
 
 ## 1. Server builder（`rpc.NewRPCServer()...Run()`）

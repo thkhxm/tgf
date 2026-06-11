@@ -16,7 +16,7 @@ description: >
 | 事实 | 值 |
 |------|----|
 | module path | `github.com/thkhxm/tgf/v2`（v2 起带 /v2 主版本后缀） |
-| 业务项目依赖 | `require github.com/thkhxm/tgf/v2 v2.0.0`，**不需要任何 replace**（fork 依赖 `thkhxm/rpcx/v2 v2.0.3`、`thkhxm/rpcx-consul/v2 v2.0.2` 由 tgf 自动带入） |
+| 业务项目依赖 | `require github.com/thkhxm/tgf/v2 v2.1.0`，**不需要任何 replace**（fork 依赖 `thkhxm/rpcx/v2 v2.0.3`、`thkhxm/rpcx-consul/v2 v2.0.2` 由 tgf 自动带入） |
 | Go 工具链 | `go 1.26.0` / `toolchain go1.26.4` |
 | 常用 import | `"github.com/thkhxm/tgf/v2"`（根包常量如 `tgf.CacheModuleClose`）、`/v2/rpc`、`/v2/web`、`/v2/config`、`/v2/log`、`/v2/db`、`/v2/metrics`、`/v2/trace`、`/v2/robot` |
 | 入口 builder | `rpc.NewRPCServer().With*(...).Run()`，`Run()` 返回 `<-chan bool` 阻塞至停机 |
@@ -122,6 +122,9 @@ Copy-Item -Recurse <skill>/templates/deploy <项目路径>/deploy
 # ④ 写 .gitignore（至少：.env.* 、log/ 、可执行产物）；git init（用户没反对时）
 
 # ⑤ 构建
+# 先把 tgf 拉到最新发布版（模板 go.mod 里的版本号只是占位/兜底，以 @latest 为准，
+# 避免模板版本滞后导致新项目用到旧框架）：
+go get github.com/thkhxm/tgf/v2@latest
 go mod tidy
 go build ./...
 

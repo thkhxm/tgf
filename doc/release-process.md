@@ -76,6 +76,11 @@ SemVer。tgf 通过 `go.mod` 的 `require` 钉住具体 fork tag。
 - [ ] `README.md` / `README.cn.md` / `README.en.md` 安装段、版本徽章、底部签名行已对齐目标版本。
 - [ ] 所有文档 import / `go get` 示例的 module path 带正确的 `/vN` 后缀
       （`go get github.com/thkhxm/tgf/v2@vX.Y.Z`、`import ".../tgf/v2/rpc"`）。
+- [ ] **脚手架 skill 版本同步（易漏！）**：`.claude/skills/tgf-server-dev/` 下 4 个
+      `go.mod.tmpl`、`SKILL.md`、`references/api-reference.md` 里硬编码的
+      `github.com/thkhxm/tgf/v2 vX.Y.Z` 已升到本次版本。改完后**重新拷贝到全局安装目录**
+      （`~/.claude/skills/tgf-server-dev/`），否则用户用的是仓库外的旧副本。
+      （SKILL.md 生成步骤已带 `go get @latest` 兜底，但模板里的占位版本仍应保持最新。）
 - [ ] 若本次包含 fork 改动：§1.3 的 fork tag 联动已全部完成且 `require` 已升版。
 
 ---
