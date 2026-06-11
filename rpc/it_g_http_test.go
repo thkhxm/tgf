@@ -34,10 +34,10 @@ import (
 	"time"
 
 	"github.com/hashicorp/consul/api"
-	"github.com/thkhxm/tgf"
-	"github.com/thkhxm/tgf/db"
-	"github.com/thkhxm/tgf/trace"
-	"github.com/thkhxm/tgf/web"
+	"github.com/thkhxm/tgf/v2"
+	"github.com/thkhxm/tgf/v2/db"
+	"github.com/thkhxm/tgf/v2/trace"
+	"github.com/thkhxm/tgf/v2/web"
 )
 
 // ItG3EchoReq / ItG3EchoRes 必须是导出类型——真实 rpcx RegisterName 要求

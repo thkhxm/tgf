@@ -14,7 +14,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/thkhxm/tgf/metrics"
+	"github.com/thkhxm/tgf/v2/metrics"
 )
 
 var (

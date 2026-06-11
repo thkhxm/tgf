@@ -9,7 +9,7 @@ import (
 	"net/http"
 	"sync"
 
-	"github.com/thkhxm/tgf/trace"
+	"github.com/thkhxm/tgf/v2/trace"
 )
 
 //***************************************************

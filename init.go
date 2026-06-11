@@ -10,7 +10,7 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/thkhxm/tgf/util"
+	"github.com/thkhxm/tgf/v2/util"
 )
 
 // ***************************************************

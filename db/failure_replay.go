@@ -28,7 +28,7 @@ import (
 	"fmt"
 	"sync"
 
-	"github.com/thkhxm/tgf/log"
+	"github.com/thkhxm/tgf/v2/log"
 )
 
 // ---- 表名 → flusher 注册表 ----

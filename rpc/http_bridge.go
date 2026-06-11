@@ -3,8 +3,8 @@ package rpc
 import (
 	"net/http"
 
-	"github.com/thkhxm/tgf"
-	"github.com/thkhxm/tgf/web"
+	"github.com/thkhxm/tgf/v2"
+	"github.com/thkhxm/tgf/v2/web"
 )
 
 //***************************************************

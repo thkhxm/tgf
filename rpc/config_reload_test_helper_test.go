@@ -15,7 +15,7 @@ import (
 	"os"
 	"testing"
 
-	tgfconfig "github.com/thkhxm/tgf/config"
+	tgfconfig "github.com/thkhxm/tgf/v2/config"
 )
 
 // setEnvConfigForTest 设置环境变量并立即重建配置快照；测试结束时还原 env

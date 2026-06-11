@@ -11,7 +11,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/thkhxm/tgf/metrics"
+	"github.com/thkhxm/tgf/v2/metrics"
 )
 
 // memMetricsReader 是 MemoryProvider 断言面（NewMemoryProvider 返回非导出类型，

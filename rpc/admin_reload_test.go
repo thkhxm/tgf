@@ -13,7 +13,7 @@ import (
 	"testing"
 	"time"
 
-	tgfconfig "github.com/thkhxm/tgf/config"
+	tgfconfig "github.com/thkhxm/tgf/v2/config"
 )
 
 // doConfigReloadRequest 用 AuthMiddleware 包装 handleConfigReload 发一次请求。

@@ -2,8 +2,8 @@ package rpc
 
 import (
 	"context"
-	"github.com/thkhxm/tgf"
-	"github.com/thkhxm/tgf/exp/admin"
+	"github.com/thkhxm/tgf/v2"
+	"github.com/thkhxm/tgf/v2/exp/admin"
 )
 
 //***************************************************

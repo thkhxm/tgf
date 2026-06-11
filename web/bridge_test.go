@@ -20,7 +20,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/thkhxm/tgf/trace"
+	"github.com/thkhxm/tgf/v2/trace"
 )
 
 type bridgeReq struct {

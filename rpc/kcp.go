@@ -22,8 +22,8 @@ import (
 	"sync"
 	"time"
 
-	"github.com/thkhxm/tgf/log"
-	"github.com/thkhxm/tgf/util"
+	"github.com/thkhxm/tgf/v2/log"
+	"github.com/thkhxm/tgf/v2/util"
 	"github.com/xtaci/kcp-go"
 )
 

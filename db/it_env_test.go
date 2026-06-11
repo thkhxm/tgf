@@ -37,8 +37,8 @@ import (
 	"github.com/docker/go-connections/nat"
 	"github.com/testcontainers/testcontainers-go"
 	"github.com/testcontainers/testcontainers-go/wait"
-	"github.com/thkhxm/tgf"
-	tgfconfig "github.com/thkhxm/tgf/config"
+	"github.com/thkhxm/tgf/v2"
+	tgfconfig "github.com/thkhxm/tgf/v2/config"
 )
 
 // fixedHostPortModifier 把容器端口绑定到固定的本机 host 端口。

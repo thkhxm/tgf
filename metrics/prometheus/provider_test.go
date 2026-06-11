@@ -4,7 +4,7 @@ import (
 	"testing"
 
 	dto "github.com/prometheus/client_model/go"
-	tgfmetrics "github.com/thkhxm/tgf/metrics"
+	tgfmetrics "github.com/thkhxm/tgf/v2/metrics"
 )
 
 // gatherInto 从 Provider 的 registry 采集全部指标，按 metric 全名建索引。

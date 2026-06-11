@@ -34,7 +34,7 @@ import (
 	"github.com/docker/go-connections/nat"
 	"github.com/testcontainers/testcontainers-go"
 	"github.com/testcontainers/testcontainers-go/wait"
-	tgfconfig "github.com/thkhxm/tgf/config"
+	tgfconfig "github.com/thkhxm/tgf/v2/config"
 )
 
 // rpcITFixedHostPort 把容器端口绑定到固定 host 端口（同 db harness 的取舍，

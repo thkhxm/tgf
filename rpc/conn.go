@@ -21,8 +21,8 @@ import (
 	"time"
 
 	"github.com/gorilla/websocket"
-	"github.com/thkhxm/tgf/log"
-	"github.com/thkhxm/tgf/util"
+	"github.com/thkhxm/tgf/v2/log"
+	"github.com/thkhxm/tgf/v2/util"
 	"google.golang.org/protobuf/proto"
 )
 

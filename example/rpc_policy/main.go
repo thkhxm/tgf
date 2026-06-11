@@ -13,7 +13,7 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/thkhxm/tgf/rpc"
+	"github.com/thkhxm/tgf/v2/rpc"
 	"golang.org/x/net/context"
 )
 

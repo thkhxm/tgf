@@ -26,8 +26,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/thkhxm/tgf/rpc/internal"
-	"github.com/thkhxm/tgf/web"
+	"github.com/thkhxm/tgf/v2/rpc/internal"
+	"github.com/thkhxm/tgf/v2/web"
 )
 
 // g2FakeHTTPConsul 是 httpConsulHandle 的录制桩。

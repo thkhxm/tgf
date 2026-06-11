@@ -17,7 +17,7 @@ import (
 	"github.com/cornelk/hashmap"
 	rpcxclient "github.com/thkhxm/rpcx/v2/client"
 	rpcxserver "github.com/thkhxm/rpcx/v2/server"
-	"github.com/thkhxm/tgf"
+	"github.com/thkhxm/tgf/v2"
 	"golang.org/x/net/context"
 )
 

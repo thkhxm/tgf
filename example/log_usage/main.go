@@ -10,7 +10,7 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/thkhxm/tgf/log"
+	"github.com/thkhxm/tgf/v2/log"
 	"go.uber.org/zap"
 )
 

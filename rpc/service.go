@@ -5,8 +5,8 @@ import (
 
 	"github.com/thkhxm/rpcx/v2/client"
 	"github.com/thkhxm/rpcx/v2/share"
-	"github.com/thkhxm/tgf"
-	"github.com/thkhxm/tgf/log"
+	"github.com/thkhxm/tgf/v2"
+	"github.com/thkhxm/tgf/v2/log"
 	"go.uber.org/zap"
 	"golang.org/x/net/context"
 	"reflect"

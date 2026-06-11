@@ -1,7 +1,7 @@
 package log_test
 
 import (
-	"github.com/thkhxm/tgf/log"
+	"github.com/thkhxm/tgf/v2/log"
 	"testing"
 )
 

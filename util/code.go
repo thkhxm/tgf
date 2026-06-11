@@ -93,7 +93,7 @@ func GeneratorRPC[T any](moduleName, version string) {
 		}
 	}{}
 	tt := make(map[string]bool)
-	tt["github.com/thkhxm/tgf/rpc"] = true
+	tt["github.com/thkhxm/tgf/v2/rpc"] = true
 
 	for i := 0; i < ty.NumMethod(); i++ {
 		m := ty.Method(i)
@@ -272,7 +272,7 @@ func GeneratorAPI[T any](moduleName, version string, pushServices ...string) {
 	ty := v.Type().Elem()
 	packageName := moduleName + "_service"
 	tt := make(map[string]bool)
-	tt["github.com/thkhxm/tgf/rpc"] = true
+	tt["github.com/thkhxm/tgf/v2/rpc"] = true
 	goStructCache := &CSStruct{}
 	goStructCache.ModuleName = moduleName
 	goStructCache.ModuleNameUpper = cases.Title(language.English).String(moduleName)

@@ -49,7 +49,7 @@ import (
 	"time"
 
 	"github.com/thkhxm/rpcx/v2/client"
-	"github.com/thkhxm/tgf/metrics"
+	"github.com/thkhxm/tgf/v2/metrics"
 )
 
 // MethodPolicy 描述一个 RPC 方法的完整策略配置。

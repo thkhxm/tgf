@@ -29,7 +29,7 @@ import (
 	"sync"
 
 	prom "github.com/prometheus/client_golang/prometheus"
-	tgfmetrics "github.com/thkhxm/tgf/metrics"
+	tgfmetrics "github.com/thkhxm/tgf/v2/metrics"
 )
 
 // Option 配置 Provider 的可选项。

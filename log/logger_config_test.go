@@ -11,7 +11,7 @@ import (
 	"os"
 	"testing"
 
-	tgfconfig "github.com/thkhxm/tgf/config"
+	tgfconfig "github.com/thkhxm/tgf/v2/config"
 )
 
 // 保存/恢复 runtime 变量，让多个测试之间不互相干扰

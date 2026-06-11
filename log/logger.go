@@ -8,8 +8,8 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/thkhxm/tgf"
-	tgfconfig "github.com/thkhxm/tgf/config"
+	"github.com/thkhxm/tgf/v2"
+	tgfconfig "github.com/thkhxm/tgf/v2/config"
 	"go.uber.org/zap"
 	"go.uber.org/zap/zapcore"
 	"gopkg.in/natefinch/lumberjack.v2"

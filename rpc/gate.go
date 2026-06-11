@@ -1,8 +1,8 @@
 package rpc
 
 import (
-	"github.com/thkhxm/tgf"
-	"github.com/thkhxm/tgf/log"
+	"github.com/thkhxm/tgf/v2"
+	"github.com/thkhxm/tgf/v2/log"
 	"golang.org/x/net/context"
 )
 

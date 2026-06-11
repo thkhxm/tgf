@@ -37,11 +37,11 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/thkhxm/tgf"
-	"github.com/thkhxm/tgf/config"
-	"github.com/thkhxm/tgf/log"
-	"github.com/thkhxm/tgf/metrics"
-	"github.com/thkhxm/tgf/rpc"
+	"github.com/thkhxm/tgf/v2"
+	"github.com/thkhxm/tgf/v2/config"
+	"github.com/thkhxm/tgf/v2/log"
+	"github.com/thkhxm/tgf/v2/metrics"
+	"github.com/thkhxm/tgf/v2/rpc"
 	"go.uber.org/zap"
 	"golang.org/x/net/context"
 )

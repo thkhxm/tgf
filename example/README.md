@@ -14,6 +14,7 @@ go run .
 | `single_process/` | `rpc` | 单进程多 Module（WithSingleProcess + 跨 module RPC + 策略 + metrics） |
 | `http_rest/` | `web` / `rpc` | **纯 REST API**（WithHTTPService + 路由/中间件/限流/鉴权/优雅停机）——常规 http web 服务 |
 | `http_rpc/` | `web` / `rpc` | **REST + 调游戏服 RPC**（HTTP→RPC 桥 + traceId 全链路 + 单进程/多进程部署）——分布式 web 服务接游戏后端 |
+| `robot_test/` | `rpc` | WS + KCP robot 自测（登录 + 多人移动同步，压测 QPS） |
 | `db_cache/` | `db` | AutoCacheBuilder 三种缓存 + Redis 操作 + 分布式锁 + 补偿队列 |
 | `log_usage/` | `log` | Sprintf 风格 vs zap.Field 风格 + Tag 过滤 + 特殊日志 |
 | `config_reload/` | `config` | struct tag 配置加载 + Reload 热更 + OnReload + 类型校验 |

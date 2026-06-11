@@ -40,9 +40,9 @@ import (
 	"sync/atomic"
 	"time"
 
-	tgfconfig "github.com/thkhxm/tgf/config"
-	"github.com/thkhxm/tgf/log"
-	"github.com/thkhxm/tgf/rpc/internal"
+	tgfconfig "github.com/thkhxm/tgf/v2/config"
+	"github.com/thkhxm/tgf/v2/log"
+	"github.com/thkhxm/tgf/v2/rpc/internal"
 )
 
 // EnvLoginTokenSecret 是默认 HMAC token 密钥的环境变量名。

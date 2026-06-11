@@ -1,0 +1,97 @@
+# {{PROJECT_NAME}} K8s 最小部署清单
+#
+# tgf 已内建 K8s 友好的停机语义，本清单直接可用：
+#   - Pod 终止时 K8s 发 SIGTERM → 框架自动优雅停机
+#     （Consul 摘除 → 停 accept → drain in-flight → write-behind 终末落库）
+#   - Consul agent TTL health check：进程死亡后 TTL 内自动摘除节点，
+#     无需 preStop 钩子手工反注册
+#   - terminationGracePeriodSeconds 给足 drain 时间（> 框架 drain 超时，默认 10s）
+#
+# 用前替换：镜像地址、副本数、资源配额；并先创建 Secret：
+#   kubectl create secret generic {{PROJECT_NAME}}-secrets \
+#     --from-literal=login-token-secret='<随机长字符串>' \
+#     --from-literal=admin-token='<运维口令>'
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: "{{PROJECT_NAME}}"
+  labels:
+    app: "{{PROJECT_NAME}}"
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: "{{PROJECT_NAME}}"
+  template:
+    metadata:
+      labels:
+        app: "{{PROJECT_NAME}}"
+    spec:
+      terminationGracePeriodSeconds: 30
+      containers:
+        - name: app
+          image: "registry.example.com/{{PROJECT_NAME}}:v0.1.0"
+          ports:
+            - name: gateway-tcp
+              containerPort: 8082
+            - name: http
+              containerPort: 8090
+          env:
+            - name: TGFMODULE
+              value: "release"
+            - name: RedisAddr
+              value: "redis:6379"
+            - name: MySqlAddr
+              value: "mysql"
+            - name: ConsulAddress
+              value: "consul:8500"
+            - name: LoginTokenSecret
+              valueFrom:
+                secretKeyRef:
+                  name: "{{PROJECT_NAME}}-secrets"
+                  key: login-token-secret
+            - name: ADMIN_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: "{{PROJECT_NAME}}-secrets"
+                  key: admin-token
+                  optional: true
+          # HTTP 形态（http_rest / http_rpc / WithHTTPServiceConsul）打开探针；
+          # 纯 TCP 游戏服改用 tcpSocket 探针指向 gateway-tcp
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: http
+            initialDelaySeconds: 3
+            periodSeconds: 5
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: http
+            initialDelaySeconds: 10
+            periodSeconds: 10
+          resources:
+            requests:
+              cpu: "250m"
+              memory: "256Mi"
+            limits:
+              cpu: "1"
+              memory: "1Gi"
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: "{{PROJECT_NAME}}"
+spec:
+  selector:
+    app: "{{PROJECT_NAME}}"
+  ports:
+    - name: gateway-tcp
+      port: 8082
+      targetPort: gateway-tcp
+    - name: http
+      port: 8090
+      targetPort: http
+  # 客户端长连接网关对外暴露时按集群环境改 LoadBalancer / NodePort
+  type: ClusterIP

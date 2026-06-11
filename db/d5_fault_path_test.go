@@ -30,7 +30,7 @@ import (
 
 	"github.com/cornelk/hashmap"
 	"github.com/redis/go-redis/v9"
-	"github.com/thkhxm/tgf"
+	"github.com/thkhxm/tgf/v2"
 	"golang.org/x/sync/singleflight"
 )
 

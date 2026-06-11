@@ -28,9 +28,9 @@ import (
 
 	client2 "github.com/thkhxm/rpcx-consul/v2/client"
 	"github.com/thkhxm/rpcx/v2/server"
-	"github.com/thkhxm/tgf"
-	"github.com/thkhxm/tgf/db"
-	"github.com/thkhxm/tgf/rpc/internal"
+	"github.com/thkhxm/tgf/v2"
+	"github.com/thkhxm/tgf/v2/db"
+	"github.com/thkhxm/tgf/v2/rpc/internal"
 )
 
 // f2RecorderPlugin 是 ConsulRegisterPlugin 的录制桩：

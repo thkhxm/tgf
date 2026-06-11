@@ -16,7 +16,7 @@ import (
 	"time"
 
 	"github.com/hashicorp/consul/api"
-	"github.com/thkhxm/tgf"
+	"github.com/thkhxm/tgf/v2"
 )
 
 // TestBuildHTTPServiceRegistration_TTLDefaults TTL 模式（默认）的字段映射与默认值。

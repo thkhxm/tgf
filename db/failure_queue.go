@@ -38,7 +38,7 @@ import (
 	"os"
 	"sync"
 
-	"github.com/thkhxm/tgf/log"
+	"github.com/thkhxm/tgf/v2/log"
 )
 
 // FailurePayload 是 FailureQueue 的最小单元：一次落库批次的原始字节。

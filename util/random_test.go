@@ -1,7 +1,7 @@
 package util_test
 
 import (
-	"github.com/thkhxm/tgf/util"
+	"github.com/thkhxm/tgf/v2/util"
 	"testing"
 )
 

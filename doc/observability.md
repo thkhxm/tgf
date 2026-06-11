@@ -72,7 +72,7 @@ package tgfprom
 
 import (
     "github.com/prometheus/client_golang/prometheus"
-    "github.com/thkhxm/tgf/metrics"
+    "github.com/thkhxm/tgf/v2/metrics"
 )
 
 type Provider struct {
@@ -143,7 +143,7 @@ func (p *promHistogram) Observe(v float64) { p.h.Observe(v) }
 import (
     "net/http"
     "github.com/prometheus/client_golang/prometheus/promhttp"
-    "github.com/thkhxm/tgf/rpc"
+    "github.com/thkhxm/tgf/v2/rpc"
     tgfprom "your-repo/tgf-prom"
 )
 
@@ -167,7 +167,7 @@ func main() {
 业务代码可以直接用 `metrics` 包的便捷函数：
 
 ```go
-import "github.com/thkhxm/tgf/metrics"
+import "github.com/thkhxm/tgf/v2/metrics"
 
 var onlineUsers = metrics.NewGauge("online_users", "当前在线用户数")
 
@@ -220,7 +220,7 @@ import (
     "context"
     otelsdk "go.opentelemetry.io/otel"
     oteltrace "go.opentelemetry.io/otel/trace"
-    "github.com/thkhxm/tgf/trace"
+    "github.com/thkhxm/tgf/v2/trace"
 )
 
 type Tracer struct {
@@ -312,10 +312,10 @@ package main
 import (
     "net/http"
     "github.com/prometheus/client_golang/prometheus/promhttp"
-    "github.com/thkhxm/tgf/config"
-    "github.com/thkhxm/tgf/log"
-    "github.com/thkhxm/tgf/rpc"
-    "github.com/thkhxm/tgf/trace"
+    "github.com/thkhxm/tgf/v2/config"
+    "github.com/thkhxm/tgf/v2/log"
+    "github.com/thkhxm/tgf/v2/rpc"
+    "github.com/thkhxm/tgf/v2/trace"
     tgfotel "your-repo/tgf-otel"
     tgfprom "your-repo/tgf-prom"
 )

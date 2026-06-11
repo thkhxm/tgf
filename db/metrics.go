@@ -28,7 +28,7 @@ package db
 //2026/6/10
 //***************************************************
 
-import "github.com/thkhxm/tgf/metrics"
+import "github.com/thkhxm/tgf/v2/metrics"
 
 const (
 	metricDBFlushBatchTotal       = "tgf_db_flush_batch_total"

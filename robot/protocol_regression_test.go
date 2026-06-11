@@ -26,7 +26,7 @@ import (
 	"time"
 
 	util2 "github.com/thkhxm/rpcx/v2/util"
-	"github.com/thkhxm/tgf/rpc"
+	"github.com/thkhxm/tgf/v2/rpc"
 )
 
 // ---- golden 编码辅助：按 v2/v1 协议规格手工构帧（独立于服务端实现的字节级约定） ----

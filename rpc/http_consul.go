@@ -5,12 +5,12 @@ import (
 	"strings"
 	"time"
 
-	"github.com/thkhxm/tgf"
-	tgfconfig "github.com/thkhxm/tgf/config"
-	"github.com/thkhxm/tgf/log"
-	"github.com/thkhxm/tgf/rpc/internal"
-	"github.com/thkhxm/tgf/util"
-	"github.com/thkhxm/tgf/web"
+	"github.com/thkhxm/tgf/v2"
+	tgfconfig "github.com/thkhxm/tgf/v2/config"
+	"github.com/thkhxm/tgf/v2/log"
+	"github.com/thkhxm/tgf/v2/rpc/internal"
+	"github.com/thkhxm/tgf/v2/util"
+	"github.com/thkhxm/tgf/v2/web"
 )
 
 //***************************************************

@@ -10,7 +10,7 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/thkhxm/tgf/db"
+	"github.com/thkhxm/tgf/v2/db"
 )
 
 // ====================================================================

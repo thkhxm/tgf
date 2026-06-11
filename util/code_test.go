@@ -2,8 +2,8 @@ package util_test
 
 import (
 	"context"
-	"github.com/thkhxm/tgf/rpc"
-	"github.com/thkhxm/tgf/util"
+	"github.com/thkhxm/tgf/v2/rpc"
+	"github.com/thkhxm/tgf/v2/util"
 	"testing"
 )
 

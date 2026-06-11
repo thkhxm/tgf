@@ -19,8 +19,8 @@ import (
 	"time"
 
 	"github.com/thkhxm/rpcx/v2/share"
-	"github.com/thkhxm/tgf"
-	"github.com/thkhxm/tgf/trace"
+	"github.com/thkhxm/tgf/v2"
+	"github.com/thkhxm/tgf/v2/trace"
 	"golang.org/x/net/context"
 )
 

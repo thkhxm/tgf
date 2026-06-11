@@ -12,8 +12,8 @@ import (
 	"path/filepath"
 	"time"
 
-	"github.com/thkhxm/tgf/component"
-	"github.com/thkhxm/tgf/log"
+	"github.com/thkhxm/tgf/v2/component"
+	"github.com/thkhxm/tgf/v2/log"
 )
 
 // ====================================================================

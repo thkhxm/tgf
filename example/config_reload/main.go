@@ -10,7 +10,7 @@ import (
 	"fmt"
 	"os"
 
-	"github.com/thkhxm/tgf/config"
+	"github.com/thkhxm/tgf/v2/config"
 )
 
 func main() {

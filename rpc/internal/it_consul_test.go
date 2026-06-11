@@ -37,7 +37,7 @@ import (
 	"github.com/testcontainers/testcontainers-go"
 	"github.com/testcontainers/testcontainers-go/wait"
 	"github.com/thkhxm/rpcx-consul/v2/serverplugin"
-	tgfconfig "github.com/thkhxm/tgf/config"
+	tgfconfig "github.com/thkhxm/tgf/v2/config"
 )
 
 // itFixedHostPort 把容器端口绑定到固定 host 端口（同 db harness 的取舍：

@@ -25,7 +25,7 @@ import (
 	"time"
 
 	"github.com/bsm/redislock"
-	"github.com/thkhxm/tgf/metrics"
+	"github.com/thkhxm/tgf/v2/metrics"
 )
 
 // newF3WatchdogHandle 构造一个注入 fake refresh/release 的锁句柄（不依赖真实 Redis）。

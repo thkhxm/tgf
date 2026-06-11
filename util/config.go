@@ -637,7 +637,7 @@ func JsonToErrorStruct(packageName, fileName, outPath string, data []TemplateKey
 
 package %v
 
-import "github.com/thkhxm/tgf"
+import "github.com/thkhxm/tgf/v2"
 
 type generatedError struct {
 	msg  string

@@ -1,5 +1,5 @@
 [![Go Report Card](https://goreportcard.com/badge/github.com/thkhxm/tgf)](https://goreportcard.com/report/github.com/thkhxm/tgf)
-[![Go Version](https://img.shields.io/badge/go-1.24%2B-blue)](https://go.dev/)
+[![Go Version](https://img.shields.io/badge/go-1.26%2B-blue)](https://go.dev/)
 [![License](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
 
 # tgf
@@ -89,19 +89,29 @@ tgf 一套框架覆盖三类场景，各有对应示例：
 
 ### 1. 安装
 
-要求 Go **1.24+**。
+要求 Go **1.26+**（go.mod 声明 `go 1.26.0` / `toolchain go1.26.4`）。
 
-tgf 依赖的 rpcx / rpcx-consul fork 已迁移为自有 module path
-（`github.com/thkhxm/rpcx` / `github.com/thkhxm/rpcx-consul`），由 tgf 的
-`go.mod` 直接 `require` 引入——**下游业务工程不再需要手抄任何 replace 块**：
+tgf 自 v2.0.0 起 module path 带 `/v2` 主版本后缀，直接 `go get`：
 
 ```bash
-go get github.com/thkhxm/tgf@latest
+go get github.com/thkhxm/tgf/v2@v2.0.0
 ```
 
-> ⚠️ 上述命令生效的前提是两个 fork 仓库已发布**携带新 module path 的 tag**
-> （即该 tag 树内 `go.mod` 的 `module` 行为 `github.com/thkhxm/rpcx[-consul]`）。
-> 该发布动作见路线图 D1；发布前请使用下面「从源码构建」的 workspace 方式接入。
+import 路径相应带 `/v2`，例如：
+
+```go
+import (
+    "github.com/thkhxm/tgf/v2/rpc"
+    "github.com/thkhxm/tgf/v2/web"
+)
+```
+
+> **下游业务工程不需要任何 `replace` 块。** tgf 依赖的 rpcx / rpcx-consul fork 也已
+> 迁移为带 `/v2` 后缀的自有 module path（`github.com/thkhxm/rpcx/v2` /
+> `github.com/thkhxm/rpcx-consul/v2`，当前 tag `v2.0.3` / `v2.0.2`），由 tgf 的
+> `go.mod` 直接 `require` 引入并随之自动拉取——业务方既不必 `require` 它们，也不必
+> 写 replace。tgf 仓库内 `go.mod` 保留的那条指向 `../rpcx` 的 path replace 只在本仓
+> 脱离 go.work（`GOWORK=off`）时生效，依赖方会忽略它，按 require 的对应 tag 从远端拉取。
 
 #### 从源码构建（贡献者）
 
@@ -135,7 +145,7 @@ import (
     "fmt"
     "time"
 
-    "github.com/thkhxm/tgf/rpc"
+    "github.com/thkhxm/tgf/v2/rpc"
     "golang.org/x/net/context"
 )
 
@@ -208,8 +218,8 @@ rpc**，无 import 环）；`rpc.Server` 单向 import `web`，把"调用后端 
 ```go
 import (
     "net/http"
-    "github.com/thkhxm/tgf/rpc"
-    "github.com/thkhxm/tgf/web"
+    "github.com/thkhxm/tgf/v2/rpc"
+    "github.com/thkhxm/tgf/v2/web"
 )
 
 rpc.NewRPCServer().
@@ -336,8 +346,8 @@ HTTP，并把这个 HTTP 服务注册进 Consul（可被发现/负载均衡）�
 package main
 
 import (
-    "github.com/thkhxm/tgf/rpc"
-    "github.com/thkhxm/tgf/web"
+    "github.com/thkhxm/tgf/v2/rpc"
+    "github.com/thkhxm/tgf/v2/web"
 )
 
 type GetPlayerReq struct{ PlayerId string }
@@ -456,7 +466,7 @@ func main() {
 | TCP / WS / WSS / KCP 网关 | `WithGatewayOptions(GatewayOptions{TCPPort, WSPath, WSTLSKey, WSTLSCert, KCP})` | 统一入口，按需组合 |
 | KCP + AEAD | `NewKCPBuilder(port).WithAEADKey(key)` | ChaCha20-Poly1305 帧加密 |
 | 踢人 / 重复登录 | `loginCoord` 接口 | Redis 锁 + 定向踢远端 |
-| 健康心跳 | `WithHealthCheck(interval)` | 骨架版本 |
+| 健康心跳 | `WithHealthCheck(interval)` | F2 已接真实 Consul TTL check（Consul 开启且注册成功时默认 5s 自动启用，TTL=3×interval，节点宕机自动摘除） |
 | 单进程模式 | `WithSingleProcess()` | 反射直通，零 Consul |
 
 ### 数据缓存
@@ -504,7 +514,7 @@ func main() {
 |------|-----|------|
 | 环境变量加载 | `config.Load()` | struct tag 驱动 |
 | 当前快照 | `config.Current()` | 原子读 |
-| 热更 | `config.Reload()` + `OnReload(fn)` | 业务侧手动调用触发（框架未内置信号/HTTP 触发器）；Reload 会先重读 `.env.<module>` 文件（文件值覆盖进程 env），旧 `tgf.GetStrConfig` 同步读到新值 |
+| 热更 | `config.Reload()` + `OnReload(fn)` | 业务侧手动调用，或经 admin 控制面 `POST /config/reload` 触发（`ServeAdmin` 启用，需 ADMIN_TOKEN）；Reload 会先重读 `.env.<module>` 文件（文件值覆盖进程 env），旧 `tgf.GetStrConfig` 同步读到新值 |
 | 游戏配置 | `component.GetGameConf[Val](id)` | 泛型查询 |
 | 游戏配置热更 | `component.ReloadGameConf()` + `StartConfigWatcher()` | 手动调用 / fsnotify 目录监听 |
 
@@ -512,7 +522,7 @@ func main() {
 
 ## 示例项目
 
-[`example/`](example/) 目录下有 9 个可独立运行的示例，覆盖 tgf v2 的各个模块：
+[`example/`](example/) 目录下有 11 个可独立运行的示例，覆盖 tgf v2 的各个模块：
 
 | 目录 | 演示内容 |
 |------|---------|
@@ -550,7 +560,7 @@ go run .
 
 ### 外部链接
 
-- **API 参考**：[pkg.go.dev/github.com/thkhxm/tgf](https://pkg.go.dev/github.com/thkhxm/tgf)
+- **API 参考**：[pkg.go.dev/github.com/thkhxm/tgf/v2](https://pkg.go.dev/github.com/thkhxm/tgf/v2)
 - **项目地址**：[github.com/thkhxm/tgf](https://github.com/thkhxm/tgf)
 - **项目文档**：[thkhxm.github.io/tgf_writerside](https://thkhxm.github.io/tgf_writerside/starter-topic.html)
 - **国内文档镜像**：[tgf.yamigame.net:8080](http://tgf.yamigame.net:8080/)
@@ -603,13 +613,16 @@ go run .
 ### 路线图
 
 - ✅ v2-alpha：A / B / C 档落地（稳定性修复 + 工程化 + API 演进），265 个测试
-- ⏳ **v3-D 档（进行中）止血与发布可用**：消灭 P0（串包、单进程网关、优雅停机、
-  下游可消费、凭据卫生、登录鉴权地基），让框架"对外存在"
-- 📅 v3-E 档：接线收尾（策略管道全覆盖、配置系统收敛、可观测性落地、数据层故障路径）
-- 📅 v3-F 档：生产化地基（fork 治理、Consul TTL check、会话与踢人收尾、过载保护）
-- ✅ **v3-G 档：HTTP 一等公民**（`WithHTTPService` + 路由/中间件/限流/鉴权 + HTTP→RPC 桥 +
-  共享 D3 优雅停机），把"常规 http web 服务 / 分布式 web 服务 / 分布式游戏服务"三场景讲清
-- 📅 更远期：
+- ✅ **v3-D 档：止血与发布可用**（已随 v2.0.0 发布）——消灭 P0（串包、单进程网关、
+  优雅停机、下游可消费、凭据卫生、登录鉴权地基），让框架"对外存在"
+- ✅ **v3-E 档：接线收尾**（已随 v2.0.0 发布）——策略管道全覆盖、配置系统收敛、
+  可观测性落地、数据层故障路径
+- ✅ **v3-F 档：生产化地基**（已随 v2.0.0 发布）——fork 治理（rpcx / rpcx-consul 迁移
+  为带 `/v2` 后缀的自有 module path）、Consul TTL check、会话与踢人收尾、过载保护
+- ✅ **v3-G 档：HTTP 一等公民**（已随 v2.0.0 发布）——`WithHTTPService` + 路由/中间件/
+  限流/鉴权 + HTTP→RPC 桥 + 共享 D3 优雅停机，把"常规 http web 服务 / 分布式 web 服务 /
+  分布式游戏服务"三场景讲清
+- 📅 更远期（v2.x 后续小版本）：
   - DB 层真正的分库分表（sqlBuilder 重构）
   - OpenTelemetry / Prometheus adapter 官方 subpackage
 
@@ -621,4 +634,4 @@ MIT License — 见 [LICENSE](LICENSE)。
 
 ---
 
-*tgf v2-alpha（D 档止血中）· 最后更新 2026-06-10*
+*tgf v2.0.0 · 最后更新 2026-06-11*

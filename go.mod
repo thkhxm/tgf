@@ -1,4 +1,4 @@
-module github.com/thkhxm/tgf
+module github.com/thkhxm/tgf/v2
 
 go 1.26.0
 

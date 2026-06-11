@@ -41,7 +41,7 @@ import (
 	"testing"
 	"time"
 
-	tgfconfig "github.com/thkhxm/tgf/config"
+	tgfconfig "github.com/thkhxm/tgf/v2/config"
 )
 
 func TestIT_ServeAdmin_AuthFailClosedThenTokenFlow(t *testing.T) {

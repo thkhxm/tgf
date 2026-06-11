@@ -10,9 +10,9 @@ import (
 	"sync"
 	"time"
 
-	"github.com/thkhxm/tgf/log"
-	"github.com/thkhxm/tgf/metrics"
-	"github.com/thkhxm/tgf/trace"
+	"github.com/thkhxm/tgf/v2/log"
+	"github.com/thkhxm/tgf/v2/metrics"
+	"github.com/thkhxm/tgf/v2/trace"
 )
 
 //***************************************************

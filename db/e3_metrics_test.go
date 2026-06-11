@@ -8,7 +8,7 @@ import (
 	"errors"
 	"testing"
 
-	"github.com/thkhxm/tgf/metrics"
+	"github.com/thkhxm/tgf/v2/metrics"
 )
 
 // memProviderForTest 安装内存 Provider 并在测试结束恢复原 Provider。

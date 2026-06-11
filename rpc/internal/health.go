@@ -9,8 +9,8 @@ import (
 	"time"
 
 	"github.com/hashicorp/consul/api"
-	"github.com/thkhxm/tgf"
-	"github.com/thkhxm/tgf/log"
+	"github.com/thkhxm/tgf/v2"
+	"github.com/thkhxm/tgf/v2/log"
 )
 
 //***************************************************

@@ -18,7 +18,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/thkhxm/tgf/metrics"
+	"github.com/thkhxm/tgf/v2/metrics"
 )
 
 func TestResolveMethodPolicy_MissingReturnsNil(t *testing.T) {

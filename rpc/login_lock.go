@@ -29,12 +29,12 @@ import (
 	"github.com/bsm/redislock"
 	"github.com/redis/go-redis/v9"
 	"github.com/thkhxm/rpcx/v2/client"
-	"github.com/thkhxm/tgf"
-	"github.com/thkhxm/tgf/db"
-	"github.com/thkhxm/tgf/log"
-	"github.com/thkhxm/tgf/metrics"
-	"github.com/thkhxm/tgf/rpc/internal"
-	"github.com/thkhxm/tgf/util"
+	"github.com/thkhxm/tgf/v2"
+	"github.com/thkhxm/tgf/v2/db"
+	"github.com/thkhxm/tgf/v2/log"
+	"github.com/thkhxm/tgf/v2/metrics"
+	"github.com/thkhxm/tgf/v2/rpc/internal"
+	"github.com/thkhxm/tgf/v2/util"
 )
 
 // loginLockHandle 包装登录锁的释放句柄。生产实现是 *redislockHandle（Redis）

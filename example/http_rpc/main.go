@@ -49,11 +49,11 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/thkhxm/tgf"
-	"github.com/thkhxm/tgf/log"
-	"github.com/thkhxm/tgf/rpc"
-	"github.com/thkhxm/tgf/trace"
-	"github.com/thkhxm/tgf/web"
+	"github.com/thkhxm/tgf/v2"
+	"github.com/thkhxm/tgf/v2/log"
+	"github.com/thkhxm/tgf/v2/rpc"
+	"github.com/thkhxm/tgf/v2/trace"
+	"github.com/thkhxm/tgf/v2/web"
 	"go.uber.org/zap"
 )
 

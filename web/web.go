@@ -40,7 +40,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/thkhxm/tgf/log"
+	"github.com/thkhxm/tgf/v2/log"
 )
 
 //***************************************************

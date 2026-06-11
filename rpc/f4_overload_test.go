@@ -28,7 +28,7 @@ import (
 
 	"github.com/gorilla/websocket"
 	"github.com/thkhxm/rpcx/v2/share"
-	"github.com/thkhxm/tgf"
+	"github.com/thkhxm/tgf/v2"
 	"golang.org/x/net/context"
 )
 

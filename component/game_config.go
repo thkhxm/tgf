@@ -12,9 +12,9 @@ import (
 
 	"github.com/cornelk/hashmap"
 	"github.com/fsnotify/fsnotify"
-	"github.com/thkhxm/tgf/db"
-	"github.com/thkhxm/tgf/log"
-	"github.com/thkhxm/tgf/util"
+	"github.com/thkhxm/tgf/v2/db"
+	"github.com/thkhxm/tgf/v2/log"
+	"github.com/thkhxm/tgf/v2/util"
 )
 
 //***************************************************

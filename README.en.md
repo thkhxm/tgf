@@ -1,7 +1,7 @@
 # tgf
 
 [![Go Report Card](https://goreportcard.com/badge/github.com/thkhxm/tgf)](https://goreportcard.com/report/github.com/thkhxm/tgf)
-[![Go Version](https://img.shields.io/badge/go-1.24%2B-blue)](https://go.dev/)
+[![Go Version](https://img.shields.io/badge/go-1.26%2B-blue)](https://go.dev/)
 [![License](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
 
 **tgf** is a distributed game server framework written in Go that also makes
@@ -60,7 +60,7 @@ single-process prototype to distributed deployment, just drop the
 ## Quick start
 
 See the "5-minute quick start" section in the main [`README.md`](README.md),
-or run one of the 9 examples in [`example/`](example/):
+or run one of the 11 examples in [`example/`](example/):
 
 ```bash
 cd example/single_process && go run .
@@ -79,7 +79,7 @@ Most examples do not require Redis / MySQL / Consul — `go run .` just works.
 ## Links
 
 - Repository: [github.com/thkhxm/tgf](https://github.com/thkhxm/tgf)
-- API reference: [pkg.go.dev/github.com/thkhxm/tgf](https://pkg.go.dev/github.com/thkhxm/tgf)
+- API reference: [pkg.go.dev/github.com/thkhxm/tgf/v2](https://pkg.go.dev/github.com/thkhxm/tgf/v2)
 - Project docs: [thkhxm.github.io/tgf_writerside](https://thkhxm.github.io/tgf_writerside/starter-topic.html)
 
 ## Contributing

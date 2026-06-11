@@ -19,7 +19,7 @@ import (
 	"sync/atomic"
 	"time"
 
-	tgfconfig "github.com/thkhxm/tgf/config"
+	tgfconfig "github.com/thkhxm/tgf/v2/config"
 )
 
 // defaultRPCTimeoutNanos 以纳秒保存全局默认 RPC 超时；用 atomic.Int64 保证

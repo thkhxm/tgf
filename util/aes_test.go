@@ -2,7 +2,7 @@ package util_test
 
 import (
 	"encoding/hex"
-	"github.com/thkhxm/tgf/util"
+	"github.com/thkhxm/tgf/v2/util"
 	"testing"
 )
 

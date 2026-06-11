@@ -25,8 +25,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/thkhxm/tgf"
-	"github.com/thkhxm/tgf/db"
+	"github.com/thkhxm/tgf/v2"
+	"github.com/thkhxm/tgf/v2/db"
 	"golang.org/x/net/context"
 )
 

@@ -14,7 +14,7 @@ import (
 	"testing"
 
 	"github.com/joho/godotenv"
-	tgfconfig "github.com/thkhxm/tgf/config"
+	tgfconfig "github.com/thkhxm/tgf/v2/config"
 )
 
 // boolToInt 把新 API 的 bool 字段映射为旧 API GetStrConfig[int] 的语义。

@@ -1,0 +1,63 @@
+name: ✨ 功能建议
+description: 为 tgf v2 框架提议新功能 / API 改进 / 体验优化
+title: "[feat] "
+labels: ["enhancement"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        感谢提建议！请描述你想解决的**问题场景**，而不只是某个具体实现——
+        这样我们更容易找到最贴合框架架构的方案。
+
+  - type: checkboxes
+    id: preflight
+    attributes:
+      label: 提交前检查
+      options:
+        - label: 我已在 [现有 issue](https://github.com/thkhxm/tgf/issues?q=is%3Aissue) 中搜索过，确认没有重复的建议
+          required: true
+        - label: 我已确认该能力当前框架确实未提供（已查阅 README / `doc/` / `example/`）
+          required: true
+
+  - type: dropdown
+    id: scene
+    attributes:
+      label: 相关场景
+      description: 这个建议主要服务于哪种使用形态？
+      options:
+        - 单进程（WithSingleProcess）
+        - 分布式游戏服务（网关 + 跨 module RPC）
+        - HTTP web 服务（web 包）
+        - 数据层 / 缓存（db 包）
+        - 可观测性（metrics / trace / log）
+        - 配置 / 构建 / 工程化
+        - 其它 / 跨多个模块
+    validations:
+      required: true
+
+  - type: textarea
+    id: problem
+    attributes:
+      label: 要解决的问题
+      description: 你遇到了什么痛点 / 现在只能怎么绕过？
+      placeholder: 现在做 X 必须手写 Y，框架没有现成支持……
+    validations:
+      required: true
+
+  - type: textarea
+    id: proposal
+    attributes:
+      label: 期望的方案
+      description: 你设想的 API 形态 / 行为。有伪代码或参考实现更好。
+      placeholder: |
+        希望有 rpc.WithXxx(...) 选项 / web 中间件 / db.Xxx 等……
+    validations:
+      required: true
+
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: 替代方案 / 补充
+      description: 你考虑过的其它做法、参考的其它框架、是否愿意提 PR 实现等。
+    validations:
+      required: false

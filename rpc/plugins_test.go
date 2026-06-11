@@ -1,7 +1,7 @@
 package rpc_test
 
 import (
-	"github.com/thkhxm/tgf/rpc"
+	"github.com/thkhxm/tgf/v2/rpc"
 	"testing"
 )
 

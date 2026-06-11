@@ -17,8 +17,8 @@ import (
 	"time"
 
 	"github.com/cornelk/hashmap"
-	"github.com/thkhxm/tgf/log"
-	"github.com/thkhxm/tgf/util"
+	"github.com/thkhxm/tgf/v2/log"
+	"github.com/thkhxm/tgf/v2/util"
 	"google.golang.org/protobuf/proto"
 )
 

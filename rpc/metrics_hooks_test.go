@@ -11,7 +11,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/thkhxm/tgf/metrics"
+	"github.com/thkhxm/tgf/v2/metrics"
 )
 
 func TestObserveRPCCall_UpdatesHistogramAndCounters(t *testing.T) {

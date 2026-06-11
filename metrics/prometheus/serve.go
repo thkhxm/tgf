@@ -9,7 +9,7 @@ import (
 	"time"
 
 	"github.com/prometheus/client_golang/prometheus/promhttp"
-	"github.com/thkhxm/tgf/log"
+	"github.com/thkhxm/tgf/v2/log"
 )
 
 // MetricsTokenEnv 是 /metrics 端点鉴权口令的环境变量名。

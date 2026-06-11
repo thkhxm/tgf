@@ -20,7 +20,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/thkhxm/tgf"
+	"github.com/thkhxm/tgf/v2"
 )
 
 // startF3TestConn 启动一条 mockConn 连接并等待 handleConn 把它登记进 users 表，

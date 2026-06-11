@@ -9,10 +9,10 @@ import (
 
 	"github.com/rs/cors"
 	"github.com/thkhxm/rpcx/v2/client"
-	"github.com/thkhxm/tgf"
-	tgfconfig "github.com/thkhxm/tgf/config"
-	"github.com/thkhxm/tgf/exp/admin"
-	"github.com/thkhxm/tgf/log"
+	"github.com/thkhxm/tgf/v2"
+	tgfconfig "github.com/thkhxm/tgf/v2/config"
+	"github.com/thkhxm/tgf/v2/exp/admin"
+	"github.com/thkhxm/tgf/v2/log"
 )
 
 //***************************************************

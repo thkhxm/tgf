@@ -11,7 +11,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/thkhxm/tgf/rpc/internal"
+	"github.com/thkhxm/tgf/v2/rpc/internal"
 	"golang.org/x/net/context"
 )
 

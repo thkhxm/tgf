@@ -13,7 +13,7 @@ import (
 	"time"
 
 	"github.com/thkhxm/rpcx/v2/client"
-	"github.com/thkhxm/tgf"
+	"github.com/thkhxm/tgf/v2"
 )
 
 // TestCircuitBreaker_HalfOpenProbeReleasedOnRateLimitReject 是 E1 修复的核心回归：

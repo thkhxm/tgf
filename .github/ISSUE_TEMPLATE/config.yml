@@ -1,0 +1,14 @@
+blank_issues_enabled: false
+contact_links:
+  - name: 📖 文档（先看这里）
+    url: https://github.com/thkhxm/tgf/tree/main/doc
+    about: 架构（architecture.md）、v1→v2 迁移指南、可观测性接入。多数「怎么用」的问题这里有答案。
+  - name: 🚀 可运行示例
+    url: https://github.com/thkhxm/tgf/tree/main/example
+    about: 单进程 / HTTP REST / HTTP+RPC 等 11 个可直接 go run 的示例，照着改最快。
+  - name: 🤝 提 Issue 与维护流程
+    url: https://github.com/thkhxm/tgf/blob/main/doc/issue-workflow.md
+    about: 一键提交命令模板、诊断信息收集与脱敏规则、维护者拉取/分诊/关闭流程。
+  - name: 💬 QQ 交流群
+    url: https://qm.qq.com/q/
+    about: QQ 群 7400585，适合快速提问、讨论用法与方案（非 bug 跟踪）。

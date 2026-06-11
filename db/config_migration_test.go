@@ -10,7 +10,7 @@ import (
 	"testing"
 	"time"
 
-	tgfconfig "github.com/thkhxm/tgf/config"
+	tgfconfig "github.com/thkhxm/tgf/v2/config"
 )
 
 func TestMysqlDSNFromConfig_TableDriven(t *testing.T) {

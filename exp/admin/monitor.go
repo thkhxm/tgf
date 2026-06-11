@@ -3,7 +3,7 @@ package admin
 import (
 	"github.com/bytedance/sonic"
 	"github.com/cornelk/hashmap"
-	"github.com/thkhxm/tgf"
+	"github.com/thkhxm/tgf/v2"
 	"net/http"
 	"sync/atomic"
 	"time"

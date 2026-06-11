@@ -14,8 +14,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/thkhxm/tgf/metrics"
-	"github.com/thkhxm/tgf/trace"
+	"github.com/thkhxm/tgf/v2/metrics"
+	"github.com/thkhxm/tgf/v2/trace"
 )
 
 // TestChain_Order 验证 Chain 的包装顺序：mws[0] 最外层；nil 中间件被跳过。

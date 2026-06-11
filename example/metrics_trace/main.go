@@ -11,8 +11,8 @@ import (
 	"fmt"
 	"math/rand"
 
-	"github.com/thkhxm/tgf/metrics"
-	"github.com/thkhxm/tgf/trace"
+	"github.com/thkhxm/tgf/v2/metrics"
+	"github.com/thkhxm/tgf/v2/trace"
 )
 
 func main() {

@@ -1,0 +1,159 @@
+name: 🐛 Bug 报告
+description: 报告 tgf v2 框架的缺陷（崩溃 / 行为异常 / 数据不一致 / 性能问题等）
+title: "[bug] "
+labels: ["bug", "needs-repro"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        感谢反馈 bug！请尽量填全下面的信息——**可复现的最小代码 + 准确的版本/环境**
+        能让我们最快定位问题。
+
+        > ⚠️ **粘贴日志 / 配置前务必脱敏**：删除 `LoginTokenSecret`、`ADMIN_TOKEN`、
+        > Redis/MySQL 口令（`RedisPassword` / `MySqlPwd`）、Consul token、业务密钥等
+        > 任何凭据。GitHub Issue 是**公开**的，泄露的凭据请立即在源头轮换。
+
+  - type: checkboxes
+    id: preflight
+    attributes:
+      label: 提交前检查
+      description: 请确认以下事项（缺一不可）。
+      options:
+        - label: 我已阅读 README 与 `doc/`（架构 / 迁移指南 / 可观测性）相关章节，确认这不是用法问题
+          required: true
+        - label: 我已在 [现有 issue](https://github.com/thkhxm/tgf/issues?q=is%3Aissue) 中搜索过，确认没有重复
+          required: true
+        - label: 我已从下方所有日志 / 配置片段中删除了凭据（密钥 / 口令 / token）
+          required: true
+
+  - type: input
+    id: tgf-version
+    attributes:
+      label: tgf 版本
+      description: 发布版形如 `v2.0.0`；源码构建请给 commit（`git rev-parse --short HEAD`）。
+      placeholder: "v2.0.0 / 或 commit abc1234"
+    validations:
+      required: true
+
+  - type: input
+    id: go-version
+    attributes:
+      label: Go 版本
+      description: "`go version` 的输出。"
+      placeholder: "go1.26.4 windows/amd64"
+    validations:
+      required: true
+
+  - type: input
+    id: os
+    attributes:
+      label: 操作系统 / 部署环境
+      description: OS + 架构，容器请注明镜像 / K8s。
+      placeholder: "Windows 10 / Ubuntu 22.04 / Docker(golang:1.26) / K8s"
+    validations:
+      required: true
+
+  - type: dropdown
+    id: scene
+    attributes:
+      label: 使用场景
+      description: 这个 bug 出现在哪种部署形态下？
+      options:
+        - 单进程（WithSingleProcess，零 Consul）
+        - 分布式（多节点 + Consul 服务发现）
+        - HTTP web 服务（WithHTTPService / WithHTTPServiceConsul）
+        - 混合（HTTP 接入层 + RPC 后端 / HTTP→RPC 桥）
+        - 其它 / 不确定
+    validations:
+      required: true
+
+  - type: dropdown
+    id: cache-tier
+    attributes:
+      label: 数据档位
+      description: 数据层用的缓存档（对应 WithCache 选项）。与数据无关的 bug 选「不涉及」即可。
+      options:
+        - CacheModuleClose（零外部依赖）
+        - CacheModuleRedis（Redis 热缓存）
+        - Redis + MySQL（write-behind 落库）
+        - 不涉及 / 不确定
+    validations:
+      required: true
+
+  - type: textarea
+    id: repro-steps
+    attributes:
+      label: 复现步骤
+      description: 一步步写清楚怎么触发。能稳定复现的请注明复现概率。
+      placeholder: |
+        1. 用 WithSingleProcess + WithGatewayOptions{TCPPort:"8082"} 启动 server
+        2. 客户端登录后调用 xxx.Yyy
+        3. 第 N 次调用时 panic / 返回错误 ...
+    validations:
+      required: true
+
+  - type: textarea
+    id: expected
+    attributes:
+      label: 期望行为
+      placeholder: 调用应返回 ... / 连接应保持 ...
+    validations:
+      required: true
+
+  - type: textarea
+    id: actual
+    attributes:
+      label: 实际行为
+      placeholder: 实际返回 ... / panic 堆栈见下方日志 ...
+    validations:
+      required: true
+
+  - type: textarea
+    id: mre
+    attributes:
+      label: 最小复现代码（MRE）
+      description: |
+        一段**能直接 `go run` 复现**的最小代码（去掉与 bug 无关的业务）。
+        强烈建议参考 `example/single_process`、`example/http_rest`、`example/http_rpc` 裁剪。
+        这是最快定位的关键——有 MRE 的 issue 会被优先处理。
+      render: go
+      placeholder: |
+        package main
+
+        import (
+            "github.com/thkhxm/tgf/v2/rpc"
+        )
+
+        func main() {
+            rpc.NewRPCServer().
+                WithSingleProcess().
+                WithService(&S{Module: rpc.Module{Name: "demo"}}).
+                Run()
+            // ... 触发 bug 的最小调用
+        }
+    validations:
+      required: false
+
+  - type: textarea
+    id: logs
+    attributes:
+      label: 相关日志 / 堆栈
+      description: |
+        粘贴报错日志、panic 堆栈、关键 `log.*Tag(...)` 输出。
+        **粘贴前再次确认已删除 `LoginTokenSecret` / `ADMIN_TOKEN` / `RedisPassword` /
+        `MySqlPwd` / Consul token 等任何凭据。** 本框可放心粘贴文本，会自动按代码块渲染。
+      render: shell
+      placeholder: |
+        panic: runtime error: ...
+        goroutine 42 [running]:
+        github.com/thkhxm/tgf/v2/rpc....
+    validations:
+      required: false
+
+  - type: textarea
+    id: extra
+    attributes:
+      label: 补充信息
+      description: 任何有助于定位的额外上下文（配置片段（**已脱敏**）、流量规模、相关 PR / issue 链接等）。
+    validations:
+      required: false

@@ -27,7 +27,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/thkhxm/tgf"
+	"github.com/thkhxm/tgf/v2"
 )
 
 // TestIT_Fault_MySQLDown_CompensateAndSelfHeal 全链路验证 MySQL 断电场景：

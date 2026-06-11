@@ -8,8 +8,8 @@ import (
 	"sync"
 
 	"github.com/joho/godotenv"
-	tgfconfig "github.com/thkhxm/tgf/config"
-	"github.com/thkhxm/tgf/util"
+	tgfconfig "github.com/thkhxm/tgf/v2/config"
+	"github.com/thkhxm/tgf/v2/util"
 )
 
 //***************************************************

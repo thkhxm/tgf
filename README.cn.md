@@ -37,7 +37,7 @@ rpc.NewRPCServer().
 ## 快速上手
 
 见主文档 [`README.md`](README.md) 的"5 分钟快速上手"章节。
-可以直接跑 [`example/`](example/) 下的 9 个示例项目：
+可以直接跑 [`example/`](example/) 下的 11 个示例项目：
 
 ```bash
 cd example/single_process && go run .
@@ -54,7 +54,7 @@ cd example/single_process && go run .
 ## 外部链接
 
 - 项目地址：[github.com/thkhxm/tgf](https://github.com/thkhxm/tgf)
-- API 参考：[pkg.go.dev/github.com/thkhxm/tgf](https://pkg.go.dev/github.com/thkhxm/tgf)
+- API 参考：[pkg.go.dev/github.com/thkhxm/tgf/v2](https://pkg.go.dev/github.com/thkhxm/tgf/v2)
 - 项目文档：[thkhxm.github.io/tgf_writerside](https://thkhxm.github.io/tgf_writerside/starter-topic.html)
 - 国内镜像：[tgf.yamigame.net:8080](http://tgf.yamigame.net:8080/)
 

@@ -27,10 +27,10 @@ import (
 	"testing"
 	"time"
 
-	"github.com/thkhxm/tgf"
-	"github.com/thkhxm/tgf/db"
-	"github.com/thkhxm/tgf/trace"
-	"github.com/thkhxm/tgf/web"
+	"github.com/thkhxm/tgf/v2"
+	"github.com/thkhxm/tgf/v2/db"
+	"github.com/thkhxm/tgf/v2/trace"
+	"github.com/thkhxm/tgf/v2/web"
 )
 
 // g1EchoService 是 G1 用例的最小后端服务：回显入参并捕获链路 traceId。

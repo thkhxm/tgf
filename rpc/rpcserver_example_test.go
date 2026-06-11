@@ -3,7 +3,7 @@
 
 package rpc_test
 
-import "github.com/thkhxm/tgf/rpc"
+import "github.com/thkhxm/tgf/v2/rpc"
 
 //***************************************************
 //@Link  https://github.com/thkhxm/tgf

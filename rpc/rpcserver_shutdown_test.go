@@ -12,7 +12,7 @@ import (
 	"time"
 
 	"github.com/thkhxm/rpcx/v2/server"
-	"github.com/thkhxm/tgf"
+	"github.com/thkhxm/tgf/v2"
 )
 
 // shutdownRecorder 按序记录停机各步骤的调用。

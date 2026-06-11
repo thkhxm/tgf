@@ -6,8 +6,8 @@ import (
 	"errors"
 	"fmt"
 	_ "github.com/go-sql-driver/mysql"
-	tgfconfig "github.com/thkhxm/tgf/config"
-	"github.com/thkhxm/tgf/log"
+	tgfconfig "github.com/thkhxm/tgf/v2/config"
+	"github.com/thkhxm/tgf/v2/log"
 	"time"
 )
 
