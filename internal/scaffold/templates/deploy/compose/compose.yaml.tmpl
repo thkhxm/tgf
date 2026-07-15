@@ -1,0 +1,96 @@
+services:
+{{if .Distributed}}  gateway:
+    build:
+      context: .
+      args:
+        MAIN_PKG: ./cmd/gateway
+    environment:
+      ServiceAddress: gateway
+      LoginTokenSecret: ${LOGIN_TOKEN_SECRET:?LOGIN_TOKEN_SECRET is required}
+      RedisAddr: redis:6379
+      ConsulAddress: consul:8500
+{{if .UseKCP}}      KCP_AEAD_KEY_HEX: ${KCP_AEAD_KEY_HEX:?KCP_AEAD_KEY_HEX is required}
+{{end}}    ports:
+      - "8082:8082"
+{{if .UseKCP}}      - "8300:8300/udp"
+{{end}}    depends_on:
+      redis:
+        condition: service_healthy
+      consul:
+        condition: service_healthy
+
+  game:
+    build:
+      context: .
+      args:
+        MAIN_PKG: ./cmd/game
+    environment:
+      ServiceAddress: game
+      RedisAddr: redis:6379
+      ConsulAddress: consul:8500
+{{if .UseMySQL}}      MySqlAddr: mysql
+      MySqlPort: "3306"
+      MySqlUser: root
+      MySqlPwd: ""
+      MySqlDB: {{.Profile}}
+{{end}}    depends_on:
+      redis:
+        condition: service_healthy
+      consul:
+        condition: service_healthy
+{{if .UseMySQL}}      mysql:
+        condition: service_healthy
+{{end}}{{else}}  app:
+    build:
+      context: .
+      args:
+        MAIN_PKG: {{.MainPackage}}
+    environment:
+{{if .UseGateway}}      LoginTokenSecret: ${LOGIN_TOKEN_SECRET:?LOGIN_TOKEN_SECRET is required}
+{{end}}{{if .HTTP}}      ADMIN_TOKEN: ${ADMIN_TOKEN:-}
+{{end}}{{if .UseRedis}}      RedisAddr: redis:6379
+{{end}}{{if .UseMySQL}}      MySqlAddr: mysql
+      MySqlPort: "3306"
+      MySqlUser: root
+      MySqlPwd: ""
+      MySqlDB: {{.Profile}}
+{{end}}{{if .UseKCP}}      KCP_AEAD_KEY_HEX: ${KCP_AEAD_KEY_HEX:?KCP_AEAD_KEY_HEX is required}
+{{end}}{{if .UseGateway}}    ports:
+      - "8082:8082"
+{{if .UseKCP}}      - "8300:8300/udp"
+{{end}}{{else if .HTTP}}    ports:
+      - "8090:8090"
+{{end}}{{if .UseRedis}}    depends_on:
+      redis:
+        condition: service_healthy
+{{if .UseMySQL}}      mysql:
+        condition: service_healthy
+{{end}}{{end}}{{end}}{{if .UseRedis}}
+  redis:
+    image: redis:7-alpine
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 2s
+      timeout: 1s
+      retries: 20
+{{end}}{{if .Distributed}}
+  consul:
+    image: hashicorp/consul:1.20
+    command: agent -dev -client=0.0.0.0
+    healthcheck:
+      test: ["CMD", "consul", "members"]
+      interval: 2s
+      timeout: 1s
+      retries: 20
+{{end}}{{if .UseMySQL}}
+  mysql:
+    image: mysql:8
+    environment:
+      MYSQL_ALLOW_EMPTY_PASSWORD: "yes"
+      MYSQL_DATABASE: {{.Profile}}
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "127.0.0.1"]
+      interval: 3s
+      timeout: 2s
+      retries: 30
+{{end}}

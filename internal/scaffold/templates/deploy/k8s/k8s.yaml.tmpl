@@ -1,0 +1,213 @@
+{{if .Distributed}}apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{.Profile}}-gateway
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: {{.Profile}}-gateway
+  template:
+    metadata:
+      labels:
+        app: {{.Profile}}-gateway
+    spec:
+      terminationGracePeriodSeconds: 30
+      containers:
+        - name: gateway
+          image: replace-me/{{.Profile}}-gateway:latest
+          ports:
+            - name: gateway-tcp
+              containerPort: 8082
+{{if .UseKCP}}            - name: gateway-kcp
+              containerPort: 8300
+              protocol: UDP
+{{end}}          env:
+            - name: ServiceAddress
+              valueFrom:
+                fieldRef:
+                  fieldPath: status.podIP
+            - name: RedisAddr
+              value: redis:6379
+            - name: ConsulAddress
+              value: consul:8500
+            - name: LoginTokenSecret
+              valueFrom:
+                secretKeyRef:
+                  name: {{.Profile}}-secrets
+                  key: login-token-secret
+{{if .UseKCP}}            - name: KCP_AEAD_KEY_HEX
+              valueFrom:
+                secretKeyRef:
+                  name: {{.Profile}}-secrets
+                  key: kcp-aead-key-hex
+{{end}}          readinessProbe:
+            tcpSocket:
+              port: gateway-tcp
+            periodSeconds: 5
+          livenessProbe:
+            tcpSocket:
+              port: gateway-tcp
+            periodSeconds: 10
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{.Profile}}-game
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: {{.Profile}}-game
+  template:
+    metadata:
+      labels:
+        app: {{.Profile}}-game
+    spec:
+      terminationGracePeriodSeconds: 30
+      containers:
+        - name: game
+          image: replace-me/{{.Profile}}-game:latest
+          ports:
+            - name: rpc
+              containerPort: 8081
+          env:
+            - name: ServiceAddress
+              valueFrom:
+                fieldRef:
+                  fieldPath: status.podIP
+            - name: RedisAddr
+              value: redis:6379
+            - name: ConsulAddress
+              value: consul:8500
+{{if .UseMySQL}}            - name: MySqlAddr
+              value: mysql
+            - name: MySqlPort
+              value: "3306"
+            - name: MySqlUser
+              valueFrom:
+                secretKeyRef:
+                  name: {{.Profile}}-secrets
+                  key: mysql-user
+            - name: MySqlPwd
+              valueFrom:
+                secretKeyRef:
+                  name: {{.Profile}}-secrets
+                  key: mysql-password
+            - name: MySqlDB
+              value: {{.Profile}}
+{{end}}          readinessProbe:
+            tcpSocket:
+              port: rpc
+            periodSeconds: 5
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{.Profile}}-gateway
+spec:
+  selector:
+    app: {{.Profile}}-gateway
+  ports:
+    - name: tcp
+      port: 8082
+      targetPort: gateway-tcp
+{{if .UseKCP}}    - name: kcp
+      port: 8300
+      targetPort: gateway-kcp
+      protocol: UDP
+{{end}}{{else}}apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{.Profile}}
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: {{.Profile}}
+  template:
+    metadata:
+      labels:
+        app: {{.Profile}}
+    spec:
+      terminationGracePeriodSeconds: 30
+      containers:
+        - name: app
+          image: replace-me/{{.Profile}}:latest
+          ports:
+{{if .UseGateway}}            - name: gateway-tcp
+              containerPort: 8082
+{{if .UseKCP}}            - name: gateway-kcp
+              containerPort: 8300
+              protocol: UDP
+{{end}}{{else}}            - name: http
+              containerPort: 8090
+{{end}}          env:
+{{if .UseGateway}}            - name: LoginTokenSecret
+              valueFrom:
+                secretKeyRef:
+                  name: {{.Profile}}-secrets
+                  key: login-token-secret
+{{end}}{{if .HTTP}}            - name: ADMIN_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: {{.Profile}}-secrets
+                  key: admin-token
+                  optional: true
+{{end}}{{if .UseRedis}}            - name: RedisAddr
+              value: redis:6379
+{{end}}{{if .UseMySQL}}            - name: MySqlAddr
+              value: mysql
+            - name: MySqlPort
+              value: "3306"
+            - name: MySqlUser
+              valueFrom:
+                secretKeyRef:
+                  name: {{.Profile}}-secrets
+                  key: mysql-user
+            - name: MySqlPwd
+              valueFrom:
+                secretKeyRef:
+                  name: {{.Profile}}-secrets
+                  key: mysql-password
+            - name: MySqlDB
+              value: {{.Profile}}
+{{end}}{{if .UseKCP}}            - name: KCP_AEAD_KEY_HEX
+              valueFrom:
+                secretKeyRef:
+                  name: {{.Profile}}-secrets
+                  key: kcp-aead-key-hex
+{{end}}{{if .HTTP}}          readinessProbe:
+            httpGet:
+              path: /health
+              port: http
+            periodSeconds: 5
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: http
+            periodSeconds: 10
+{{else}}          readinessProbe:
+            tcpSocket:
+              port: gateway-tcp
+            periodSeconds: 5
+{{end}}---
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{.Profile}}
+spec:
+  selector:
+    app: {{.Profile}}
+  ports:
+{{if .UseGateway}}    - name: tcp
+      port: 8082
+      targetPort: gateway-tcp
+{{if .UseKCP}}    - name: kcp
+      port: 8300
+      targetPort: gateway-kcp
+      protocol: UDP
+{{end}}{{else}}    - name: http
+      port: 8090
+      targetPort: http
+{{end}}{{end}}

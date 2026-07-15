@@ -1,0 +1,63 @@
+package main
+
+import (
+	"context"
+	"encoding/json"
+	"fmt"
+	"net/http"
+	"os"
+
+	"github.com/thkhxm/tgf/v2"
+	"github.com/thkhxm/tgf/v2/config"
+	"github.com/thkhxm/tgf/v2/rpc"
+	"github.com/thkhxm/tgf/v2/web"
+)
+
+type PingRequest struct{}
+type PingReply struct { Message string }
+
+type PingService struct { rpc.Module }
+
+func newPingService() *PingService {
+	return &PingService{Module: rpc.Module{Name: "ping", Version: "1.0"}}
+}
+
+func (s *PingService) Startup() (bool, error) { return true, nil }
+
+func (s *PingService) Ping(_ context.Context, _ *PingRequest, reply *PingReply) error {
+	reply.Message = "pong"
+	return nil
+}
+
+func main() {
+	if _, err := config.Load(); err != nil {
+		fmt.Fprintln(os.Stderr, "load config:", err)
+		os.Exit(1)
+	}
+	<-rpc.NewRPCServer().
+		WithSingleProcess().
+		WithCache({{.CacheExpr}}).
+		WithService(newPingService()).
+		WithHTTPService(web.Options{Routes: func(router *web.Router) {
+			router.GET("/health", web.Health())
+			router.GET("/ping", pingHandler)
+		}}).
+		Run()
+}
+
+func pingHandler(w http.ResponseWriter, r *http.Request) {
+	backend, ok := web.BackendFromRequest(r)
+	if !ok {
+		http.Error(w, "backend unavailable", http.StatusInternalServerError)
+		return
+	}
+	var reply PingReply
+	if err := backend.Invoke(r.Context(), "ping", "Ping", &PingRequest{}, &reply); err != nil {
+		http.Error(w, "backend request failed", http.StatusBadGateway)
+		return
+	}
+	w.Header().Set("Content-Type", "application/json")
+	if err := json.NewEncoder(w).Encode(reply); err != nil {
+		http.Error(w, "encode response", http.StatusInternalServerError)
+	}
+}

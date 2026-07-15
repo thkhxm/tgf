@@ -1,0 +1,41 @@
+package main
+
+import (
+{{if .UseKCP}}	"encoding/hex"
+{{end}}	"fmt"
+	"os"
+{{if .UseKCP}}	"strings"
+{{end}}
+	"github.com/thkhxm/tgf/v2"
+	"github.com/thkhxm/tgf/v2/config"
+	"github.com/thkhxm/tgf/v2/rpc"
+	"{{.Module}}/internal/service"
+)
+
+func main() {
+	if _, err := config.Load(); err != nil {
+		fmt.Fprintln(os.Stderr, "load config:", err)
+		os.Exit(1)
+	}
+	gateway := rpc.GatewayOptions{
+{{if .UseTCP}}		TCPPort: "8082",
+{{end}}{{if .UseWS}}		WSPath: "/ws",
+{{end}}{{if .UseKCP}}		KCP: rpc.NewKCPBuilder("8300").WithAEADKey(mustKCPKey()),
+{{end}}	}
+	<-rpc.NewRPCServer().
+		WithSingleProcess().
+		WithCache({{.CacheExpr}}).
+		WithGatewayOptions(gateway).
+		WithService(service.NewPing()).
+		Run()
+}
+{{if .UseKCP}}
+func mustKCPKey() []byte {
+	key, err := hex.DecodeString(strings.TrimSpace(os.Getenv("KCP_AEAD_KEY_HEX")))
+	if err != nil || len(key) != 32 {
+		fmt.Fprintln(os.Stderr, "KCP_AEAD_KEY_HEX must decode to exactly 32 bytes")
+		os.Exit(1)
+	}
+	return key
+}
+{{end}}

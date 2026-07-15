@@ -1,0 +1,21 @@
+package main
+
+import (
+	"fmt"
+	"os"
+
+	"github.com/thkhxm/tgf/v2"
+	"github.com/thkhxm/tgf/v2/config"
+	"github.com/thkhxm/tgf/v2/rpc"
+	"{{.Module}}/internal/service"
+)
+
+func main() {
+	if _, err := config.Load(); err != nil {
+		fmt.Fprintln(os.Stderr, "load config:", err)
+		os.Exit(1)
+	}
+	server := rpc.NewRPCServer()
+	server.WithCustomServiceAddress()
+	<-server.WithCache({{.CacheExpr}}).WithService(service.NewUser()).Run()
+}

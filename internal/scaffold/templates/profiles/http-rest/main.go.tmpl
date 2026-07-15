@@ -1,0 +1,35 @@
+package main
+
+import (
+	"encoding/json"
+	"fmt"
+	"net/http"
+	"os"
+
+	"github.com/thkhxm/tgf/v2"
+	"github.com/thkhxm/tgf/v2/config"
+	"github.com/thkhxm/tgf/v2/rpc"
+	"github.com/thkhxm/tgf/v2/web"
+)
+
+func main() {
+	if _, err := config.Load(); err != nil {
+		fmt.Fprintln(os.Stderr, "load config:", err)
+		os.Exit(1)
+	}
+	<-rpc.NewRPCServer().
+		WithStandalone().
+		WithCache({{.CacheExpr}}).
+		WithHTTPService(web.Options{Routes: func(router *web.Router) {
+			router.GET("/health", web.Health())
+			router.GET("/hello", hello)
+		}}).
+		Run()
+}
+
+func hello(w http.ResponseWriter, _ *http.Request) {
+	w.Header().Set("Content-Type", "application/json")
+	if err := json.NewEncoder(w).Encode(map[string]string{"message": "hello"}); err != nil {
+		http.Error(w, "encode response", http.StatusInternalServerError)
+	}
+}

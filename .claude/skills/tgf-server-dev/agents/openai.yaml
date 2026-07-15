@@ -1,0 +1,8 @@
+interface:
+  display_name: "TGF Server Development"
+  short_description: "用 tgf v2 生成并验收一致的 Go 游戏服务项目"
+  brand_color: "#0F766E"
+  default_prompt: "使用 $tgf-server-dev 生成一个依赖 GitHub tgf v2 模块并通过来源与构建验收的服务端项目。"
+
+policy:
+  allow_implicit_invocation: true

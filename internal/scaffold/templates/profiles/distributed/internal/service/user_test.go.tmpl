@@ -1,0 +1,18 @@
+package service
+
+import (
+	"context"
+	"testing"
+
+	"{{.Module}}/internal/api"
+)
+
+func TestUserGet(t *testing.T) {
+	var reply api.GetUserReply
+	if err := NewUser().Get(context.Background(), &api.GetUserRequest{UserID: "u1"}, &reply); err != nil {
+		t.Fatal(err)
+	}
+	if reply.UserID != "u1" || reply.Level != 1 {
+		t.Fatalf("unexpected reply: %+v", reply)
+	}
+}

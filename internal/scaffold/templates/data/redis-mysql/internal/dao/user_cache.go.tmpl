@@ -1,0 +1,33 @@
+package dao
+
+import (
+	"time"
+
+	"github.com/thkhxm/tgf/v2/db"
+)
+
+type User struct {
+	db.Model
+	ID    string `orm:"pk"`
+	Level int
+}
+
+func (u *User) GetTableName() string { return "user" }
+
+var userFailureQueue = db.NewMemoryFailureQueue()
+
+func NewUserCache() db.IAutoCacheService[string, *User] {
+	return db.NewAutoCacheBuilder[string, *User]().
+		WithMemCache(3600).
+		WithAutoCache("user", time.Hour).
+		WithLongevityCache(time.Second).
+		WithLongevityGroupSize(200).
+		WithLongevityRetry(3).
+		WithLongevityFailureQueue(userFailureQueue).
+		New()
+}
+
+// ReplayUserFailures exposes an explicit startup replay hook for application wiring.
+func ReplayUserFailures(flush func(db.FailurePayload) error) error {
+	return db.ReplayFailureQueue(userFailureQueue, flush)
+}

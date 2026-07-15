@@ -1,0 +1,16 @@
+package main
+
+import (
+	"context"
+	"testing"
+)
+
+func TestPingService(t *testing.T) {
+	var reply PingReply
+	if err := newPingService().Ping(context.Background(), &PingRequest{}, &reply); err != nil {
+		t.Fatal(err)
+	}
+	if reply.Message != "pong" {
+		t.Fatalf("message = %q, want pong", reply.Message)
+	}
+}

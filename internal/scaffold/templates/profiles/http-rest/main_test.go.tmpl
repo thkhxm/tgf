@@ -1,0 +1,15 @@
+package main
+
+import (
+	"net/http/httptest"
+	"strings"
+	"testing"
+)
+
+func TestHello(t *testing.T) {
+	recorder := httptest.NewRecorder()
+	hello(recorder, httptest.NewRequest("GET", "/hello", nil))
+	if recorder.Code != 200 || !strings.Contains(recorder.Body.String(), "hello") {
+		t.Fatalf("unexpected response: code=%d body=%s", recorder.Code, recorder.Body.String())
+	}
+}

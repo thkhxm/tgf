@@ -1,0 +1,22 @@
+package service
+
+import (
+	"context"
+
+	"github.com/thkhxm/tgf/v2/rpc"
+	"{{.Module}}/internal/api"
+)
+
+type User struct{ rpc.Module }
+
+func NewUser() *User {
+	return &User{Module: rpc.Module{Name: "user", Version: "1.0"}}
+}
+
+func (s *User) Startup() (bool, error) { return true, nil }
+
+func (s *User) Get(_ context.Context, request *api.GetUserRequest, reply *api.GetUserReply) error {
+	reply.UserID = request.UserID
+	reply.Level = 1
+	return nil
+}

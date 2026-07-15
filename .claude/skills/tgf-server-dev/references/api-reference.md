@@ -1,6 +1,6 @@
 # tgf v2 API 速查（业务侧）
 
-> 本表内容逐项核对自 tgf 源码（feature/v2，v2.1.0）。遇到本表没覆盖的 API，
+> 本表内容逐项核对自 tgf v2 主干与公开 v2.1.0 API。生成项目以 `tgfctl` 实际固定版本为准；遇到本表没覆盖的 API，
 > 去读 tgf 源码与 `example/` 真实示例，**禁止凭记忆杜撰**。
 
 ## 1. Server builder（`rpc.NewRPCServer()...Run()`）
@@ -107,7 +107,7 @@ type UserService struct{ rpc.Module }
 func NewUserService() *UserService {
     return &UserService{Module: rpc.Module{Name: "user", Version: "1.0"}}
 }
-func (s *UserService) Startup() (bool, error) { return true, nil } // false→不注册进发现（fail-fast）
+func (s *UserService) Startup() (bool, error) { return true, nil } // 只有 (true,nil) 才进入发现/本地分发
 
 // 服务间 RPC 契约（描述符集中放 internal/api）
 var UserLogin = &rpc.ServiceAPI[*LoginReq, *LoginRes]{
@@ -118,6 +118,8 @@ res, err := rpc.SendRPCMessage(ctx, UserLogin.NewRPC(&LoginReq{...}))
 ```
 
 ctx 内调用方身份用框架常量读（`tgf.ContextKeyUserId` 等），不要发明新 key。
+`Startup` 返回 false 或 error 的 service 不对外服务，但仍由框架执行 `Destroy`；清理代码必须容忍部分初始化。
+`Run()` 已统一处理 `SIGINT/SIGTERM`，业务 main 只等待返回 channel，禁止重复 `signal.Notify`。
 
 ## 5. 登录鉴权（默认开启，fail-closed）
 

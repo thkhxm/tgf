@@ -1,0 +1,6 @@
+package dao
+
+import "github.com/thkhxm/tgf/v2/db"
+
+// RedisAvailable reports whether the framework Redis client has been initialized.
+func RedisAvailable() bool { return db.GetRedisClient() != nil }

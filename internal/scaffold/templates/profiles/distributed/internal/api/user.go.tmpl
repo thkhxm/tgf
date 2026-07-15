@@ -1,0 +1,15 @@
+package api
+
+import "github.com/thkhxm/tgf/v2/rpc"
+
+type GetUserRequest struct{ UserID string }
+type GetUserReply struct {
+	UserID string
+	Level  int
+}
+
+var UserGet = &rpc.ServiceAPI[*GetUserRequest, *GetUserReply]{
+	ModuleName: "user",
+	Name:        "Get",
+	MessageType: "user.Get",
+}

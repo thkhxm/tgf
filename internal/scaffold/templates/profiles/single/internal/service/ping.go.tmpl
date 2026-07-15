@@ -1,0 +1,23 @@
+package service
+
+import (
+	"context"
+
+	"github.com/thkhxm/tgf/v2/rpc"
+)
+
+type PingRequest struct{}
+type PingReply struct{ Message string }
+
+type Ping struct{ rpc.Module }
+
+func NewPing() *Ping {
+	return &Ping{Module: rpc.Module{Name: "ping", Version: "1.0"}}
+}
+
+func (s *Ping) Startup() (bool, error) { return true, nil }
+
+func (s *Ping) Echo(_ context.Context, _ *PingRequest, reply *PingReply) error {
+	reply.Message = "pong"
+	return nil
+}
