@@ -1,6 +1,7 @@
 package db
 
 import (
+	"context"
 	"database/sql"
 	"errors"
 	"fmt"
@@ -10,7 +11,6 @@ import (
 	"github.com/thkhxm/tgf/v2/log"
 	"github.com/thkhxm/tgf/v2/util"
 	"go.uber.org/zap"
-	"golang.org/x/net/context"
 	"golang.org/x/sync/singleflight"
 	"reflect"
 	"runtime"
@@ -76,7 +76,7 @@ const (
 )
 
 // ErrDBFault D5: 持久层真实故障（连接不可用、查询/扫描失败等），
-// 与 tgf.DBEmpty（数据确实不存在）严格区分。
+// 与 tgf.ErrDBEmpty（数据确实不存在）严格区分。
 // 业务侧用 errors.Is(err, db.ErrDBFault) 判定是否处于"DB 故障"——命中时
 // 绝不能把结果当"新数据"处理（例如用默认存档覆盖老档），应当走故障保护分支。
 var ErrDBFault = errors.New("db fault")
@@ -178,10 +178,9 @@ func (h *hashAutoCacheManager[Val]) InitStruct(image Val) {
 func (h *hashAutoCacheManager[Val]) PreClear(key string) {
 	if keys, ok := h.groupAutoCacheManager.Get(key); ok == nil {
 		for _, s := range keys {
-			h.autoCacheManager.cacheMap.Del(s)
+			h.cacheMap.Del(s)
 		}
 	}
-	return
 }
 
 func (h *hashAutoCacheManager[Val]) PostClear(key string) {
@@ -388,7 +387,7 @@ func (h *hashAutoCacheManager[Val]) GetAll(key ...string) (val []Val, err error)
 			return nil, lerr
 		}
 		if len(keys) == 0 {
-			err = tgf.DBEmpty
+			err = tgf.ErrDBEmpty
 			h.groupAutoCacheManager.Set(make([]string, 0), mKey)
 		} else {
 			err = nil
@@ -500,7 +499,7 @@ func (a *autoCacheManager[Key, Val]) TryGet(key ...Key) (val Val, err error) {
 		}
 		return
 	} else {
-		err = tgf.LocalEmpty
+		err = tgf.ErrLocalEmpty
 	}
 	return
 }
@@ -517,7 +516,7 @@ func (a *autoCacheManager[Key, Val]) Get(key ...Key) (val Val, err error) {
 			}
 			return
 		} else {
-			err = tgf.LocalEmpty
+			err = tgf.ErrLocalEmpty
 		}
 	}
 	v, e, _ := a.sf.Do("Get:"+localKey, func() (interface{}, error) {
@@ -528,13 +527,13 @@ func (a *autoCacheManager[Key, Val]) Get(key ...Key) (val Val, err error) {
 				err = nil
 				return val, nil
 			} else {
-				err = tgf.RedisEmpty
+				err = tgf.ErrRedisEmpty
 			}
 		}
 
 		//从db获取
 		if a.longevity() {
-			d := make([]any, len(key), len(key))
+			d := make([]any, len(key))
 			for i, k := range key {
 				d[i] = k
 			}
@@ -542,7 +541,7 @@ func (a *autoCacheManager[Key, Val]) Get(key ...Key) (val Val, err error) {
 			if err == nil {
 				a.set(localKey, val)
 				Set(a.getCacheKey(localKey), val, a.cacheTimeOut())
-			} else if !errors.Is(err, tgf.DBEmpty) {
+			} else if !errors.Is(err, tgf.ErrDBEmpty) {
 				// D5: 区分"DB 故障"与"无数据"。旧实现把查询超时/连接失败等
 				// 真实故障一律改写成 DBEmpty，业务会把故障当新玩家并用默认档
 				// 覆盖 DB 里的真实存档。现在仅"查无此行"返回 DBEmpty，
@@ -702,7 +701,7 @@ func (a *autoCacheManager[Key, Val]) autoClear() {
 		return true
 	})
 	//
-	cp := a.clearPlugins != nil && len(a.clearPlugins) > 0
+	cp := len(a.clearPlugins) > 0
 	for _, key := range removeKeys {
 		if cp {
 			for _, plugin := range a.clearPlugins {
@@ -1035,16 +1034,13 @@ func (a *autoCacheManager[Key, Val]) InitStruct() {
 		//a.clearTimer = time.NewTicker(time.Second)
 		util.Go(func() {
 			counter := 0
-			for {
-				select {
-				case <-a.clearTimer.C:
-					counter++
-					a.autoClear()
-					if counter > 1e10 {
-						counter = 0
-					}
-					a.clearTimer.Reset(time.Minute * 10)
+			for range a.clearTimer.C {
+				counter++
+				a.autoClear()
+				if counter > 1e10 {
+					counter = 0
 				}
+				a.clearTimer.Reset(time.Minute * 10)
 			}
 		})
 	}
@@ -1081,16 +1077,13 @@ func (a *autoCacheManager[Key, Val]) InitStruct() {
 		a.longevityTimer = time.NewTimer(a.longevityInterval())
 		util.Go(func() {
 			counter := 0
-			for {
-				select {
-				case <-a.longevityTimer.C:
-					counter++
-					a.toLongevity()
-					if counter > 1e10 {
-						counter = 0
-					}
-					a.longevityTimer.Reset(a.longevityInterval())
+			for range a.longevityTimer.C {
+				counter++
+				a.toLongevity()
+				if counter > 1e10 {
+					counter = 0
 				}
+				a.longevityTimer.Reset(a.longevityInterval())
 			}
 		})
 		// D 档停机钩子：注册进 flushRegistry，停机流程通过 db.FlushAll()
@@ -1156,7 +1149,7 @@ func (s *sqlBuilder[Val]) initStruct() {
 	}
 	//
 	s.updateStartSql = "INSERT INTO " + s.tableName + "(" + s.tableField + ")  VALUES "
-	appendSql := make([]string, len(s.tableFieldName), len(s.tableFieldName))
+	appendSql := make([]string, len(s.tableFieldName))
 	for i, s := range s.tableFieldName {
 		appendSql[i] = fmt.Sprintf("%v=v.%v", s, s)
 	}
@@ -1185,6 +1178,12 @@ func (s *sqlBuilder[Val]) toValueSql(val Val) (q []any) {
 	return
 }
 
+func preserveCloseError(result *error, closeFunc func() error) {
+	if closeErr := closeFunc(); *result == nil && closeErr != nil {
+		*result = closeErr
+	}
+}
+
 func (s *sqlBuilder[Val]) queryOne(args ...any) (val Val, err error) {
 	var (
 		start = time.Now()
@@ -1201,7 +1200,7 @@ func (s *sqlBuilder[Val]) queryOne(args ...any) (val Val, err error) {
 		log.WarnTagW("orm", "query connection unavailable", zap.String("sql", s.querySql), zap.Error(err))
 		return val, err
 	}
-	defer conn.Close()
+	defer preserveCloseError(&err, conn.Close)
 
 	// D5: defer 必须放在 err 检查之后——Prepare/Query 失败时 stmt/rows 为 nil，
 	// 旧实现在 defer 阶段 nil 解引用 panic（queryList 修了、queryOne 漏了的同源 bug）。
@@ -1210,13 +1209,13 @@ func (s *sqlBuilder[Val]) queryOne(args ...any) (val Val, err error) {
 		log.WarnTagW("orm", "query prepare error", zap.String("sql", s.querySql), zap.Error(err))
 		return
 	}
-	defer stmt.Close()
+	defer preserveCloseError(&err, stmt.Close)
 	rows, err := stmt.Query(args...)
 	if err != nil {
 		log.WarnTagW("orm", "query error", zap.Any("params", args), zap.Error(err))
 		return
 	}
-	defer rows.Close()
+	defer preserveCloseError(&err, rows.Close)
 	ex := time.Since(start)
 	// B5 热路径迁移：queryOne 每次缓存穿透读 DB 都会打这条，改零分配 *TagW。
 	log.DebugTagW("orm", "query", zap.String("sql", s.querySql), zap.Any("params", args), zap.Duration("cost", ex))
@@ -1242,7 +1241,10 @@ func (s *sqlBuilder[Val]) queryOne(args ...any) (val Val, err error) {
 		}
 		return v.Interface().(Val), err
 	}
-	return val, tgf.DBEmpty
+	if rowsErr := rows.Err(); rowsErr != nil {
+		return val, rowsErr
+	}
+	return val, tgf.ErrDBEmpty
 }
 
 func (s *sqlBuilder[Val]) queryList(args ...any) (values []Val, err error) {
@@ -1261,20 +1263,20 @@ func (s *sqlBuilder[Val]) queryList(args ...any) (values []Val, err error) {
 		log.WarnTagW("orm", "query connection unavailable", zap.String("sql", s.queryListSql), zap.Error(err))
 		return nil, err
 	}
-	defer conn.Close()
+	defer preserveCloseError(&err, conn.Close)
 
 	stmt, err := conn.PrepareContext(context.Background(), s.queryListSql)
 	if err != nil {
 		log.WarnTagW("orm", "query prepare error", zap.String("sql", s.queryListSql), zap.Error(err))
 		return
 	}
-	defer stmt.Close()
+	defer preserveCloseError(&err, stmt.Close)
 	rows, err := stmt.Query(args...)
 	if err != nil {
 		log.WarnTagW("orm", "query error", zap.Any("params", args), zap.Error(err))
 		return
 	}
-	defer rows.Close()
+	defer preserveCloseError(&err, rows.Close)
 	ex := time.Since(start)
 	// B5 热路径迁移：queryList 每次批量加载读 DB 都会打这条，改零分配 *TagW。
 	log.DebugTagW("orm", "query list", zap.String("sql", s.queryListSql), zap.Any("params", args), zap.Duration("cost", ex))
@@ -1301,6 +1303,9 @@ func (s *sqlBuilder[Val]) queryList(args ...any) (values []Val, err error) {
 			f.Set(reflect.ValueOf(resPointer[i]).Elem())
 		}
 		values = append(values, v.Interface().(Val))
+	}
+	if rowsErr := rows.Err(); rowsErr != nil {
+		return nil, rowsErr
 	}
 	return
 }
@@ -1369,7 +1374,7 @@ func (s *sqlBuilder[Val]) execBatchOnce(updateSql string, values []any) (err err
 	if err != nil {
 		return err
 	}
-	defer conn.Close()
+	defer preserveCloseError(&err, conn.Close)
 
 	tx, err := conn.BeginTx(context.Background(), &sql.TxOptions{
 		Isolation: sql.LevelReadUncommitted,
@@ -1388,7 +1393,7 @@ func (s *sqlBuilder[Val]) execBatchOnce(updateSql string, values []any) (err err
 	if err != nil {
 		return err
 	}
-	defer stmt.Close()
+	defer preserveCloseError(&err, stmt.Close)
 
 	if _, err = stmt.Exec(values...); err != nil {
 		return err

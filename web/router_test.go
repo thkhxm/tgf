@@ -27,7 +27,7 @@ func doReq(t *testing.T, h http.Handler, method, path string, header map[string]
 	if err != nil {
 		t.Fatalf("请求失败: %v", err)
 	}
-	defer resp.Body.Close()
+	defer closeWebResource(t, "response body", resp.Body)
 	body, _ := io.ReadAll(resp.Body)
 	return resp.StatusCode, string(body), resp.Header
 }

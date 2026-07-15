@@ -8,8 +8,9 @@ import (
 	"errors"
 	"testing"
 
+	"context"
+
 	"github.com/thkhxm/rpcx/v2/client"
-	"golang.org/x/net/context"
 )
 
 // ---- fakeLoginCoordinator：记录调用顺序 + 允许注入预设结果 ----

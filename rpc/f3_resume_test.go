@@ -95,8 +95,8 @@ func TestF3_Resume_NoLostPushWithinWindow(t *testing.T) {
 	}
 
 	// 在线推送直达
-	if err := srv.ToUser(uid, "demo.Push", []byte("push-online")); err != nil {
-		t.Fatalf("在线 ToUser err = %v", err)
+	if pushErr := srv.ToUser(uid, "demo.Push", []byte("push-online")); pushErr != nil {
+		t.Fatalf("在线 ToUser err = %v", pushErr)
 	}
 	recvFrameContaining(t, mock1, "push-online")
 
@@ -113,8 +113,8 @@ func TestF3_Resume_NoLostPushWithinWindow(t *testing.T) {
 
 	// 断线期间推送 → 缓冲(延迟交付语义,返回 nil)
 	for _, p := range []string{"push-offline-1", "push-offline-2", "push-offline-3"} {
-		if err := srv.ToUser(uid, "demo.Push", []byte(p)); err != nil {
-			t.Fatalf("断线窗口内 ToUser 应缓冲并返回 nil, got %v", err)
+		if pushErr := srv.ToUser(uid, "demo.Push", []byte(p)); pushErr != nil {
+			t.Fatalf("断线窗口内 ToUser 应缓冲并返回 nil, got %v", pushErr)
 		}
 	}
 

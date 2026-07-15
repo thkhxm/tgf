@@ -279,7 +279,7 @@ func TestQueryOne_EmptyRowsReturnsDBEmpty(t *testing.T) {
 	sb := newD5SqlBuilder("select `uid`,`name` from fake where uid = ?")
 
 	_, err := sb.queryOne("u1")
-	if !errors.Is(err, tgf.DBEmpty) {
+	if !errors.Is(err, tgf.ErrDBEmpty) {
 		t.Fatalf("查无此行应返回 tgf.DBEmpty，got %v", err)
 	}
 }
@@ -390,7 +390,7 @@ func TestGet_DBFaultDistinguishedFromEmpty(t *testing.T) {
 	if !errors.Is(err, ErrMySQLNotAvailable) {
 		t.Errorf("原始错误应被保留（%%w 链），got %v", err)
 	}
-	if errors.Is(err, tgf.DBEmpty) {
+	if errors.Is(err, tgf.ErrDBEmpty) {
 		t.Errorf("DB 故障绝不能伪装成 DBEmpty——这是老档被默认档覆盖的事故路径, got %v", err)
 	}
 }
@@ -400,7 +400,7 @@ func TestGet_NoRowsReturnsDBEmpty(t *testing.T) {
 	m := newD5Manager("select `uid`,`name` from fake where uid = ?")
 
 	_, err := m.Get("u1")
-	if !errors.Is(err, tgf.DBEmpty) {
+	if !errors.Is(err, tgf.ErrDBEmpty) {
 		t.Fatalf("查无此行应返回 tgf.DBEmpty（新玩家语义不变），got %v", err)
 	}
 	if errors.Is(err, ErrDBFault) {
@@ -463,7 +463,7 @@ func TestHashGetAll_DBFaultNotDBEmpty(t *testing.T) {
 	if !errors.Is(err, ErrDBFault) {
 		t.Fatalf("hash GetAll 在 DB 故障时应返回 ErrDBFault，got %v", err)
 	}
-	if errors.Is(err, tgf.DBEmpty) {
+	if errors.Is(err, tgf.ErrDBEmpty) {
 		t.Errorf("DB 故障不能伪装成 DBEmpty, got %v", err)
 	}
 }

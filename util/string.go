@@ -77,26 +77,27 @@ func StrToAny[T any](a string) (T, error) {
 //	@return string
 //	@return error
 func AnyToStr(a interface{}) (string, error) {
-	switch a.(type) {
+	switch v := a.(type) {
 	case bool:
-		return strconv.FormatBool(a.(bool)), nil
+		return strconv.FormatBool(v), nil
 	case int32:
-		return strconv.FormatInt(int64(a.(int32)), 10), nil
+		return strconv.FormatInt(int64(v), 10), nil
 	case int:
-		return strconv.FormatInt(int64(a.(int)), 10), nil
+		return strconv.FormatInt(int64(v), 10), nil
 	case int64:
-		return strconv.FormatInt(a.(int64), 10), nil
+		return strconv.FormatInt(v, 10), nil
 	case float32:
-		return strconv.FormatFloat(float64(a.(float32)), 'f', -1, 32), nil
+		return strconv.FormatFloat(float64(v), 'f', -1, 32), nil
 	case float64:
-		return strconv.FormatFloat(a.(float64), 'f', -1, 64), nil
+		return strconv.FormatFloat(v, 'f', -1, 64), nil
 	case string:
-		return a.(string), nil
-	case interface{}:
-		js, _ := sonic.Marshal(a)
-		return ConvertStringByByteSlice(js), nil
+		return v, nil
 	default:
-		return "", fmt.Errorf("the type %T is not supported", a)
+		js, err := sonic.Marshal(v)
+		if err != nil {
+			return "", err
+		}
+		return ConvertStringByByteSlice(js), nil
 	}
 }
 

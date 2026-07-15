@@ -194,8 +194,8 @@ func TestServeMetrics_AuthEndToEnd(t *testing.T) {
 	// 等就绪：第一次 401 也算服务起来了。
 	var ready bool
 	for i := 0; i < 100; i++ {
-		resp, err := http.Get(url)
-		if err == nil {
+		resp, requestErr := http.Get(url)
+		if requestErr == nil {
 			_ = resp.Body.Close()
 			ready = true
 			if resp.StatusCode != http.StatusUnauthorized {

@@ -18,10 +18,11 @@ import (
 	"testing"
 	"time"
 
+	"context"
+
 	"github.com/thkhxm/rpcx/v2/share"
 	"github.com/thkhxm/tgf/v2"
 	"github.com/thkhxm/tgf/v2/trace"
-	"golang.org/x/net/context"
 )
 
 // traceProbeService 在 handler 内启 span 并记录拿到的 trace id。

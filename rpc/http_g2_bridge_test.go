@@ -86,7 +86,7 @@ func g2Post(t *testing.T, addr, path, body string, header map[string]string) (*h
 	if err != nil {
 		t.Fatalf("POST %s 失败: %v", path, err)
 	}
-	defer resp.Body.Close()
+	defer closeRPCResource(t, "HTTP bridge response body", resp.Body)
 	b, _ := io.ReadAll(resp.Body)
 	return resp, string(b)
 }

@@ -48,6 +48,10 @@ type FrameMACCapable interface {
 
 func (t *tcp) Connect(address string) IRobot {
 	add, err := net.ResolveTCPAddr("tcp", address)
+	if err != nil {
+		log.InfoTag("robot", "resolve address error: %v", err)
+		panic(err)
+	}
 	t.client, err = net.DialTCP("tcp", nil, add)
 	if err != nil {
 		log.InfoTag("robot", "client error: %v", err)
@@ -61,7 +65,10 @@ func (t *tcp) Connect(address string) IRobot {
 			buff := bytes.NewBuffer(heartbeat)
 			buff.WriteByte(250)
 			buff.WriteByte(byte(rpc.Heartbeat))
-			t.client.Write(buff.Bytes())
+			if _, err := t.client.Write(buff.Bytes()); err != nil {
+				log.InfoTag("robot", "client heartbeat write error: %v", err)
+				return
+			}
 			log.InfoTag("robot", "client heartbeat data: %v", buff.Bytes())
 			time.Sleep(time.Second * 10)
 		}
@@ -113,7 +120,11 @@ func (t *tcp) RegisterCallbackMessage(messageType string, f CallbackLogic) IRobo
 }
 
 func (t *tcp) Send(messageType string, v1 proto.Message) {
-	data, _ := proto.Marshal(v1)
+	data, err := proto.Marshal(v1)
+	if err != nil {
+		log.Warn("robot Send: 编码请求失败 messageType=%s err=%v", messageType, err)
+		return
+	}
 	// F5: 启用帧级 MAC 后按 LogicMAC 帧编码（防重放 seq 严格递增）。
 	if t.macKey != nil {
 		ix := strings.LastIndex(messageType, ".")
@@ -122,7 +133,10 @@ func (t *tcp) Send(messageType string, v1 proto.Message) {
 			return
 		}
 		frame := rpc.EncodeTgfBinaryMACFrame(messageType[:ix], messageType[ix+1:], data, t.macSeq.Add(1), t.macKey)
-		t.client.Write(frame)
+		if _, err := t.client.Write(frame); err != nil {
+			log.Warn("robot Send: 发送 MAC 请求失败 messageType=%s err=%v", messageType, err)
+			return
+		}
 		log.InfoTag("robot", "发送MAC请求 messageType:%v len:%v", messageType, len(frame))
 		return
 	}
@@ -139,7 +153,10 @@ func (t *tcp) Send(messageType string, v1 proto.Message) {
 	buff.Write(reqSizeLenByte)
 	buff.Write(reqName)
 	buff.Write(data)
-	t.client.Write(buff.Bytes())
+	if _, err := t.client.Write(buff.Bytes()); err != nil {
+		log.Warn("robot Send: 发送请求失败 messageType=%s err=%v", messageType, err)
+		return
+	}
 	log.InfoTag("robot", "发送请求 messageType:%v 数据:%v", messageType, buff.Bytes())
 }
 
@@ -175,6 +192,7 @@ func (w *ws) Connect(address string) IRobot {
 	conn, _, err := websocket.DefaultDialer.Dial(u.String(), nil)
 	if err != nil {
 		log.Info("连接失败:%v", err)
+		panic(err)
 	}
 	w.heartbeatData = []byte{byte(1)}
 	w.closeChan = make(chan struct{})
@@ -194,7 +212,11 @@ func (w *ws) Connect(address string) IRobot {
 
 	// 启动读取协程，处理从服务器接收到的消息
 	util.Go(func() {
-		defer w.conn.Close()
+		defer func() {
+			if err := w.conn.Close(); err != nil {
+				log.Info("关闭 WebSocket 连接失败:%v", err)
+			}
+		}()
 		for {
 			_, message, err := conn.ReadMessage()
 			if err != nil {
@@ -206,7 +228,10 @@ func (w *ws) Connect(address string) IRobot {
 			costCache[index].Add(1)
 			curReq.Add(1)
 			res := &rpc.WSResponse{}
-			proto.Unmarshal(message, res)
+			if unmarshalErr := proto.Unmarshal(message, res); unmarshalErr != nil {
+				log.Info("解析 WebSocket 响应失败:%v", unmarshalErr)
+				continue
+			}
 			//log.Info("收到消息: %s", res.MessageType)
 			if f, has := w.callback.Get(res.MessageType); has {
 				data := res.GetData()
@@ -237,10 +262,10 @@ func (w *ws) Connect(address string) IRobot {
 	})
 
 	util.Go(func() {
-		for {
-			select {
-			case send := <-w.sendChan:
-				w.conn.WriteMessage(send.messageType, send.data)
+		for send := range w.sendChan {
+			if err := w.conn.WriteMessage(send.messageType, send.data); err != nil {
+				log.Info("发送 WebSocket 消息失败:%v", err)
+				return
 			}
 		}
 	})
@@ -253,6 +278,7 @@ func (w *wss) Connect(address string) IRobot {
 	conn, _, err := websocket.DefaultDialer.Dial(u.String(), nil)
 	if err != nil {
 		log.Info("连接失败:%v", err)
+		panic(err)
 	}
 	w.heartbeatData = []byte{byte(1)}
 	w.closeChan = make(chan struct{})
@@ -272,7 +298,11 @@ func (w *wss) Connect(address string) IRobot {
 
 	// 启动读取协程，处理从服务器接收到的消息
 	util.Go(func() {
-		defer w.conn.Close()
+		defer func() {
+			if err := w.conn.Close(); err != nil {
+				log.Info("关闭 WebSocket 连接失败:%v", err)
+			}
+		}()
 		for {
 			_, message, err := conn.ReadMessage()
 			cost := time.Since(w.start).Milliseconds()
@@ -284,7 +314,10 @@ func (w *wss) Connect(address string) IRobot {
 				return
 			}
 			res := &rpc.WSResponse{}
-			proto.Unmarshal(message, res)
+			if unmarshalErr := proto.Unmarshal(message, res); unmarshalErr != nil {
+				log.Info("解析 WebSocket 响应失败:%v", unmarshalErr)
+				continue
+			}
 			//log.Info("收到消息: %s", res.MessageType)
 			if f, has := w.callback.Get(res.MessageType); has {
 				data := res.GetData()
@@ -315,10 +348,10 @@ func (w *wss) Connect(address string) IRobot {
 	})
 
 	util.Go(func() {
-		for {
-			select {
-			case send := <-w.sendChan:
-				w.conn.WriteMessage(send.messageType, send.data)
+		for send := range w.sendChan {
+			if err := w.conn.WriteMessage(send.messageType, send.data); err != nil {
+				log.Info("发送 WebSocket 消息失败:%v", err)
+				return
 			}
 		}
 	})
@@ -338,13 +371,21 @@ func (w *ws) Send(messageType string, v1 proto.Message) {
 }
 
 func (w *ws) SendMessage(module, serviceName string, v1 proto.Message) {
-	data, _ := proto.Marshal(v1)
+	data, err := proto.Marshal(v1)
+	if err != nil {
+		log.Info("编码 WebSocket 请求失败:%v", err)
+		return
+	}
 	m := &rpc.WSMessage{
 		Module:      module,
 		ServiceName: serviceName,
 		Data:        data,
 	}
-	md, _ := proto.Marshal(m)
+	md, err := proto.Marshal(m)
+	if err != nil {
+		log.Info("编码 WebSocket 消息失败:%v", err)
+		return
+	}
 	w.sendChan <- message{websocket.BinaryMessage, md}
 	//err := w.conn.WriteMessage(websocket.BinaryMessage, md)
 	//if err != nil {
@@ -389,13 +430,11 @@ func init() {
 	go func() {
 		t := time.NewTimer(time.Second)
 		for {
-			select {
-			case <-t.C:
-				qps := curReq.Load() - lastReq.Load()
-				lastReq.Store(curReq.Load())
-				log.InfoTag("tcp", "消息处理时间统计:qps:%v, 0-50ms:%v, 50-100ms:%v, 100-300ms:%v, 300-600ms:%v, 600-1000ms:%v, >1000ms:%v",
-					qps, costCache[0].Load(), costCache[1].Load(), costCache[2].Load(), costCache[3].Load(), costCache[4].Load(), costCache[5].Load())
-			}
+			<-t.C
+			qps := curReq.Load() - lastReq.Load()
+			lastReq.Store(curReq.Load())
+			log.InfoTag("tcp", "消息处理时间统计:qps:%v, 0-50ms:%v, 50-100ms:%v, 100-300ms:%v, 300-600ms:%v, 600-1000ms:%v, >1000ms:%v",
+				qps, costCache[0].Load(), costCache[1].Load(), costCache[2].Load(), costCache[3].Load(), costCache[4].Load(), costCache[5].Load())
 			t.Reset(time.Second)
 		}
 	}()

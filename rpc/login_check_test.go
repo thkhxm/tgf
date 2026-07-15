@@ -11,8 +11,9 @@ import (
 	"testing"
 	"time"
 
+	"context"
+
 	"github.com/thkhxm/tgf/v2/rpc/internal"
-	"golang.org/x/net/context"
 )
 
 // withLoginSecret 重置鉴权状态并注入显式密钥，返回恢复函数。

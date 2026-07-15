@@ -418,6 +418,10 @@ github.com/templexxx/xor v0.0.0-20191217153810-f85b25db303b h1:fj5tQ8acgNUr6O8LE
 github.com/templexxx/xor v0.0.0-20191217153810-f85b25db303b/go.mod h1:5XA7W9S6mni3h5uvOC75dA3m9CCCaS83lltmc0ukdi4=
 github.com/testcontainers/testcontainers-go v0.32.0 h1:ug1aK08L3gCHdhknlTTwWjPHPS+/alvLJU/DRxTD/ME=
 github.com/testcontainers/testcontainers-go v0.32.0/go.mod h1:CRHrzHLQhlXUsa5gXjTOfqIEJcrK5+xMDmBr/WMI88E=
+github.com/thkhxm/rpcx-consul/v2 v2.0.2 h1:Le5ZpCMTWKPb82MVwooTR3wNfvRJCFTURFGdMrQsG3w=
+github.com/thkhxm/rpcx-consul/v2 v2.0.2/go.mod h1:NBWEv2AQGIPHhdAIhWgcMtgXnH6nyGqNAmU9k0twSY4=
+github.com/thkhxm/rpcx/v2 v2.0.3 h1:+m79ktEQPxHgX+ipmMp0ixfubaANGJ3hEvw/3JNEq+4=
+github.com/thkhxm/rpcx/v2 v2.0.3/go.mod h1:GpgVih5NkUkwYjNX8iNryKC0hENXAB5ANDTl2VyhIEE=
 github.com/tiendc/go-deepcopy v1.7.2 h1:Ut2yYR7W9tWjTQitganoIue4UGxZwCcJy3orjrrIj44=
 github.com/tiendc/go-deepcopy v1.7.2/go.mod h1:4bKjNC2r7boYOkD2IOuZpYjmlDdzjbpTRyCx+goBCJQ=
 github.com/tinylib/msgp v1.2.5 h1:WeQg1whrXRFiZusidTQqzETkRpGjFjcIhW6uqWH09po=

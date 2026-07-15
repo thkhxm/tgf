@@ -1,7 +1,6 @@
 package component
 
 import (
-	"io"
 	"os"
 	"path/filepath"
 	"reflect"
@@ -133,9 +132,7 @@ func GetAllGameConf[Val any]() (res []Val) {
 	}
 	tmp := make([]Val, 0, data.Len())
 	data.Range(func(s string, i interface{}) bool {
-		for _, v := range i.([]Val) {
-			tmp = append(tmp, v)
-		}
+		tmp = append(tmp, i.([]Val)...)
 		return true
 	})
 	res = tmp
@@ -254,20 +251,13 @@ func InitGameConfToMem() {
 func loadFilesIntoContext() {
 	files := util.GetFileList(confPath, ".json")
 	for _, filePath := range files {
-		file, err := os.Open(filePath)
-		if err != nil {
-			log.WarnTag("GameConf", "game json file [%v] open error %v", filePath, err)
-			continue
-		}
-		context, err := io.ReadAll(file)
+		context, err := os.ReadFile(filePath)
 		if err != nil {
 			log.WarnTag("GameConf", "game json file [%v] read error %v", filePath, err)
-			file.Close()
 			continue
 		}
 		_, fileName := filepath.Split(filePath)
 		contextDataManager.Set(context, strings.Split(fileName, `.`)[0]+"Conf")
-		file.Close()
 	}
 }
 
@@ -384,7 +374,11 @@ func StopConfigWatcher() {
 }
 
 func runConfigWatcher(w *fsnotify.Watcher, stop chan struct{}) {
-	defer w.Close()
+	defer func() {
+		if err := w.Close(); err != nil {
+			log.WarnTag("GameConf", "配置监听关闭失败 err=%v", err)
+		}
+	}()
 	var (
 		debounceTimer *time.Timer
 		triggerCh     = make(chan struct{}, 1)

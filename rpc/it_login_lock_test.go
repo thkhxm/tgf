@@ -25,9 +25,10 @@ import (
 	"testing"
 	"time"
 
+	"context"
+
 	"github.com/thkhxm/tgf/v2"
 	"github.com/thkhxm/tgf/v2/db"
-	"golang.org/x/net/context"
 )
 
 // ensureRedisForLoginLock 确保 db 层以 Redis 模式接入 harness 容器。
@@ -142,10 +143,10 @@ func userNodeMetaKeyForIT(uid string) string {
 
 // TestIT_GateLogin_RealHMACAndRedisLock 登录鉴权安全用例（E5 行验收）——
 // gate.Login 全链路：真实 HMAC token 校验（D7）× 真实 Redis 登录锁 / owner meta
-//（A3-phase2，defaultLoginCoordinator），仅网络层 DoLogin 用 fakeTCPService 替代：
-//   1. 凭据绑定他人身份（伪造 userId）→ ErrLoginUserIdMismatch 拒绝，绝不触达 DoLogin；
-//   2. 无凭据 → ErrLoginTokenRequired 拒绝（fail-closed）；
-//   3. 合法凭据 → 放行，真实走 Redis 锁取/放，owner meta 写入本节点地址。
+// （A3-phase2，defaultLoginCoordinator），仅网络层 DoLogin 用 fakeTCPService 替代：
+//  1. 凭据绑定他人身份（伪造 userId）→ ErrLoginUserIdMismatch 拒绝，绝不触达 DoLogin；
+//  2. 无凭据 → ErrLoginTokenRequired 拒绝（fail-closed）；
+//  3. 合法凭据 → 放行，真实走 Redis 锁取/放，owner meta 写入本节点地址。
 func TestIT_GateLogin_RealHMACAndRedisLock(t *testing.T) {
 	ensureRedisForLoginLock(t)
 

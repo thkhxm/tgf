@@ -66,9 +66,10 @@ func getProjectModulePath() string {
 	// 使用正则表达式提取模块路径
 	re := regexp.MustCompile(`module\s+([^\s]+)`)
 	match := re.FindStringSubmatch(string(mod))
-	if len(match) == 2 {
-		fmt.Println("模块路径：", match[1])
+	if len(match) != 2 {
+		return ""
 	}
+	fmt.Println("模块路径：", match[1])
 	return match[1]
 }
 func GeneratorRPC[T any](moduleName, version string) {
@@ -101,9 +102,10 @@ func GeneratorRPC[T any](moduleName, version string) {
 		for j := 0; j < m.Type.NumIn(); j++ {
 			// 获取参数类型对象
 			argType := m.Type.In(j)
-			pkg := argType.PkgPath()
 			if argType.Kind() == reflect.Pointer {
-				pkg = argType.Elem().PkgPath()
+				argType = argType.Elem()
+			}
+			if pkg := argType.PkgPath(); pkg != "" {
 				tt[pkg] = true
 			}
 		}
@@ -116,7 +118,7 @@ func GeneratorRPC[T any](moduleName, version string) {
 		}{Args: m.Type.In(1).String(), Reply: m.Type.In(2).String(),
 			NewReply: m.Type.In(2).String()[1:], MethodName: m.Name, LowerMethodName: strings.ToLower(string(m.Name[0])) + m.Name[1:]}
 
-		var r = regexp.MustCompile("[A-Za-z0-9_]+\\.[A-Za-z0-9_]+\\[(.*)\\]")
+		var r = regexp.MustCompile(`[A-Za-z0-9_]+\.[A-Za-z0-9_]+\[(.*)\]`)
 		match := r.FindStringSubmatch(d.Args)
 		if len(match) > 1 {
 			pointIndex := strings.LastIndex(match[1], ".")
@@ -138,7 +140,7 @@ func GeneratorRPC[T any](moduleName, version string) {
 	}
 	pi := make([]string, 0)
 
-	for k, _ := range tt {
+	for k := range tt {
 		if k == "" {
 			continue
 		}
@@ -188,15 +190,14 @@ var (
 	if err != nil {
 		panic(err)
 	}
-	defer file.Close()
-	tp.Execute(file, a)
+	executeTemplateAndClose(file, tp, a)
 	//
 	modulePath := getProjectModulePath() + "/generated/" + moduleName + "_service"
 	packageName = moduleName + "_rpc"
 	tt["context"] = true
 	tt[modulePath] = true
 	pi = make([]string, 0)
-	for k, _ := range tt {
+	for k := range tt {
 		if k == "" {
 			continue
 		}
@@ -242,8 +243,7 @@ func {{.MethodName}}(ctx context.Context, args {{.Args}}, async bool) (reply {{.
 	if err2 != nil {
 		panic(err2)
 	}
-	defer file2.Close()
-	tp2.Execute(file2, a)
+	executeTemplateAndClose(file2, tp2, a)
 
 	fmt.Println()
 	fmt.Printf("rpc generate done . module[%s] version[%s]", moduleName, version)
@@ -284,9 +284,10 @@ func GeneratorAPI[T any](moduleName, version string, pushServices ...string) {
 		for j := 0; j < m.Type.NumIn(); j++ {
 			// 获取参数类型对象
 			argType := m.Type.In(j)
-			pkg := argType.PkgPath()
 			if argType.Kind() == reflect.Pointer {
-				pkg = argType.Elem().PkgPath()
+				argType = argType.Elem()
+			}
+			if pkg := argType.PkgPath(); pkg != "" {
 				tt[pkg] = true
 			}
 		}
@@ -296,7 +297,7 @@ func GeneratorAPI[T any](moduleName, version string, pushServices ...string) {
 			Reply      string
 			MethodName string
 		}{Args: m.Type.In(1).String(), Reply: m.Type.In(2).String(), MethodName: m.Name}
-		var r = regexp.MustCompile("[A-Za-z0-9_]+\\.[A-Za-z0-9_]+\\[(.*)\\]")
+		var r = regexp.MustCompile(`[A-Za-z0-9_]+\.[A-Za-z0-9_]+\[(.*)\]`)
 		match := r.FindStringSubmatch(d.Args)
 		if len(match) > 1 {
 			pointIndex := strings.LastIndex(match[1], ".")
@@ -322,7 +323,7 @@ func GeneratorAPI[T any](moduleName, version string, pushServices ...string) {
 		goStructCache.Apis = append(goStructCache.Apis, d)
 	}
 	pi := make([]string, 0)
-	for k, _ := range tt {
+	for k := range tt {
 		pi = append(pi, k)
 	}
 	sort.Strings(pi)
@@ -366,8 +367,7 @@ var (
 	if err != nil {
 		panic(err)
 	}
-	defer file.Close()
-	tp.Execute(file, goStructCache)
+	executeTemplateAndClose(file, tp, goStructCache)
 
 	//
 	packageName = moduleName + "_api"
@@ -393,11 +393,10 @@ const(
 		panic(err2)
 	}
 	file2, err2 := os.Create(rt2 + string(filepath.Separator) + fileName2)
-	if err != nil {
-		panic(err)
+	if err2 != nil {
+		panic(err2)
 	}
-	defer file2.Close()
-	tp2.Execute(file2, goStructCache)
+	executeTemplateAndClose(file2, tp2, goStructCache)
 
 	//tp.Execute(os.Stdout, a)
 }
@@ -434,7 +433,6 @@ namespace %v
 		if errCS != nil {
 			panic(errCS)
 		}
-		defer fileCS.Close()
-		tpCS.Execute(fileCS, csStructCache)
+		executeTemplateAndClose(fileCS, tpCS, csStructCache)
 	}
 }

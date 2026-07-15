@@ -74,7 +74,7 @@ func g1Get(t *testing.T, addr, path string, header map[string]string) (*http.Res
 	if err != nil {
 		t.Fatalf("GET %s 失败: %v", path, err)
 	}
-	defer resp.Body.Close()
+	defer closeRPCResource(t, "HTTP response body", resp.Body)
 	body, _ := io.ReadAll(resp.Body)
 	return resp, string(body)
 }
@@ -166,7 +166,7 @@ func TestG1_HTTPService_EndToEnd_SingleProcess(t *testing.T) {
 	// ---- 4: Destroy 关闭 HTTP 端口 + 幂等 ----
 	s.Destroy()
 	if conn, err := net.DialTimeout("tcp", addr, 500*time.Millisecond); err == nil {
-		conn.Close()
+		closeRPCResource(t, "unexpected HTTP listener connection", conn)
 		t.Error("Destroy 后 HTTP 端口应已关闭")
 	}
 	s.Destroy() // 幂等：不得 panic
@@ -209,7 +209,7 @@ func TestG1_HTTPService_DestroyDrainsInflight(t *testing.T) {
 			resCh <- result{err: err}
 			return
 		}
-		defer resp.Body.Close()
+		defer closeRPCResource(t, "in-flight HTTP response body", resp.Body)
 		b, _ := io.ReadAll(resp.Body)
 		resCh <- result{status: resp.StatusCode, body: string(b)}
 	}()
@@ -230,7 +230,7 @@ func TestG1_HTTPService_DestroyDrainsInflight(t *testing.T) {
 	}
 
 	if conn, err := net.DialTimeout("tcp", addr, 500*time.Millisecond); err == nil {
-		conn.Close()
+		closeRPCResource(t, "unexpected HTTP listener connection", conn)
 		t.Error("Destroy 后 HTTP 端口应已关闭")
 	}
 }

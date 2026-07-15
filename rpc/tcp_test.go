@@ -15,10 +15,11 @@ import (
 	"testing"
 	"time"
 
+	"context"
+
 	"github.com/cornelk/hashmap"
 	"github.com/thkhxm/rpcx/v2/share"
 	"github.com/thkhxm/tgf/v2"
-	"golang.org/x/net/context"
 )
 
 // newBareConnectData 构造一个不依赖底层 net.Conn / websocket.Conn 的

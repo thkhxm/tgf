@@ -6,20 +6,25 @@
 
 **tgf** 是一套基于 Go 语言的**分布式游戏服务器框架**，同时把 **HTTP web 服务**
 做成与 RPC 平级的一等公民。它专注于解决游戏 / web 业务开发中常见的稳定性、并发
-与运维问题。v2/v3 在 v1 基础上做了系统性的重构——从网关连接生命周期到数据落库
+与运维问题。v2 在 v1 基础上做了系统性的重构——从网关连接生命周期到数据落库
 可靠性，从可观测性接口到 API 一致性，再到 HTTP 服务的路由 / 中间件 / 优雅停机，
 都有明显的提升。
 
 > 设计目标：让中小型团队与独立开发者**只关注业务逻辑**，不必处理连接风暴、
 > 跨节点协调、配置热更、指标埋点这些底层细节。
 
-tgf 一套框架覆盖三类场景，各有对应示例：
+tgf 的四类主要运行形态各有对应示例：
 
 | 场景 | 形态 | 对应示例 |
 |------|------|---------|
-| **常规 http web 服务** | 标准 REST API：路由 + 中间件 + 限流 + 鉴权 + 优雅停机 | [`example/http_rest/`](example/http_rest/) |
-| **分布式 web 服务** | HTTP 接入层经 HTTP→RPC 桥调后端 service（traceId 全链路、Consul 服务发现） | [`example/http_rpc/`](example/http_rpc/) |
-| **分布式游戏服务** | 长连接网关（TCP/WS/KCP）+ 跨 module RPC + write-behind 落库 | [`example/single_process/`](example/single_process/) |
+| **单进程游戏服** | 多 Module 进程内 RPC，零 Consul | [`example/single_process/`](example/single_process/) |
+| **分布式游戏服** | 独立长连接网关（TCP/WS/KCP）+ 独立业务进程 | [`example/distributed_game/`](example/distributed_game/) |
+| **HTTP REST** | 标准 REST API：路由 + 中间件 + 限流 + 鉴权 + 优雅停机 | [`example/http_rest/`](example/http_rest/) |
+| **HTTP→RPC** | HTTP 接入层经 bridge 调后端 service；默认示例为单进程，多进程需 Consul | [`example/http_rpc/`](example/http_rpc/) |
+
+TCP/WS/KCP、robot、write-behind、配置/游戏配置热更、日志、metrics/trace、
+RPC 策略与 util 的完整“场景→example→证据→外部依赖”矩阵见
+[`example/README.md`](example/README.md)。
 
 ## 目录
 
@@ -72,16 +77,13 @@ tgf 一套框架覆盖三类场景，各有对应示例：
 - **RPC 策略化完整版** — `MethodPolicy{Timeout, MaxConcurrency, RateLimit, CircuitBreaker}`，集成 metrics 拒绝路径计数
 - **单进程模式（C8）** — `WithSingleProcess()` 一键开关，多 Module 在同一进程通过反射直通通信，**零 Consul 依赖**，适合单元测试和小型部署
 
-### 📊 验证指标
+### 📊 验证边界
 
-- **265 个单测 / 集成测试**（集成测试以 `//go:build integration` tag 隔离，默认不跑）
-- `go test -race -count=1 ./...` 在 **workspace 内**（仓库外 `go.work` 同时检出 tgf/rpcx/rpcx-consul 三仓）全绿
-- `go vet` 零告警
-- 14 处 pre-existing bug / race 顺带修复
-
-> 上述构建/测试结果在 go.work workspace 内与 `GOWORK=off` 单仓模式下均成立
-> （`go.mod` 内置指向同工作区 fork 目录的 path replace，见下文「从源码构建」）。
-> 无本机 Consul/Redis/MySQL 的纯单元测试可独立跑通；集成测试需对应外部服务。
+- `go test -count=1 ./example/...`：编译所有示例，并运行无外部依赖的
+  handler/service 与场景治理测试。
+- `go vet ./example/...`：对同一示例边界执行静态检查。
+- Consul、Redis、MySQL、真实端口和跨进程链路属于 integration 证据；
+  只有在显式启动并观测它们后才能声称通过，默认测试不静默跳过也不伪装。
 
 ---
 
@@ -91,11 +93,16 @@ tgf 一套框架覆盖三类场景，各有对应示例：
 
 要求 Go **1.26+**（go.mod 声明 `go 1.26.0` / `toolchain go1.26.4`）。
 
-tgf 自 v2.0.0 起 module path 带 `/v2` 主版本后缀，直接 `go get`：
+tgf 自 v2.0.0 起 module path 带 `/v2` 主版本后缀，新项目直接获取
+最新已发布版：
 
 ```bash
-go get github.com/thkhxm/tgf/v2@v2.0.0
+go get github.com/thkhxm/tgf/v2@latest
 ```
+
+需要可复现构建时，将首次解析后写入 `go.mod` 的确切版本（例如
+`v2.x.y`）固定在构建配置中，不要让 CI/发布流水线反复重新解析
+`@latest`。
 
 import 路径相应带 `/v2`，例如：
 
@@ -110,16 +117,14 @@ import (
 > 迁移为带 `/v2` 后缀的自有 module path（`github.com/thkhxm/rpcx/v2` /
 > `github.com/thkhxm/rpcx-consul/v2`，当前 tag `v2.0.3` / `v2.0.2`），由 tgf 的
 > `go.mod` 直接 `require` 引入并随之自动拉取——业务方既不必 `require` 它们，也不必
-> 写 replace。tgf 仓库内 `go.mod` 保留的那条指向 `../rpcx` 的 path replace 只在本仓
-> 脱离 go.work（`GOWORK=off`）时生效，依赖方会忽略它，按 require 的对应 tag 从远端拉取。
+> 写 `replace`。
 
 #### 从源码构建（贡献者）
 
 本仓库与 fork 一起放在一个 Go **workspace**（仓库外的 `go.work` 同时 `use`
-`tgf/`、`rpcx/`、`rpcx-consul/` 三个目录）。`tgf/go.mod` 另内置两条指向
-`../rpcx`、`../rpcx-consul` 的 path replace，因此只要按
-[`doc/architecture.md`](doc/architecture.md) 的布局把三个仓库检出到同级目录，
-workspace 内与 `GOWORK=off` 单仓模式均可直接构建。
+`tgf/`、`rpcx/`、`rpcx-consul/` 三个目录）时，workspace 会优先使用本地 fork，适合
+框架组联调。`tgf/go.mod` 不包含本地 `replace`；脱离 workspace（例如发布隔离验证使用
+`GOWORK=off`）时，会严格解析其中声明的公开 tag，避免源码联调通过但公开依赖图不可用。
 
 ### 2. 配置与凭据（重要）
 
@@ -522,14 +527,16 @@ func main() {
 
 ## 示例项目
 
-[`example/`](example/) 目录下有 11 个可独立运行的示例，覆盖 tgf v2 的各个模块：
+[`example/`](example/) 目录下有 12 个可运行的示例目录。详细证据等级
+和外部依赖状态以 [`example/README.md`](example/README.md) 的场景矩阵为准：
 
 | 目录 | 演示内容 |
 |------|---------|
+| [`distributed_game/`](example/distributed_game/) | 真实双进程长连接网关 + 业务服（Consul/Redis integration） |
 | [`http_rest/`](example/http_rest/) | **纯 REST API**（WithHTTPService + 路由/中间件/限流/鉴权/优雅停机）——常规 http web 服务 |
-| [`http_rpc/`](example/http_rpc/) | **REST + 调游戏服 RPC**（HTTP→RPC 桥 + traceId 全链路 + 单/多进程部署）——分布式 web 服务 |
+| [`http_rpc/`](example/http_rpc/) | **REST + 调游戏服 RPC**（默认单进程桥；多进程是外部 integration） |
 | [`single_process/`](example/single_process/) | 单进程多 Module + 跨 module RPC + 策略 + metrics |
-| [`robot_test/`](example/robot_test/) | WS + KCP robot 自测（登录 + 多人移动同步，QPS ~200 万） |
+| [`robot_test/`](example/robot_test/) | 本机 TCP + WS + KCP robot 请求/回包自测 |
 | [`db_cache/`](example/db_cache/) | AutoCacheBuilder + Redis KV/Map/List + 分布式锁 + 补偿队列 |
 | [`log_usage/`](example/log_usage/) | Sprintf vs zap.Field 风格 + Tag 过滤 + 分类日志 |
 | [`config_reload/`](example/config_reload/) | struct tag 加载 + Reload + OnReload + 类型校验 |
@@ -545,7 +552,8 @@ cd tgf/example/single_process
 go run .
 ```
 
-大部分示例不需要外部服务（Redis/MySQL 缺失时静默跳过），`go run .` 即可。
+不含外部依赖的示例可直接 `go run .`。`distributed_game` 需 Consul/Redis；
+`db_cache` 只在显式设置 `TGF_EXAMPLE_EXTERNAL=1` 时尝试 Redis/MySQL，否则明确报告未执行。
 
 ---
 
@@ -573,7 +581,7 @@ go run .
 
 ## 技术选型
 
-**Go 工具链**：Go 1.26+（v3 升级到最新稳定线，go.mod 声明 `go 1.26.0` / `toolchain go1.26.4`）
+**Go 工具链**：Go 1.26+（go.mod 声明 `go 1.26.0` / `toolchain go1.26.4`）
 
 | 类别 | 库 | 版本 | 用途 |
 |------|----|------|------|
@@ -612,16 +620,16 @@ go run .
 
 ### 路线图
 
-- ✅ v2-alpha：A / B / C 档落地（稳定性修复 + 工程化 + API 演进），265 个测试
-- ✅ **v3-D 档：止血与发布可用**（已随 v2.0.0 发布）——消灭 P0（串包、单进程网关、
+- ✅ v2-alpha：A / B / C 档落地（稳定性修复 + 工程化 + API 演进）
+- ✅ **v2 D 档：止血与发布可用**（已随 v2.0.0 发布）——消灭 P0（串包、单进程网关、
   优雅停机、下游可消费、凭据卫生、登录鉴权地基），让框架"对外存在"
-- ✅ **v3-E 档：接线收尾**（已随 v2.0.0 发布）——策略管道全覆盖、配置系统收敛、
+- ✅ **v2 E 档：接线收尾**（已随 v2.0.0 发布）——策略管道全覆盖、配置系统收敛、
   可观测性落地、数据层故障路径
-- ✅ **v3-F 档：生产化地基**（已随 v2.0.0 发布）——fork 治理（rpcx / rpcx-consul 迁移
+- ✅ **v2 F 档：生产化地基**（已随 v2.0.0 发布）——fork 治理（rpcx / rpcx-consul 迁移
   为带 `/v2` 后缀的自有 module path）、Consul TTL check、会话与踢人收尾、过载保护
-- ✅ **v3-G 档：HTTP 一等公民**（已随 v2.0.0 发布）——`WithHTTPService` + 路由/中间件/
-  限流/鉴权 + HTTP→RPC 桥 + 共享 D3 优雅停机，把"常规 http web 服务 / 分布式 web 服务 /
-  分布式游戏服务"三场景讲清
+- ✅ **v2 G 档：HTTP 一等公民**（已随 v2.0.0 发布）——`WithHTTPService` + 路由/中间件/
+  限流/鉴权 + HTTP→RPC 桥 + 共享 D3 优雅停机，覆盖 REST 与 HTTP→RPC 两种 HTTP 形态；
+  单进程和真实分布式游戏服分别由独立示例承载
 - 📅 更远期（v2.x 后续小版本）：
   - DB 层真正的分库分表（sqlBuilder 重构）
   - OpenTelemetry / Prometheus adapter 官方 subpackage

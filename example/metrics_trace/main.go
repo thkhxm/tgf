@@ -65,16 +65,16 @@ func main() {
 
 	connGauge := metrics.NewGauge("active_connections", "活跃连接数")
 
-	connGauge.Inc() // +1
-	connGauge.Inc() // +1
-	connGauge.Inc() // +1
-	connGauge.Dec() // -1
+	connGauge.Inc()                                                     // +1
+	connGauge.Inc()                                                     // +1
+	connGauge.Inc()                                                     // +1
+	connGauge.Dec()                                                     // -1
 	fmt.Printf("  当前连接数: %.0f\n", mem.GaugeValue("active_connections")) // 2
 
-	connGauge.Set(100) // 直接设值
+	connGauge.Set(100)                                                       // 直接设值
 	fmt.Printf("  Set(100) 后: %.0f\n", mem.GaugeValue("active_connections")) // 100
 
-	connGauge.Add(-30) // 可以加负数
+	connGauge.Add(-30)                                                       // 可以加负数
 	fmt.Printf("  Add(-30) 后: %.0f\n", mem.GaugeValue("active_connections")) // 70
 	fmt.Println()
 
@@ -170,7 +170,7 @@ func main() {
 	fmt.Printf("  parent TraceID: %s\n", parentSpan.TraceID())
 
 	// 子 span 会复用父 ctx 里的 trace id
-	ctx2, childSpan := trace.StartSpan(ctx2, "rpc.callUserService")
+	_, childSpan := trace.StartSpan(ctx2, "rpc.callUserService")
 	fmt.Printf("  child  TraceID: %s (和 parent 相同)\n", childSpan.TraceID())
 
 	childSpan.End()

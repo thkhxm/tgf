@@ -114,10 +114,10 @@ func TestSendMessage_ObservesRPCMetrics(t *testing.T) {
 		t.Fatalf("sendMessage err=%v", err)
 	}
 	// 失败一次（模块不存在 + rpcClient 不可用）
-	orig := rpcClient
-	rpcClient = nil
+	orig := loadRPCClient()
+	storeRPCClient(nil)
 	_ = sendMessage(ct, "ghost", "Nope", args, &Reply[*WSMessage]{})
-	rpcClient = orig
+	storeRPCClient(orig)
 
 	if got := p.CounterValue("tgf_rpc_calls_total"); got != 2 {
 		t.Errorf("tgf_rpc_calls_total = %v, want 2", got)

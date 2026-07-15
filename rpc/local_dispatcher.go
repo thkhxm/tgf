@@ -33,8 +33,9 @@ import (
 	"sync"
 	"sync/atomic"
 
+	"context"
+
 	"github.com/thkhxm/rpcx/v2/share"
-	"golang.org/x/net/context"
 )
 
 // localDispatchEnabled 包级开关。默认 false（零改动），Server.WithInProcessDispatch
@@ -64,7 +65,8 @@ var localDispatcher = &dispatcherT{services: map[string]reflect.Value{}}
 // Register 把一个 service 加到本地 dispatcher。moduleName 必须是调用方 api.ModuleName
 // 使用的字符串——一般就是 svc.GetName() 的返回值。重复注册会覆盖。
 //
-// 本函数由 Server.Run 在开启 in-process dispatch 时遍历 s.service 调用。
+// 本函数由 Server.Run 在开启 in-process dispatch 时遍历已成功 Startup
+// 的 service 调用。
 // 业务代码通常不需要直接调它。
 func (d *dispatcherT) Register(moduleName string, svc IService) {
 	if moduleName == "" || svc == nil {
@@ -111,7 +113,7 @@ func (d *dispatcherT) Call(ctx context.Context, moduleName, methodName string, a
 	// reply 处理：
 	//   - nil → 用方法签名第三个参数类型构造一个零值（SendNoReplyRPCMessage 场景）
 	//   - typed nil pointer（如 (*GiveGiftRes)(nil)）→ 分配一个真正的结构体
-	//     这是 ServiceAPI.NewRPC 的常见行为——对指针类型它会生成 typed nil
+	//     兼容 New/NewEmpty 或旧代码构造出的 typed nil
 	//   - 非 nil 的正常指针 → 直接用
 	replyVal := ensureAllocated(reply, mt.In(2))
 
@@ -178,29 +180,30 @@ func (s *Server) WithSingleProcess() *Server {
 	return s.WithStandalone().WithInProcessDispatch()
 }
 
-// registerLocalServices 由 Server.Run 调用，把 service 列表注册到 dispatcher。
+// registerLocalServices 由 Server.Run 调用，把已成功 Startup 的 service
+// 列表注册到 dispatcher，并完成能力接线。
 // 幂等：重复注册同一个 module 会覆盖。
-func (s *Server) registerLocalServices() {
+func (s *Server) registerLocalServices(startedServices []IService) {
 	// C2 子接口的真实消费点（CLEAN / E6）：本方法由 Server.Run 无条件调用，
-	// 是"所有已装载 service 都已 Startup 完毕"后唯一一个能拿到完整 s.service
-	// 列表、且不属于停机/网络热路径的稳定钩子。在这里对全部 service 做
+	// 是 Startup 过滤后能拿到完整成功列表、且不属于停机/网络热路径的
+	// 稳定钩子。在这里只对已成功 Startup 的 service 做
 	// IStatefulService / IUserLifecycleService 接口断言，扇出全局登录/下线钩子
 	// 并盘点 state 通知能力（与单进程/分布式无关，两条路径都会经过）。
 	// 盘点结果存入包级 lastServiceCapabilities，供启动诊断 / 单测断言。
-	setLastServiceCapabilities(wireServiceCapabilities(s.service))
+	setLastServiceCapabilities(wireServiceCapabilities(startedServices))
 
 	if !s.inProcessDispatch {
 		return
 	}
-	for _, svc := range s.service {
+	for _, svc := range startedServices {
 		localDispatcher.Register(svc.GetName(), svc)
 	}
 	localDispatchEnabled.Store(true)
 }
 
 // allocateIfNilPtr 在 v 是 typed nil pointer（如 (*T)(nil)）时分配一个
-// 真正的 *T。用于 SendRPCMessage 的 local dispatch 路径——ServiceAPI.NewRPC
-// 对指针类型生成的 reply 是 typed nil，需要在调 method 之前分配好。
+// 真正的 *T。用于 SendRPCMessage 的 local dispatch 路径，兼容业务
+// 通过 New/NewEmpty 或旧代码构造出 typed nil reply 的情况。
 func allocateIfNilPtr(v any) any {
 	if v == nil {
 		return v

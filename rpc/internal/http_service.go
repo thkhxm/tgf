@@ -92,14 +92,14 @@ func buildHTTPServiceRegistration(opt HTTPServiceOptions) (*api.AgentServiceRegi
 	}
 	host, portStr, err := net.SplitHostPort(strings.TrimPrefix(opt.Address, "http://"))
 	if err != nil {
-		return nil, 0, fmt.Errorf("Address 不是合法的 host:port (%q): %w", opt.Address, err)
+		return nil, 0, fmt.Errorf("Address 不是合法的 host:port (%q): %w", opt.Address, err) //nolint:staticcheck // ST1005: Address is the public option field name retained in diagnostics.
 	}
 	if host == "" || host == "0.0.0.0" || host == "::" {
-		return nil, 0, fmt.Errorf("Address 的 host 不能是通配地址 (%q)——Consul 消费方拿到它无法回连", opt.Address)
+		return nil, 0, fmt.Errorf("Address 的 host 不能是通配地址 (%q)——Consul 消费方拿到它无法回连", opt.Address) //nolint:staticcheck // ST1005: Address is the public option field name retained in diagnostics.
 	}
 	port, err := strconv.Atoi(portStr)
 	if err != nil {
-		return nil, 0, fmt.Errorf("Address 端口非数字 (%q): %w", portStr, err)
+		return nil, 0, fmt.Errorf("Address 端口非数字 (%q): %w", portStr, err) //nolint:staticcheck // ST1005: Address is the public option field name retained in diagnostics.
 	}
 
 	mode := opt.CheckMode

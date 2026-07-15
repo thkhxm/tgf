@@ -106,8 +106,8 @@ func TestFileFailureQueue_PersistsAcrossOpen(t *testing.T) {
 		t.Fatal(err)
 	}
 	for i := 0; i < 3; i++ {
-		if err := q1.Enqueue(FailurePayload(fmt.Sprintf("first-%d", i))); err != nil {
-			t.Fatal(err)
+		if enqueueErr := q1.Enqueue(FailurePayload(fmt.Sprintf("first-%d", i))); enqueueErr != nil {
+			t.Fatal(enqueueErr)
 		}
 	}
 	_ = q1.Close()
@@ -117,7 +117,11 @@ func TestFileFailureQueue_PersistsAcrossOpen(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer q2.Close()
+	defer func() {
+		if closeErr := q2.Close(); closeErr != nil {
+			t.Errorf("close reopened queue: %v", closeErr)
+		}
+	}()
 	if q2.Len() != 3 {
 		t.Errorf("重开后 Len 期望 3, 实际 %d", q2.Len())
 	}

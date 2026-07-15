@@ -22,6 +22,13 @@ import (
 	"google.golang.org/protobuf/proto"
 )
 
+func closeRPCResource(t *testing.T, name string, resource io.Closer) {
+	t.Helper()
+	if err := resource.Close(); err != nil && !errors.Is(err, net.ErrClosed) {
+		t.Errorf("close %s: %v", name, err)
+	}
+}
+
 // writeIntoPipe 把 buf 通过 net.Pipe 异步写入 reader 端。
 // 返回 server（reader 用）和等待写完的回调。
 func writeIntoPipe(t *testing.T, buf []byte) (server net.Conn, waitWrite func()) {
@@ -30,7 +37,7 @@ func writeIntoPipe(t *testing.T, buf []byte) (server net.Conn, waitWrite func())
 	done := make(chan struct{})
 	go func() {
 		defer close(done)
-		defer client.Close()
+		defer closeRPCResource(t, "pipe writer", client)
 		_, _ = client.Write(buf)
 	}()
 	return server, func() { <-done }
@@ -38,7 +45,7 @@ func writeIntoPipe(t *testing.T, buf []byte) (server net.Conn, waitWrite func())
 
 func TestTCPFramedConn_ReadFrame_Heartbeat(t *testing.T) {
 	server, wait := writeIntoPipe(t, []byte{requestMagicNumber, byte(Heartbeat)})
-	defer server.Close()
+	defer closeRPCResource(t, "pipe server", server)
 
 	fc := newTCPFramedConn(server, 0, 0)
 	frame, err := fc.ReadFrame()
@@ -70,7 +77,7 @@ func TestTCPFramedConn_ReadFrame_Logic(t *testing.T) {
 	buf = append(buf, payload...)
 
 	server, wait := writeIntoPipe(t, buf)
-	defer server.Close()
+	defer closeRPCResource(t, "pipe server", server)
 
 	fc := newTCPFramedConn(server, 0, 0)
 	frame, err := fc.ReadFrame()
@@ -94,7 +101,7 @@ func TestTCPFramedConn_ReadFrame_Logic(t *testing.T) {
 
 func TestTCPFramedConn_ReadFrame_MagicMismatch(t *testing.T) {
 	server, wait := writeIntoPipe(t, []byte{0x00, 0x01})
-	defer server.Close()
+	defer closeRPCResource(t, "pipe server", server)
 
 	fc := newTCPFramedConn(server, 0, 0)
 	_, err := fc.ReadFrame()
@@ -106,7 +113,7 @@ func TestTCPFramedConn_ReadFrame_MagicMismatch(t *testing.T) {
 
 func TestTCPFramedConn_ReadFrame_UnknownType(t *testing.T) {
 	server, wait := writeIntoPipe(t, []byte{requestMagicNumber, 0xFF})
-	defer server.Close()
+	defer closeRPCResource(t, "pipe server", server)
 
 	fc := newTCPFramedConn(server, 0, 0)
 	_, err := fc.ReadFrame()
@@ -120,7 +127,7 @@ func TestTCPFramedConn_ReadFrame_EOF(t *testing.T) {
 	// 空管道：立刻关闭，ReadFrame 应返回 io.EOF（或包装的 err）。
 	client, server := net.Pipe()
 	_ = client.Close()
-	defer server.Close()
+	defer closeRPCResource(t, "pipe server", server)
 
 	fc := newTCPFramedConn(server, 0, 0)
 
@@ -147,8 +154,8 @@ func TestTCPFramedConn_ReadFrame_EOF(t *testing.T) {
 // TestTCPFramedConn_WriteFrame_Passthrough 验证 WriteFrame 就是透传底层 Write。
 func TestTCPFramedConn_WriteFrame_Passthrough(t *testing.T) {
 	client, server := net.Pipe()
-	defer client.Close()
-	defer server.Close()
+	defer closeRPCResource(t, "pipe client", client)
+	defer closeRPCResource(t, "pipe server", server)
 
 	payload := []byte("phase2-write-check")
 	got := make(chan []byte, 1)
@@ -179,7 +186,7 @@ func TestTCPFramedConn_WriteFrame_Passthrough(t *testing.T) {
 // 编码且不被识别为 WS 传输（isWSConn 用于 handleConn 的 meta 历史行为差异）。
 func TestTCPFramedConn_EncodeResponse(t *testing.T) {
 	_, server := net.Pipe()
-	defer server.Close()
+	defer closeRPCResource(t, "pipe server", server)
 	fc := newTCPFramedConn(server, 0, 0)
 	if isWSConn(fc) {
 		t.Errorf("tcpFramedConn 不应被识别为 WS 传输")
@@ -246,7 +253,7 @@ func TestWSFramedConn_ReadFrame_Binary(t *testing.T) {
 	defer close(done)
 
 	client := dialWSClient(t, srv)
-	defer client.Close()
+	defer closeRPCResource(t, "websocket client", client)
 
 	var serverFC *wsFramedConn
 	select {
@@ -266,8 +273,8 @@ func TestWSFramedConn_ReadFrame_Binary(t *testing.T) {
 	if err != nil {
 		t.Fatalf("marshal: %v", err)
 	}
-	if err := client.WriteMessage(websocket.BinaryMessage, raw); err != nil {
-		t.Fatalf("client write: %v", err)
+	if writeErr := client.WriteMessage(websocket.BinaryMessage, raw); writeErr != nil {
+		t.Fatalf("client write: %v", writeErr)
 	}
 
 	// 服务端 ReadFrame
@@ -300,7 +307,7 @@ func TestWSFramedConn_WriteFrame_ClientReceives(t *testing.T) {
 	defer close(done)
 
 	client := dialWSClient(t, srv)
-	defer client.Close()
+	defer closeRPCResource(t, "websocket client", client)
 
 	var serverFC *wsFramedConn
 	select {
@@ -371,7 +378,7 @@ func TestWSFramedConn_TransportAndEncode(t *testing.T) {
 	defer close(done)
 
 	client := dialWSClient(t, srv)
-	defer client.Close()
+	defer closeRPCResource(t, "websocket client", client)
 
 	var serverFC *wsFramedConn
 	select {
@@ -401,7 +408,7 @@ func TestWSFramedConn_MultipleFramesPreserveOrder(t *testing.T) {
 	defer close(done)
 
 	client := dialWSClient(t, srv)
-	defer client.Close()
+	defer closeRPCResource(t, "websocket client", client)
 
 	var serverFC *wsFramedConn
 	select {

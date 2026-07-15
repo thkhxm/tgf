@@ -475,7 +475,11 @@ func initLogger() {
 	}
 	logger = zap.New(zapcore.NewTee(taggedCores[DBTAG], taggedCores[GAMETAG], taggedCores[SERVICETAG], st), zap.AddCaller(), zap.AddCallerSkip(1))
 	slogger = logger.Sugar()
-	defer logger.Sync()
+	defer func() {
+		if err := logger.Sync(); err != nil {
+			fmt.Printf("日志缓冲刷新失败: %v\n", err)
+		}
+	}()
 
 	// 注册 Reload 订阅者（仅一次）：config.Reload() 成功后热更日志级别 / ignoredTags。
 	// 这取代了 v1 在 loadLumberjackConfig 里裸读 os.Getenv 的伪热更——现在改 .env
@@ -492,16 +496,17 @@ func initLogger() {
 // 级别统一使用包级 atomicLevel（zap.AtomicLevel 实现 zapcore.LevelEnabler），
 // 因此 Reload 时 atomicLevel.SetLevel 对所有 core 同步生效，无需重建 logger。
 func newCore(logPath string, zapLoggerEncoderConfig zapcore.EncoderConfig, stdout bool) zapcore.Core {
-	//如果logPath文件夹不存在则创建
-	if _, err := os.Stat(filepath.Dir(logPath)); os.IsNotExist(err) {
-		os.MkdirAll(filepath.Dir(logPath), os.ModePerm)
-	}
-
 	wys := make([]zapcore.WriteSyncer, 0, 2)
 	if stdout {
 		wys = append(wys, zapcore.AddSync(os.Stdout))
 		syncWriter := zapcore.NewMultiWriteSyncer(wys...)
 		return zapcore.NewCore(zapcore.NewConsoleEncoder(zapLoggerEncoderConfig), syncWriter, atomicLevel)
+	}
+
+	// 文件 core 创建目录失败时退化为 no-op；stdout core 仍可报告初始化错误。
+	if err := os.MkdirAll(filepath.Dir(logPath), os.ModePerm); err != nil {
+		fmt.Printf("创建日志目录失败 path=%s err=%v\n", filepath.Dir(logPath), err)
+		return zapcore.NewNopCore()
 	}
 	wy := zapcore.AddSync(&lumberjack.Logger{
 		Filename:   logPath,           // ⽇志⽂件路径

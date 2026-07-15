@@ -1,5 +1,5 @@
 # Binaries for programs and plugins
-#*.exe
+*.exe
 *.exe~
 *.dll
 *.so
@@ -24,6 +24,7 @@
 !.env.example
 !.env.test.example
 !.env.release.example
+!.env.*.example
 
 # 运行期产物与工作区污染（审计 P1/P3）：
 # - 示例/测试运行时框架会在 cwd 生成 log/ 目录树

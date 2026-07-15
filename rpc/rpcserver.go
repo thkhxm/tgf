@@ -388,7 +388,7 @@ func (s *Server) buildPostServeHooks() []Optional {
 	hooks = append(hooks, s.afterOptionals...)
 	if !s.disableClient {
 		hooks = append(hooks, func(sv *Server) {
-			c := newRPCClient().startup()
+			c := newRPCClient().startup(sv.whiteServiceList...)
 			// D4/D5: startup 在 discovery 缺失或 Consul 不可达时返回 nil——
 			// 此时跳过白名单装载，避免 nil 解引用；后续 getRPCClient 会重试。
 			if c == nil {
@@ -397,7 +397,6 @@ func (s *Server) buildPostServeHooks() []Optional {
 			}
 			log.InfoTag("init", "装载RPCClient服务")
 			for _, messageType := range sv.whiteServiceList {
-				c.AddWhiteService(messageType)
 				log.InfoTag("init", "加入请求无需登录的白名单 serviceName=%v", messageType)
 			}
 		})
@@ -885,10 +884,13 @@ func (s *Server) Run() <-chan bool {
 	}
 
 	// 1. Startup 先行：全部 service 验证启动，失败者剔除出注册名单。
+	// Startup 的两个返回值都是成功契约的一部分：只有 (true, nil)
+	// 才算启动成功。否则不得进入后续共用的 dispatcher、能力盘点、
+	// rpcx/discovery 注册与 TTL health 列表。
 	startedServices := make([]IService, 0, len(s.service))
 	for _, service := range s.service {
 		serviceName = fmt.Sprintf("%v", service.GetName())
-		if startupOK, startupErr := service.Startup(); !startupOK {
+		if startupOK, startupErr := service.Startup(); !startupOK || startupErr != nil {
 			log.Error("[init] 服务启动异常,不注册到服务发现 serviceName=%v error=%v", serviceName, startupErr)
 			continue
 		}
@@ -897,7 +899,7 @@ func (s *Server) Run() <-chan bool {
 
 	// 单进程模式：Startup 完成后把 service 注册到本地 dispatcher。
 	// 放在 Startup 之后是因为 Startup 可能修改 service 内部状态（比如 rpc.Module 的 State 字段）。
-	s.registerLocalServices()
+	s.registerLocalServices(startedServices)
 	// D4: 单进程模式下白名单不再依赖 rpcClient（它不启动）——把 WithWhiteService
 	// 注册的白名单同步给网关本地直通路径（gateway_local_dispatch.go）。
 	if s.inProcessDispatch {
@@ -1169,7 +1171,15 @@ func NewRPCServer() *Server {
 	return rpcServer
 }
 
-var rpcClient *Client
+var rpcClient atomic.Pointer[Client]
+
+func loadRPCClient() *Client {
+	return rpcClient.Load()
+}
+
+func storeRPCClient(c *Client) {
+	rpcClient.Store(c)
+}
 
 type Client struct {
 	clients     *hashmap.Map[string, client.XClient]
@@ -1192,7 +1202,7 @@ func newRPCClient() *ClientOptional {
 //   - RegisterDiscovery 失败（Consul 不可达，D5 后返回 nil 而非缓存 nil）→ 返回 nil
 //     且不发布全局 rpcClient，下次 getRPCClient 会重试；
 //   - 全局 rpcClient 改为"局部完整构造后最后发布"，消除半初始化窗口。
-func (c *ClientOptional) startup() *Client {
+func (c *ClientOptional) startup(whiteServices ...string) *Client {
 	discovery := internal.GetDiscovery()
 	if discovery == nil {
 		log.WarnTag("init", "discovery 未初始化(WithoutConsul/单进程模式),RPC Client 不启动")
@@ -1207,7 +1217,7 @@ func (c *ClientOptional) startup() *Client {
 
 	newClient := new(Client)
 	newClient.clients = hashmap.New[string, client.XClient]()
-	newClient.whiteMethod = make([]string, 0)
+	newClient.whiteMethod = append([]string(nil), whiteServices...)
 
 	//获取当前已经注册了的服务
 	for _, v := range baseDiscovery.GetServices() {
@@ -1217,8 +1227,8 @@ func (c *ClientOptional) startup() *Client {
 	}
 	newClient.watchBaseDiscovery(discovery, baseDiscovery)
 	// 完整构造后最后发布
-	rpcClient = newClient
-	return rpcClient
+	storeRPCClient(newClient)
+	return newClient
 }
 
 func (c *Client) AddWhiteService(serviceName string) *Client {
@@ -1239,18 +1249,15 @@ func (c *Client) CheckWhiteList(serviceName string) bool {
 func (c *Client) watchBaseDiscovery(d internal.IRPCDiscovery, discovery *client2.ConsulDiscovery) {
 	var ()
 	util.Go(func() {
-		for {
-			select {
-			case kv := <-discovery.WatchService():
-				for _, v := range kv {
-					if strings.Index(v.Key, "/") > 0 {
-						moduleName := strings.Split(v.Key, "/")[0]
-						if dis := internal.GetDiscovery().GetDiscovery(moduleName); dis != nil {
-							continue
-						}
-						log.DebugTag("discovery", "base discovery service %v,%v", v.Key, v.Value)
-						c.registerClient(d, moduleName)
+		for kv := range discovery.WatchService() {
+			for _, v := range kv {
+				if strings.Index(v.Key, "/") > 0 {
+					moduleName := strings.Split(v.Key, "/")[0]
+					if dis := internal.GetDiscovery().GetDiscovery(moduleName); dis != nil {
+						continue
 					}
+					log.DebugTag("discovery", "base discovery service %v,%v", v.Key, v.Value)
+					c.registerClient(d, moduleName)
 				}
 			}
 		}
@@ -1291,17 +1298,17 @@ func (c *Client) getClient(moduleName string) (xclient client.XClient) {
 // D4/D5: startup 失败（discovery 缺失 / Consul 不可达）时返回 nil——调用方必须
 // 判空走错误路径；rpcClient 不会被发布为半成品，后续调用会自动重试初始化。
 func getRPCClient() *Client {
-
-	if rpcClient == nil {
-		singletonLock.Lock()
-		defer singletonLock.Unlock()
-		if rpcClient == nil {
-			if c := newRPCClient().startup(); c != nil {
-				log.InfoTag("init", "装载RPCClient服务")
-			}
+	if current := loadRPCClient(); current != nil {
+		return current
+	}
+	singletonLock.Lock()
+	defer singletonLock.Unlock()
+	if loadRPCClient() == nil {
+		if c := newRPCClient().startup(); c != nil {
+			log.InfoTag("init", "装载RPCClient服务")
 		}
 	}
-	return rpcClient
+	return loadRPCClient()
 }
 
 type Call struct {
@@ -1310,10 +1317,6 @@ type Call struct {
 	// 结果出来才能释放，挂在 Done() 上执行。同步路径构造时为 noopRelease。
 	release     func(error)
 	releaseOnce sync.Once
-}
-
-func newCall(rpcxCall *client.Call) (call *Call) {
-	return newCallWithRelease(rpcxCall, noopRelease)
 }
 
 // newCallWithRelease 构造一个携带策略释放闭包的 Call（E1：SendAsyncRPCMessage 用）。
@@ -1329,12 +1332,12 @@ func newCallWithRelease(rpcxCall *client.Call, release func(error)) (call *Call)
 //	@Description: 会阻塞
 //	@receiver this
 //	@return error
-func (this *Call) Done() error {
+func (c *Call) Done() error {
 	var ()
-	cal := <-this.rpcxCall.Done
+	cal := <-c.rpcxCall.Done
 	// E1：消费结果时释放策略资源（并发信号量/熔断计数）。Once 保证幂等。
-	this.releaseOnce.Do(func() {
-		this.release(cal.Error)
+	c.releaseOnce.Do(func() {
+		c.release(cal.Error)
 	})
 	return cal.Error
 }
@@ -1388,21 +1391,21 @@ func sendMessage(ct IUserConnectData, moduleName, serviceName string, args, repl
 	)
 	if useLocal {
 		if !ct.IsLogin() && !checkLocalGateWhiteList(messageType) {
-			return errors.New(fmt.Sprintf("用户未登录 非白名单请求无法抵达 moduleName=%v serviceName=%v", moduleName, serviceName))
+			return fmt.Errorf("用户未登录 非白名单请求无法抵达 moduleName=%v serviceName=%v", moduleName, serviceName)
 		}
 	} else {
 		rc = getRPCClient()
 		// D4: rpcClient 不可用（单进程/Standalone 模式、或 discovery 创建失败）时
 		// 返回明确错误而非 panic。
 		if rc == nil {
-			return errors.New(fmt.Sprintf("RPC client 不可用(单进程模式下模块未注册到本地 dispatcher,或 discovery 未初始化) moduleName=%v serviceName=%v", moduleName, serviceName))
+			return fmt.Errorf("RPC client 不可用(单进程模式下模块未注册到本地 dispatcher,或 discovery 未初始化) moduleName=%v serviceName=%v", moduleName, serviceName)
 		}
 		xclient = rc.getClient(moduleName)
 		if xclient == nil {
-			return errors.New(fmt.Sprintf("找不到对应模块的服务 moduleName=%v serviceName=%v ", moduleName, serviceName))
+			return fmt.Errorf("找不到对应模块的服务 moduleName=%v serviceName=%v ", moduleName, serviceName)
 		}
 		if !ct.IsLogin() && !rc.CheckWhiteList(messageType) {
-			return errors.New(fmt.Sprintf("用户未登录 非白名单请求无法抵达 moduleName=%v serviceName=%v", moduleName, serviceName))
+			return fmt.Errorf("用户未登录 非白名单请求无法抵达 moduleName=%v serviceName=%v", moduleName, serviceName)
 		}
 	}
 
@@ -1470,12 +1473,8 @@ func SendRPCMessage[Req any, Res any](ct context.Context, api *ServiceAPI[Req, R
 	// 单进程模式 fast path：如果开启了 in-process dispatch 且 module 在本地
 	// 注册，直接反射调用。绕开 rpcx + Consul 的全部网络路径。
 	//
-	// 注意 reply 的分配问题：ServiceAPI.NewRPC 对指针类型的 Res 会生成一个
-	// typed nil pointer（如 (*GiveGiftRes)(nil)）。dispatcher.Call 内部的
-	// ensureAllocated 会给它分配真正的 struct，但分配出来的对象是 Call 内部
-	// 的局部变量——api.reply 本身仍然是 nil。解决方式：在调 Call 之前就在这里
-	// 用反射分配好真正的 reply 对象，传给 Call 让 method 写入，然后用 type
-	// assertion 转回 Res 返回。
+	// 兼容业务通过 New/NewEmpty 或旧代码构造出 typed nil reply 的情况：
+	// 在调 Call 之前分配真正的 reply 对象，再用 type assertion 转回 Res。
 	if localDispatchEnabled.Load() {
 		if _, ok := localDispatcher.Lookup(api.ModuleName); ok {
 			replyObj := allocateIfNilPtr(api.reply)
@@ -1560,7 +1559,7 @@ func SendAsyncRPCMessage[Req any, Res any](ct context.Context, api *ServiceAPI[R
 		xclient = rc.getClient(api.ModuleName)
 	)
 	if xclient == nil {
-		err := errors.New(fmt.Sprintf("找不到对应模块的服务 moduleName=%v", api.ModuleName))
+		err := fmt.Errorf("找不到对应模块的服务 moduleName=%v", api.ModuleName)
 		release(err)
 		return nil, err
 	}
@@ -1623,7 +1622,7 @@ func SendNoReplyRPCMessage[Req any, Res any](ct context.Context, api *ServiceAPI
 		xclient = rc.getClient(api.ModuleName)
 	)
 	if xclient == nil {
-		err := errors.New(fmt.Sprintf("找不到对应模块的服务 moduleName=%v", api.ModuleName))
+		err := fmt.Errorf("找不到对应模块的服务 moduleName=%v", api.ModuleName)
 		release(err)
 		return err
 	}
@@ -1651,7 +1650,7 @@ func SendNoReplyRPCMessageByAddress(moduleName, address, serviceName string, arg
 		xclient = rc.getClient(moduleName)
 	)
 	if xclient == nil {
-		err := errors.New(fmt.Sprintf("找不到对应模块的服务 moduleName=%v", moduleName))
+		err := fmt.Errorf("找不到对应模块的服务 moduleName=%v", moduleName)
 		release(err)
 		return err
 	}
@@ -1679,7 +1678,7 @@ func SendRPCMessageByStr(ct context.Context, moduleName, serviceName string, arg
 		xclient = rc.getClient(moduleName)
 	)
 	if xclient == nil {
-		err = tgf.ServiceNotFound
+		err = tgf.ErrServiceNotFound
 		return err
 	}
 	done := make(chan *client.Call, 1)
@@ -1725,7 +1724,7 @@ func BorderRPCMessage[Req any, Res any](ct context.Context, api *ServiceAPI[Req,
 		xclient = rc.getClient(api.ModuleName)
 	)
 	if xclient == nil {
-		err = tgf.ServiceNotFound
+		err = tgf.ErrServiceNotFound
 		log.WarnTag("rpc", "broadcast 找不到对应模块的服务 moduleName=%v", api.ModuleName)
 		return
 	}
@@ -1742,7 +1741,9 @@ func BorderAllServiceRPCMessageByContext[Req any, Res any](ct context.Context, a
 		return
 	}
 	rc.clients.Range(func(s string, xClient client.XClient) bool {
-		xClient.Oneshot(ct, api.Name, api.args)
+		if err := xClient.Oneshot(ct, api.Name, api.args); err != nil {
+			log.WarnTag("rpc", "broadcast-all failed module=%v method=%v err=%v", s, api.Name, err)
+		}
 		return true
 	})
 }
@@ -1758,7 +1759,9 @@ func BorderAllServiceRPCMessageByContextNotCheck[Req any, Res any](ct context.Co
 		if s == tgf.MonitorServiceModuleName || s == tgf.AdminServiceModuleName {
 			return true
 		}
-		xClient.Oneshot(ct, api.Name, api.args)
+		if err := xClient.Oneshot(ct, api.Name, api.args); err != nil {
+			log.WarnTag("rpc", "broadcast-all failed module=%v method=%v err=%v", s, api.Name, err)
+		}
 		return true
 	})
 
@@ -1859,14 +1862,6 @@ func UserLogin(ctx context.Context, userId string) (*LoginRes, error) {
 // 即便哪天被读，5 也会被按 5 毫秒而非 5 秒解释。已整组删除；
 // RPC 超时统一由 resolveRPCTimeout（A7/E1 管道）控制。
 
-func newUserContext(userId string) context.Context {
-	ct := share.NewContext(context.Background())
-	initData := make(map[string]string)
-	initData[tgf.ContextKeyUserId] = userId
-	ct.SetValue(share.ReqMetaDataKey, initData)
-	return ct
-}
-
 func NewCacheUserContext(userId string) context.Context {
 	reqMetaDataKey := fmt.Sprintf(tgf.RedisKeyUserNodeMeta, userId)
 	reqMetaCacheData, suc := db.GetMap[string, string](reqMetaDataKey)
@@ -1885,7 +1880,11 @@ func NewCacheUserContext(userId string) context.Context {
 }
 
 func NewRPCContext() context.Context {
-	ct := share.NewContext(context.Background())
+	return newRPCContext(context.Background())
+}
+
+func newRPCContext(parent context.Context) context.Context {
+	ct := share.NewContext(parent)
 	initData := make(map[string]string)
 	initData[tgf.ContextKeyRPCType] = tgf.RPCTip
 	ct.SetValue(share.ReqMetaDataKey, initData)

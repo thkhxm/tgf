@@ -1,7 +1,7 @@
-// tgf v3 / G 档示例 ②：REST + 调用游戏服 RPC（分布式 web 服务接游戏后端）
+// tgf v2 示例 ②：REST + 调用游戏服 RPC（HTTP→RPC）
 //
-// 演示"分布式 web 服务"形态：一个对外的 HTTP/REST 入口，把请求经 **HTTP→RPC 桥**
-// 转发给后端游戏 service（rpcx）。HTTP handler 不直接碰业务数据，而是通过框架
+// 默认演示可直接运行的单进程 HTTP→RPC：一个对外的 HTTP/REST 入口，把请求经
+// **HTTP→RPC 桥**转发给同进程的游戏 service。HTTP handler 不直接碰业务数据，而是通过框架
 // 注入的 web.Backend 调用任意后端 module.method——与游戏客户端走的是同一套
 // service 实现、同一条策略管道（E1 限流/熔断）、同一份可观测埋点（E3 metrics），
 // 且 traceId 从 HTTP 请求一路透传到后端 RPC（X-Trace-Id → rpcx ReqMetaData）。
@@ -16,7 +16,7 @@
 //
 // 本示例为可直接 go run 的**单进程混合部署**：HTTP 入口 + 游戏 service 同进程，
 // 用 WithSingleProcess() 让 Backend.Invoke 走 localDispatcher 直通。要拆成真正
-// 的多进程分布式（HTTP 进程 + 若干游戏服进程，经 Consul 服务发现互联），只需：
+// 的多进程分布式 integration（HTTP 进程 + 若干游戏服进程，经 Consul 服务发现互联），只需：
 //   - 游戏服进程：去掉 WithSingleProcess，正常 WithService(...).Run() 注册进 Consul；
 //   - HTTP 进程：用 WithClientOnly() + WithHTTPServiceConsul(...)（client-only
 //     纯 web 接入层）：WithClientOnly() 才是"不把自己伪装成 RPC 节点"的开关——
@@ -27,6 +27,7 @@
 //     discovery 非 nil 时注册进 Consul——那不是 client-only，必须显式
 //     WithClientOnly() 才是。WithHTTPServiceConsul 再把这个 HTTP 接入层本身
 //     注册进 Consul（带 health 路由 + TTL 续约），使其可被发现/负载均衡。
+//
 // 详见 example/http_rpc/README.md「拆成多进程」一节。
 //
 // 用法：
@@ -44,9 +45,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
-	"os"
-	"os/signal"
-	"syscall"
 	"time"
 
 	"github.com/thkhxm/tgf/v2"
@@ -205,7 +203,7 @@ func main() {
 
 	fmt.Println()
 	fmt.Println("========================================")
-	fmt.Println("  tgf v3 G档 · REST + 游戏服 RPC 混合示例已启动")
+	fmt.Println("  tgf v2 · REST + 游戏服 RPC 混合示例已启动")
 	fmt.Println("  HTTP 入口: http://127.0.0.1:8091")
 	fmt.Println("  后端 module: player (GetPlayer / GiveGift)")
 	fmt.Println("  桥: HTTP handler --web.Backend--> rpcx service（单进程 localDispatcher 直通）")
@@ -217,19 +215,16 @@ func main() {
 	fmt.Println("    curl -i -H 'X-Trace-Id: my-trace-1' http://127.0.0.1:8091/players/player_001")
 	fmt.Println()
 
-	sig := make(chan os.Signal, 1)
-	signal.Notify(sig, syscall.SIGINT, syscall.SIGTERM)
-	select {
-	case <-done:
-		log.InfoTag("http_rpc", "server 退出")
-	case s := <-sig:
-		log.InfoTag("http_rpc", "收到信号 %v，正在优雅关闭...", s)
-	}
+	// SIGINT/SIGTERM 由框架统一处理；业务 main 只等待 Run 的 done。
+	<-done
+	log.InfoTag("http_rpc", "server 退出")
 }
 
 // writeJSON 写 JSON 响应。
 func writeJSON(w http.ResponseWriter, status int, v any) {
 	w.Header().Set("Content-Type", "application/json; charset=utf-8")
 	w.WriteHeader(status)
-	_ = json.NewEncoder(w).Encode(v)
+	if err := json.NewEncoder(w).Encode(v); err != nil {
+		log.WarnTag("http_rpc", "编码 JSON 响应失败: %v", err)
+	}
 }

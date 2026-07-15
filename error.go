@@ -17,11 +17,20 @@ type GameError interface {
 }
 
 var (
-	ErrorRPCTimeOut = errors.New("rpc time out")
-	LocalEmpty      = errors.New("local cache empty")
-	RedisEmpty      = errors.New("redis cache empty")
-	DBEmpty         = errors.New("db cache empty")
-	ServiceNotFound = errors.New("service not found")
+	ErrorRPCTimeOut    = errors.New("rpc time out")
+	ErrLocalEmpty      = errors.New("local cache empty")
+	ErrRedisEmpty      = errors.New("redis cache empty")
+	ErrDBEmpty         = errors.New("db cache empty")
+	ErrServiceNotFound = errors.New("service not found")
+
+	// Deprecated: use ErrLocalEmpty. Kept as the same error value for compatibility.
+	LocalEmpty = ErrLocalEmpty //nolint:staticcheck // Public compatibility alias.
+	// Deprecated: use ErrRedisEmpty. Kept as the same error value for compatibility.
+	RedisEmpty = ErrRedisEmpty //nolint:staticcheck // Public compatibility alias.
+	// Deprecated: use ErrDBEmpty. Kept as the same error value for compatibility.
+	DBEmpty = ErrDBEmpty //nolint:staticcheck // Public compatibility alias.
+	// Deprecated: use ErrServiceNotFound. Kept as the same error value for compatibility.
+	ServiceNotFound = ErrServiceNotFound //nolint:staticcheck // Public compatibility alias.
 
 	// A2-phase3 网关推送相关错误：
 	// ErrConnClosed - 调用 Send/ToUser 时连接已被 Offline

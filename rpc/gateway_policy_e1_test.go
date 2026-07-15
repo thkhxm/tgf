@@ -14,25 +14,20 @@ import (
 	"testing"
 	"time"
 
+	"context"
+
 	"github.com/cornelk/hashmap"
 	rpcxclient "github.com/thkhxm/rpcx/v2/client"
 	rpcxserver "github.com/thkhxm/rpcx/v2/server"
 	"github.com/thkhxm/tgf/v2"
-	"golang.org/x/net/context"
 )
 
 // ---- 真实 rpcx server 测试设施 ----
 
 // startTestRPCXServer 在 127.0.0.1 随机端口起一个真实 rpcx server 并注册 svc，
 // 返回地址与关闭函数。用 ServeListener 消除"先探端口再监听"的竞态。
-//
-// 注意：本设施同时会建立真实 rpcx client 连接——race 模式下因 fork 的
-// client.input() 已知竞态（F1 治理项）统一跳过，见 race_on_test.go。
 func startTestRPCXServer(t *testing.T, moduleName string, svc interface{}) (addr string, shutdown func()) {
 	t.Helper()
-	if raceDetectorEnabled {
-		t.Skip("rpcx fork client.input() 存在已知竞态(V3 审计 F1 fork 治理项)——race 模式跳过真实 rpcx client 链路,非 race 测试仍全量执行")
-	}
 	ln, err := net.Listen("tcp", "127.0.0.1:0")
 	if err != nil {
 		t.Fatalf("listen: %v", err)
@@ -61,15 +56,15 @@ func newP2PXClient(t *testing.T, moduleName, addr string) rpcxclient.XClient {
 // 返回恢复函数。
 func injectRPCClient(t *testing.T, moduleName string, xc rpcxclient.XClient) func() {
 	t.Helper()
-	orig := rpcClient
+	orig := loadRPCClient()
 	nc := new(Client)
 	nc.clients = hashmap.New[string, rpcxclient.XClient]()
 	nc.whiteMethod = make([]string, 0)
 	if xc != nil {
 		nc.clients.Set(moduleName, xc)
 	}
-	rpcClient = nc
-	return func() { rpcClient = orig }
+	storeRPCClient(nc)
+	return func() { storeRPCClient(orig) }
 }
 
 // ---- 1. 网关主链路 sendMessage 接入策略管道 ----
@@ -77,7 +72,7 @@ func injectRPCClient(t *testing.T, moduleName string, xc rpcxclient.XClient) fun
 // TestSendMessage_GatewayRateLimit 是 E1 的核心接线回归：
 // 网关主链路（doLogic 调的 sendMessage）必须真实受 SetMethodPolicy 的限流管控。
 // 通过单进程直通驱动：第 1 次放行（service 收到），第 2 次被令牌桶拒绝
-//（service 不应再被调到）。
+// （service 不应再被调到）。
 func TestSendMessage_GatewayRateLimit(t *testing.T) {
 	svc, cleanup := withLocalEchoDispatch(t, "echo.Echo")
 	defer cleanup()
@@ -251,9 +246,9 @@ func TestBorderRPCMessage_NilClientNoPanic(t *testing.T) {
 func TestBorderAllService_NilClientNoPanic(t *testing.T) {
 	ResetLocalDispatcherForTest()
 	defer ResetLocalDispatcherForTest()
-	orig := rpcClient
-	rpcClient = nil
-	defer func() { rpcClient = orig }()
+	orig := loadRPCClient()
+	storeRPCClient(nil)
+	defer func() { storeRPCClient(orig) }()
 
 	defer func() {
 		if r := recover(); r != nil {

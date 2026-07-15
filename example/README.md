@@ -1,54 +1,55 @@
-# tgf v2 示例
+# tgf v2 示例与证据矩阵
 
-每个子目录是一个可独立运行的示例，演示 tgf v2 的不同模块。
+每个已声明场景都必须同时指向：可运行的 example、自动化证据和外部
+集成边界。`go test -count=1 ./example/...` 会编译全部示例包，并运行
+不依赖 Consul/Redis/MySQL 的 handler/service 单测和本矩阵的治理测试。
+
+## 证据等级
+
+- **unit**：默认 `go test` 真实执行，不连外部服务。
+- **compile**：同一条 `go test` 编译可执行包和 API 装配，不等于端口或
+  外部中间件已运行。
+- **integration**：必须显式启动示例及其依赖后验证；默认 CI 不伪造、
+  不静默跳过，也不声称已通过。
+
+## 场景矩阵
+
+| 场景 ID | 可运行 example | 默认自动化证据 | 外部集成状态 |
+|---|---|---|---|
+| `single-process-game` | `single_process/` | unit：Shop handler；compile：单进程 server | 无 Consul/Redis/MySQL；网关运行需端口 |
+| `distributed-game` | `distributed_game/cmd/{gateway,game}` | unit：UserService + KCP key；compile：双进程 | Consul/Redis 未在默认测试中运行 |
+| `http-rest` | `http_rest/` | unit：GET/POST handler；compile：HTTP server | 手工 `go run` + curl，默认测试不绑端口 |
+| `http-rpc` | `http_rpc/` | unit：PlayerService；compile：HTTP→RPC bridge | 单进程可手工运行；跨进程需 Consul |
+| `gateway-tcp` | `distributed_game/cmd/gateway` | compile：`GatewayOptions.TCPPort` | 真实连接需 Consul/Redis + 启动网关 |
+| `gateway-ws` | `distributed_game/cmd/gateway` | compile：`GatewayOptions.WSPath` | 真实连接需 Consul/Redis + 启动网关 |
+| `gateway-kcp` | `distributed_game/cmd/gateway` | unit：32 字节 AEAD key；compile：KCP builder | 真实 UDP 需 Consul/Redis + 启动网关 |
+| `robot-self-test` | `robot_test/` | unit：网关可达 GameService；compile：TCP/WS/KCP robot | `go run` 在本机起端口做自测，不在默认 CI 运行 |
+| `redis-mysql-write-behind` | `db_cache/` | unit：MemoryFailureQueue；compile：write-behind builder | Redis/MySQL 仅在 `TGF_EXAMPLE_EXTERNAL=1` 时尝试 |
+| `config-reload` | `config_reload/` | compile：`Load/Current/Reload/OnReload` | 示例自用进程 env，无外部中间件 |
+| `game-config` | `game_config/` | compile：JSON load/reload/watcher | 手工运行使用临时目录 |
+| `logging` | `log_usage/` | compile：Sprintf/zap.Field/tag 日志 API | 手工运行会写本地 log 产物 |
+| `metrics-trace` | `metrics_trace/` | compile：MemoryProvider + span/traceId | 无外部 provider；Prometheus/OTel adapter 不在此验证 |
+| `rpc-policy` | `rpc_policy/` | compile：限流/熔断/并发策略 | 手工运行会起本地 RPC 端口 |
+| `util` | `util_tools/` | compile：Go/GoE/Snowflake/转换 | 无外部依赖 |
+
+## 分布式与单进程的边界
+
+- `single_process/` 只表示零 Consul 的单进程多 Module，不再代表分布式。
+- `distributed_game/` 才是真实的长连接网关 + 独立业务服，具有
+  `cmd/gateway` / `cmd/game` / `internal/api` / `internal/service` 布局。
+- `http_rpc/` 默认可运行形态是单进程 HTTP→RPC；分布式 web 拆分步骤
+  是 integration 指南，不是默认测试已执行的事实。
+
+## 运行与停机
 
 ```bash
-cd tgf/example/<目录>
+go test -count=1 ./example/...
+go vet ./example/...
+
+cd example/<directory>
 go run .
 ```
 
-## 示例列表
-
-| 目录 | 对应包 | 演示内容 |
-|------|--------|---------|
-| `single_process/` | `rpc` | 单进程多 Module（WithSingleProcess + 跨 module RPC + 策略 + metrics） |
-| `http_rest/` | `web` / `rpc` | **纯 REST API**（WithHTTPService + 路由/中间件/限流/鉴权/优雅停机）——常规 http web 服务 |
-| `http_rpc/` | `web` / `rpc` | **REST + 调游戏服 RPC**（HTTP→RPC 桥 + traceId 全链路 + 单进程/多进程部署）——分布式 web 服务接游戏后端 |
-| `robot_test/` | `rpc` | WS + KCP robot 自测（登录 + 多人移动同步，压测 QPS） |
-| `db_cache/` | `db` | AutoCacheBuilder 三种缓存 + Redis 操作 + 分布式锁 + 补偿队列 |
-| `log_usage/` | `log` | Sprintf 风格 vs zap.Field 风格 + Tag 过滤 + 特殊日志 |
-| `config_reload/` | `config` | struct tag 配置加载 + Reload 热更 + OnReload + 类型校验 |
-| `metrics_trace/` | `metrics` / `trace` | Counter / Gauge / Histogram + StartSpan + TraceID 透传 |
-| `game_config/` | `component` | JSON 游戏配置 + GetGameConf + 热更 + fsnotify watcher |
-| `rpc_policy/` | `rpc` | 限流 / 熔断 / 并发控制三种策略场景 |
-| `util_tools/` | `util` | 协程池 Go/GoE + Snowflake ID + 随机数 + IP + 类型转换 |
-
-> **三种场景对应示例**：常规 http web 服务 → `http_rest/`；分布式 web 服务接游戏
-> 后端 → `http_rpc/`；分布式游戏服务（长连接网关 + 跨 module RPC）→ `single_process/`。
-
-## 依赖
-
-- 大部分示例**不需要 Redis / MySQL / Consul**，直接 `go run` 即可
-- `db_cache/` 的 Redis 操作部分需要实际 Redis（无 Redis 时静默跳过，不 panic）
-- `single_process/` 和 `rpc_policy/` 会启动 TCP 监听（默认 :8082），注意端口冲突
-- `http_rest/` 监听 :8090、`http_rpc/` 监听 :8091（HTTP），注意端口冲突
-
-## v2 特性速查
-
-| v2 特性 | 示例文件 | 关键代码行 |
-|---------|---------|-----------|
-| `WithHTTPService(web.Options{...})` | http_rest/main.go | 构建 server 的 builder chain（HTTP 一等公民） |
-| `web.Router` 路由 + `web.Auth` 鉴权 + `web.NewTokenBucketLimiter` | http_rest/main.go | Routes 回调内 |
-| `web.BackendFromRequest` HTTP→RPC 桥 | http_rpc/main.go | getPlayerHandler / giveGiftHandler |
-| `WithSingleProcess()` | single_process/main.go | 构建 server 的 builder chain |
-| `WithGatewayOptions(...)` | single_process/main.go | GatewayOptions struct |
-| `SendRPCMessage` 进程内直通 | single_process/main.go | UserService.Login → ShopGiveGift |
-| `WithMethodPolicy` | rpc_policy/main.go | 三种策略场景 |
-| `config.Load()` / `Reload()` | config_reload/main.go | struct tag 驱动 |
-| `metrics.NewCounter/Gauge/Histogram` | metrics_trace/main.go | 内存 Provider |
-| `trace.StartSpan` | metrics_trace/main.go | Span + TraceID |
-| `log.InfoTagW` (zap.Field) | log_usage/main.go | 零分配热路径 |
-| `component.ReloadGameConf` | game_config/main.go | 手动 + watcher 热更 |
-| `db.AutoCacheBuilder` | db_cache/main.go | 三种缓存模式 |
-| `db.FailureQueue` | db_cache/main.go | 补偿队列 |
-| `util.Go` / `GoE` | util_tools/main.go | 协程池 + fallback |
+长驻示例不自行 `signal.Notify`：`SIGINT/SIGTERM` 由 tgf 统一处理，
+业务 `main` 只等待 `Run()` 返回的 done。外部依赖的运行方式见
+`distributed_game/README.md` 和 `db_cache/main.go` 的显式开关。

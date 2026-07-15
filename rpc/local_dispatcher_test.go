@@ -8,7 +8,7 @@ package rpc
 //   3. Call 对不存在的 service / method / 错签名的方法都返回明确 error
 //   4. ensureShareContext 不破坏已有 ctx
 //   5. WithSingleProcess builder 同时置上两个 flag
-//   6. registerLocalServices 在 flag 关闭时是 no-op
+//   6. registerLocalServices 在 flag 关闭时不注册 dispatcher
 //   7. localDispatchEnabled 开关语义
 
 import (
@@ -16,8 +16,9 @@ import (
 	"strings"
 	"testing"
 
+	"context"
+
 	"github.com/thkhxm/rpcx/v2/share"
-	"golang.org/x/net/context"
 )
 
 // dispatchTestService 是一个最小化的本地 service：满足 IService 核心方法
@@ -172,7 +173,7 @@ func TestDispatcher_Call_NilCtxIsSafe(t *testing.T) {
 	defer ResetLocalDispatcherForTest()
 
 	localDispatcher.Register("demo", &dispatchTestService{})
-	err := localDispatcher.Call(nil, "demo", "Echo", &dispatchReq{Value: "x"}, &dispatchRes{})
+	err := localDispatcher.Call(nil, "demo", "Echo", &dispatchReq{Value: "x"}, &dispatchRes{}) //nolint:staticcheck // SA1012: compatibility test intentionally exercises the nil-context fallback.
 	if err != nil {
 		t.Errorf("nil ctx 应被 ensureShareContext 兜底, 实际 err %v", err)
 	}
@@ -198,7 +199,7 @@ func TestEnsureShareContext_PreservesShareContext(t *testing.T) {
 }
 
 func TestEnsureShareContext_NilSafe(t *testing.T) {
-	upgraded := ensureShareContext(nil)
+	upgraded := ensureShareContext(nil) //nolint:staticcheck // SA1012: compatibility test intentionally exercises the nil-context fallback.
 	if upgraded == nil {
 		t.Fatal("nil ctx 应回落到一个非 nil share.Context")
 	}
@@ -240,7 +241,7 @@ func TestRegisterLocalServices_NoopWhenFlagOff(t *testing.T) {
 
 	s := newBareServer()
 	s.service = append(s.service, &dispatchTestService{Module: Module{Name: "demo"}})
-	s.registerLocalServices() // flag 未开启
+	s.registerLocalServices(s.service) // flag 未开启
 	if localDispatchEnabled.Load() {
 		t.Error("flag 关闭时不应启用 dispatch")
 	}
@@ -259,7 +260,7 @@ func TestRegisterLocalServices_FlagOnRegistersAll(t *testing.T) {
 		&dispatchTestService{Module: Module{Name: "demo1"}},
 		&dispatchTestService{Module: Module{Name: "demo2"}},
 	)
-	s.registerLocalServices()
+	s.registerLocalServices(s.service)
 	if !localDispatchEnabled.Load() {
 		t.Error("flag 开启后应当 enable dispatch")
 	}
@@ -268,6 +269,57 @@ func TestRegisterLocalServices_FlagOnRegistersAll(t *testing.T) {
 	}
 	if _, ok := localDispatcher.Lookup("demo2"); !ok {
 		t.Error("demo2 应被注册")
+	}
+}
+
+type startupTrackingService struct {
+	Module
+	startupOK bool
+	destroyed bool
+}
+
+func (s *startupTrackingService) Startup() (bool, error) { return s.startupOK, nil }
+
+func (s *startupTrackingService) Destroy(IService) { s.destroyed = true }
+
+func TestServerRun_LocalRegistrationExcludesStartupFailureAndDestroyStillCleansIt(t *testing.T) {
+	g1Setup(t)
+	t.Cleanup(func() { setLastServiceCapabilities(ServiceCapabilityReport{}) })
+
+	started := &startupTrackingService{
+		Module:    Module{Name: "started", Version: "v1"},
+		startupOK: true,
+	}
+	rejected := &startupTrackingService{
+		Module:    Module{Name: "rejected", Version: "v1"},
+		startupOK: false,
+	}
+
+	s := NewRPCServer().WithSingleProcess().WithService(started).WithService(rejected)
+	if done := s.Run(); done == nil {
+		t.Fatal("Run 应返回关闭通知通道")
+	}
+	t.Cleanup(s.Destroy)
+
+	if _, ok := localDispatcher.Lookup("started"); !ok {
+		t.Error("Startup 成功的服务应注册到本地 dispatcher")
+	}
+	if _, ok := localDispatcher.Lookup("rejected"); ok {
+		t.Error("Startup 失败的服务不应注册到本地 dispatcher")
+	}
+	report := LastServiceCapabilities()
+	for _, names := range [][]string{report.Stateful, report.Lifecycle, report.PlainOnly} {
+		for _, name := range names {
+			if name == "rejected" {
+				t.Fatalf("Startup 失败的服务不应进入能力盘点: %+v", report)
+			}
+		}
+	}
+
+	s.Destroy()
+	if !started.destroyed || !rejected.destroyed {
+		t.Fatalf("Destroy 应仍清理全部已装载服务: started=%v rejected=%v",
+			started.destroyed, rejected.destroyed)
 	}
 }
 

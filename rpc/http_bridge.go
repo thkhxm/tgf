@@ -35,5 +35,5 @@ func init() {
 	web.RegisterErrorStatus(tgf.ErrorRPCTimeOut, http.StatusGatewayTimeout)
 	// 目标模块无可用节点 / client 未初始化（滚动发布、client-only 后端全挂）
 	// → 503（服务暂不可用，可重试；区别于 502 的"后端返回了错误"）。
-	web.RegisterErrorStatus(tgf.ServiceNotFound, http.StatusServiceUnavailable)
+	web.RegisterErrorStatus(tgf.ErrServiceNotFound, http.StatusServiceUnavailable)
 }

@@ -7,10 +7,11 @@ import (
 	"io"
 	"net"
 	"net/http"
-	"reflect"
 	"sync"
 	"sync/atomic"
 	"time"
+
+	"context"
 
 	"github.com/cornelk/hashmap"
 	"github.com/gorilla/websocket"
@@ -23,7 +24,6 @@ import (
 	"github.com/thkhxm/tgf/v2/metrics"
 	"github.com/thkhxm/tgf/v2/rpc/internal"
 	"github.com/thkhxm/tgf/v2/util"
-	"golang.org/x/net/context"
 	"google.golang.org/protobuf/proto"
 	"google.golang.org/protobuf/reflect/protoreflect"
 )
@@ -138,12 +138,7 @@ type Args[T protoreflect.ProtoMessage] struct {
 	ByteData []byte
 }
 
-func (a *Args[T]) GetData() (res T) {
-	var ()
-	v := reflect.ValueOf(res)
-	if v.Kind() == reflect.Interface && v.IsNil() {
-		v = reflect.New(v.Type().Elem())
-	}
+func (a *Args[T]) GetData() T {
 	return util.ConvertToPB[T](a.ByteData)
 }
 
@@ -977,8 +972,6 @@ func (t *TCPServer) doLogic(data *RequestData) {
 		messageType = data.Module + "." + data.RequestMethod
 	)
 	data.StartTime = time.Now()
-	reply := make([]byte, 0)
-
 	reqData := &Args[protoreflect.ProtoMessage]{}
 	reqData.ByteData = data.Data
 
@@ -1004,7 +997,7 @@ func (t *TCPServer) doLogic(data *RequestData) {
 	//	log.InfoTag("tcp", "请求异常 数据 [%v] [%v]", data, callbackErr)
 	//	return
 	//}
-	reply = resData.ByteData
+	reply := resData.ByteData
 	// E6：响应编码下沉到连接适配器（conn.EncodeResponse），不再经由 server 级
 	// IsWebSocket 分支——同一 GateService 下 TCP/KCP/WS 连接各取所需的帧格式。
 	clientData := t.encodeResponseFor(data.User.conn, messageType, data.ReqId, resData.Code, reply)
@@ -1237,11 +1230,11 @@ func (t *TCPServer) Run() {
 						continue
 					}
 					tempDelay = 0
-					tcp.SetNoDelay(true)                           //无延迟
-					tcp.SetKeepAlive(true)                         //保持激活
-					tcp.SetReadBuffer(t.config.ReadBufferSize())   //设置读缓冲区大小
-					tcp.SetWriteBuffer(t.config.WriteBufferSize()) //设置写缓冲区大小
-					tcp.SetDeadline(time.Now().Add(t.config.DeadLineTime()))
+					if configErr := t.configureTCPConnection(tcp); configErr != nil {
+						log.WarnTag("tcp", "configure accepted connection failed remote=%v err=%v", tcp.RemoteAddr(), configErr)
+						_ = tcp.Close()
+						continue
+					}
 					select {
 					case t.conChan <- tcp: //将链接放入管道中
 					case <-t.stopAccept:
@@ -1253,6 +1246,25 @@ func (t *TCPServer) Run() {
 		}
 
 	})
+}
+
+func (t *TCPServer) configureTCPConnection(conn *net.TCPConn) error {
+	if err := conn.SetNoDelay(true); err != nil {
+		return fmt.Errorf("set no-delay: %w", err)
+	}
+	if err := conn.SetKeepAlive(true); err != nil {
+		return fmt.Errorf("set keepalive: %w", err)
+	}
+	if err := conn.SetReadBuffer(t.config.ReadBufferSize()); err != nil {
+		return fmt.Errorf("set read buffer: %w", err)
+	}
+	if err := conn.SetWriteBuffer(t.config.WriteBufferSize()); err != nil {
+		return fmt.Errorf("set write buffer: %w", err)
+	}
+	if err := conn.SetDeadline(time.Now().Add(t.config.DeadLineTime())); err != nil {
+		return fmt.Errorf("set deadline: %w", err)
+	}
+	return nil
 }
 
 func (t *TCPServer) wsHandler(w http.ResponseWriter, r *http.Request) {
@@ -1517,8 +1529,10 @@ func (u *UserConnectData) Offline(replace bool) {
 	u.replaceFlag.Store(replace)
 
 	for _, key := range u.contextData.GetAllReqMetaDataKeys() {
-		SendRPCMessageByStr(u.contextData, key, "OfflineHook",
-			&OfflineReq{UserId: u.userId, Replace: replace}, &EmptyReply{})
+		if err := SendRPCMessageByStr(u.contextData, key, "OfflineHook",
+			&OfflineReq{UserId: u.userId, Replace: replace}, &EmptyReply{}); err != nil {
+			log.WarnTag("tcp", "offline hook failed userId=%v module=%v err=%v", u.userId, key, err)
+		}
 	}
 
 	// 关闭底层连接，让 reader 主循环里阻塞在 ReadFrame 的调用立即返回 error。
@@ -1553,7 +1567,7 @@ func (u *UserConnectData) Login(userId string) {
 	u.userId = userId
 	for _, key := range u.contextData.GetAllReqMetaDataKeys() {
 		err = SendRPCMessageByStr(u.contextData, key, "LoginHook", &DefaultArgs{C: u.userId}, &EmptyReply{})
-		if err != nil && !errors.Is(err, tgf.ServiceNotFound) {
+		if err != nil && !errors.Is(err, tgf.ErrServiceNotFound) {
 			log.WarnTag("tcp", "用户 userId=%s LoginHook: %v", u.userId, err)
 		}
 	}

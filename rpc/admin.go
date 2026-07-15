@@ -3,8 +3,10 @@ package rpc
 import (
 	"context"
 	"crypto/subtle"
+	"errors"
 	"net/http"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/rs/cors"
@@ -34,6 +36,14 @@ const adminAuthHeader = "Authorization"
 
 // adminBearerPrefix 是 Authorization 头中 Bearer 方案的前缀。
 const adminBearerPrefix = "Bearer "
+
+const (
+	defaultAdminMonitorInterval        = time.Second
+	defaultAdminMonitorCallTimeout     = 3 * time.Second
+	defaultAdminMonitorShutdownTimeout = 4 * time.Second
+)
+
+var errAdminDestroyed = errors.New("admin service has been destroyed")
 
 // adminTokenHeader 是携带运维口令的备用 HTTP 请求头，便于运维工具直接传 token。
 const adminTokenHeader = "X-Admin-Token"
@@ -100,7 +110,9 @@ func ServeAdmin(port string) (r <-chan bool) {
 	c.InitRegistry()
 	c.StateCallBack = func(name, address string, state client.ConsulServerState) {
 		s := state
-		SendNoReplyRPCMessageByAddress(name, address, "StateHandler", &s)
+		if err := SendNoReplyRPCMessageByAddress(name, address, "StateHandler", &s); err != nil {
+			log.WarnTag("admin", "state callback failed module=%s address=%s err=%v", name, address, err)
+		}
 	}
 	// 控制类操作（active/close/pause 可远程上下线服务）必须经 AuthMiddleware 鉴权；
 	// 只读列表/监控查询同样纳入鉴权，避免管理面信息泄露。
@@ -167,7 +179,14 @@ func CorsMiddleware(handler http.HandlerFunc) http.HandlerFunc {
 
 type Admin struct {
 	Module
+	monitorMu        sync.Mutex
 	autoUpdateTicker *time.Ticker
+	autoUpdateCancel context.CancelFunc
+	autoUpdateDone   chan struct{}
+	monitorInterval  time.Duration
+	monitorCallLimit time.Duration
+	monitorStopLimit time.Duration
+	monitorDestroyed bool
 }
 
 func (a *Admin) L(ctx context.Context, args *string, reply *string) (err error) {
@@ -175,6 +194,34 @@ func (a *Admin) L(ctx context.Context, args *string, reply *string) (err error) 
 }
 
 func (a *Admin) Destroy(sub IService) {
+	a.monitorMu.Lock()
+	a.monitorDestroyed = true
+	ticker := a.autoUpdateTicker
+	cancel := a.autoUpdateCancel
+	done := a.autoUpdateDone
+	stopLimit := a.monitorStopLimit
+	if stopLimit <= 0 {
+		stopLimit = defaultAdminMonitorShutdownTimeout
+	}
+	a.autoUpdateTicker = nil
+	a.autoUpdateCancel = nil
+	a.autoUpdateDone = nil
+	a.monitorMu.Unlock()
+	if ticker != nil {
+		ticker.Stop()
+	}
+	if cancel != nil {
+		cancel()
+	}
+	if done != nil {
+		timer := time.NewTimer(stopLimit)
+		defer timer.Stop()
+		select {
+		case <-done:
+		case <-timer.C:
+			log.WarnTag("admin", "monitor goroutine did not stop within %s", stopLimit)
+		}
+	}
 }
 
 func (a *Admin) GetName() string {
@@ -186,55 +233,107 @@ func (a *Admin) GetVersion() string {
 }
 
 func (a *Admin) Startup() (bool, error) {
-	var ()
-	a.autoUpdateTicker = time.NewTicker(time.Second)
+	a.monitorMu.Lock()
+	if a.monitorDestroyed {
+		a.monitorMu.Unlock()
+		return false, errAdminDestroyed
+	}
+	if a.autoUpdateTicker != nil {
+		a.monitorMu.Unlock()
+		return true, nil
+	}
+	interval := a.monitorInterval
+	if interval <= 0 {
+		interval = defaultAdminMonitorInterval
+	}
+	monitorCtx, cancel := context.WithCancel(context.Background())
+	done := make(chan struct{})
+	ticker := time.NewTicker(interval)
+	a.autoUpdateTicker = ticker
+	a.autoUpdateCancel = cancel
+	a.autoUpdateDone = done
+	a.monitorMu.Unlock()
+
 	go func() {
+		defer close(done)
 		for {
 			select {
-			case <-a.autoUpdateTicker.C:
-				a.autoUpdateMonitor()
+			case <-ticker.C:
+				if monitorCtx.Err() != nil {
+					return
+				}
+				a.autoUpdateMonitor(monitorCtx)
+			case <-monitorCtx.Done():
+				return
 			}
 		}
 	}()
 	return true, nil
 }
 
-func (a *Admin) autoUpdateMonitor() {
+func (a *Admin) autoUpdateMonitor(parent context.Context) {
 	var (
 		rc = getRPCClient()
 		//xclient = rc.getClient(api.ModuleName)
 	)
-	ctx := NewRPCContext()
+	if rc == nil || rc.clients == nil {
+		return
+	}
+	callLimit := a.monitorCallLimit
+	if callLimit <= 0 {
+		callLimit = defaultAdminMonitorCallTimeout
+	}
+	ctx, cancel := context.WithTimeout(newRPCContext(parent), callLimit)
+	defer cancel()
 	all := admin.NodeMonitorData{}
 	rc.clients.Range(func(s string, xClient client.XClient) bool {
+		if ctx.Err() != nil {
+			return false
+		}
 		r := &admin.NodeMonitorData{}
 		arg := ""
-		xClient.Call(ctx, "ASyncMonitor", &arg, r)
-		for _, datum := range r.Data {
-			d1 := false
-			for _, data := range all.Data {
-				if data.Group == datum.Group {
-					d1 = true
-					for _, value := range datum.Values {
-						d2 := false
-						for _, item := range data.Values {
-							if item.Key == value.Key {
-								item.Count += value.Count
-								d2 = true
-								break
-							}
-						}
-						if !d2 {
-							data.Values = append(data.Values, value)
-						}
-					}
-				}
+		if err := xClient.Call(ctx, "ASyncMonitor", &arg, r); err != nil {
+			if parent.Err() == nil {
+				log.WarnTag("admin", "monitor query failed module=%s err=%v", s, err)
 			}
-			if !d1 {
-				all.Data = append(all.Data, datum)
-			}
+			return true
 		}
+		mergeNodeMonitorData(&all, *r)
 		return true
 	})
-	admin.AddSecondMonitor(all)
+	if ctx.Err() == nil {
+		admin.AddSecondMonitor(all)
+	}
+}
+
+func mergeNodeMonitorData(dst *admin.NodeMonitorData, src admin.NodeMonitorData) {
+	for _, datum := range src.Data {
+		groupIndex := -1
+		for i := range dst.Data {
+			if dst.Data[i].Group == datum.Group {
+				groupIndex = i
+				break
+			}
+		}
+		if groupIndex == -1 {
+			dst.Data = append(dst.Data, datum)
+			continue
+		}
+
+		group := &dst.Data[groupIndex]
+		for _, value := range datum.Values {
+			valueIndex := -1
+			for i := range group.Values {
+				if group.Values[i].Key == value.Key {
+					valueIndex = i
+					break
+				}
+			}
+			if valueIndex == -1 {
+				group.Values = append(group.Values, value)
+				continue
+			}
+			group.Values[valueIndex].Count += value.Count
+		}
+	}
 }

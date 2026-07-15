@@ -75,14 +75,14 @@ func (n *nilCallXClient) Close() error { return nil }
 // withStubRPCClient 把全局 rpcClient 临时替换为只含指定模块桩的实例，返回恢复函数。
 func withStubRPCClient(t *testing.T, moduleName string, xc client.XClient) func() {
 	t.Helper()
-	orig := rpcClient
+	orig := loadRPCClient()
 	stub := &Client{
 		clients:     hashmap.New[string, client.XClient](),
 		whiteMethod: make([]string, 0),
 	}
 	stub.clients.Set(moduleName, xc)
-	rpcClient = stub
-	return func() { rpcClient = orig }
+	storeRPCClient(stub)
+	return func() { storeRPCClient(orig) }
 }
 
 // TestSendRPCMessage_NoAvailableNode_NoPanic 验证 selector 选不到节点时

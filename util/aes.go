@@ -11,7 +11,6 @@ import (
 
 type Aes struct {
 	block cipher.Block
-	mode  cipher.BlockMode
 }
 
 // GenerateKey 生成一个 AES 密钥。

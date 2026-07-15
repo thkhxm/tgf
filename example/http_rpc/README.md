@@ -1,7 +1,7 @@
-# http_rpc —— REST + 调用游戏服 RPC（分布式 web 服务接游戏后端）
+# http_rpc —— REST + 调用游戏服 RPC（HTTP→RPC）
 
-演示"分布式 web 服务"形态：一个对外的 HTTP/REST 入口，把请求经 **HTTP→RPC 桥**
-转发给后端游戏 service（rpcx）。HTTP handler 不直接碰业务数据，而是通过框架注入
+默认演示可直接运行的**单进程 HTTP→RPC**：一个对外的 HTTP/REST 入口，把请求经
+**HTTP→RPC 桥**转发给同进程的游戏 service。HTTP handler 不直接碰业务数据，而是通过框架注入
 的 `web.Backend` 调用任意后端 `module.method`——与游戏客户端走同一套 service
 实现、同一条策略管道（限流/熔断）、同一份可观测埋点，且 traceId 从 HTTP 请求
 一路透传到后端 RPC。

@@ -35,7 +35,7 @@ import (
 	"reflect"
 	"sync/atomic"
 
-	"golang.org/x/net/context"
+	"context"
 )
 
 // ---- 单进程网关白名单 ----

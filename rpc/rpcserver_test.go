@@ -27,9 +27,10 @@ import (
 	"testing"
 	"time"
 
+	"context"
+
 	consulclient "github.com/thkhxm/rpcx-consul/v2/client"
 	rpcxclient "github.com/thkhxm/rpcx/v2/client"
-	"golang.org/x/net/context"
 )
 
 // itEchoService 是端到端用例的最小业务服务。
@@ -80,26 +81,19 @@ func TestIT_ServerRun_RegisterDiscoverCallDeregister(t *testing.T) {
 	})
 
 	// ---- 真实调用：rpcx 客户端经 Consul 发现并调用 RPCEcho ----
-	// -race 构建下跳过本小节：rpcx fork 的 client.input() 并发化存在已知数据
-	// 竞态（V3 审计 P1，rpcx/client/client.go:644/716，F1 fork 治理修复），
-	// 真实 Call 必然触发误报。CI 集成轨不带 -race，本小节在 CI 全量执行。
-	if itRaceEnabled {
-		t.Log("跳过真实 rpcx Call 小节（rpcx fork client.input 已知竞态，见 it_race_on_test.go）")
-	} else {
-		xc := rpcxclient.NewXClient("it-echo", rpcxclient.Failtry, rpcxclient.RandomSelect, d, rpcxclient.DefaultOption)
-		args := "ping"
-		var reply string
-		callCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
-		defer cancel()
-		if err = xc.Call(callCtx, "RPCEcho", &args, &reply); err != nil {
-			t.Fatalf("端到端 RPC 调用失败: %v", err)
-		}
-		if reply != "echo:ping" {
-			t.Fatalf("回包不符: got %q, want %q", reply, "echo:ping")
-		}
-		// 先断客户端连接，避免 Destroy 的 drain 阶段等到超时。
-		_ = xc.Close()
+	xc := rpcxclient.NewXClient("it-echo", rpcxclient.Failtry, rpcxclient.RandomSelect, d, rpcxclient.DefaultOption)
+	args := "ping"
+	var reply string
+	callCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	if err = xc.Call(callCtx, "RPCEcho", &args, &reply); err != nil {
+		t.Fatalf("端到端 RPC 调用失败: %v", err)
 	}
+	if reply != "echo:ping" {
+		t.Fatalf("回包不符: got %q, want %q", reply, "echo:ping")
+	}
+	// 先断客户端连接，避免 Destroy 的 drain 阶段等到超时。
+	_ = xc.Close()
 
 	// ---- 优雅停机：Destroy → Consul 反注册，节点从发现结果消失 ----
 	s.Destroy()

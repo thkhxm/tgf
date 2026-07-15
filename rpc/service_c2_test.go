@@ -226,7 +226,7 @@ func TestRegisterLocalServices_PublishesCapabilityReport(t *testing.T) {
 		&countingLifecycle{Module: Module{Name: "lc", Version: "v1"}},
 		&stubService{name: "bare"},
 	}
-	s.registerLocalServices()
+	s.registerLocalServices(s.service)
 
 	rep := LastServiceCapabilities()
 	if len(rep.Lifecycle) != 1 || rep.Lifecycle[0] != "lc" {

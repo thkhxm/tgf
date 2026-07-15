@@ -23,7 +23,7 @@ import (
 	"testing"
 	"time"
 
-	"golang.org/x/net/context"
+	"context"
 )
 
 func newF3InProcCoord() *inProcLoginCoordinator {

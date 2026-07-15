@@ -26,10 +26,11 @@ import (
 	"testing"
 	"time"
 
+	"context"
+
 	"github.com/gorilla/websocket"
 	"github.com/thkhxm/rpcx/v2/share"
 	"github.com/thkhxm/tgf/v2"
-	"golang.org/x/net/context"
 )
 
 // ---- 1. MaxConnections ----
@@ -160,7 +161,7 @@ func TestF4_MaxConnections_RealTCP_E2E(t *testing.T) {
 	if err != nil {
 		t.Fatalf("dial conn1: %v", err)
 	}
-	defer conn1.Close()
+	defer closeRPCResource(t, "first websocket", conn1)
 	heartbeatRoundTrip(t, conn1) // 确认 conn1 已被 handleConn 接管并占用配额
 
 	// 第二条连接：accept 后 handleConn 入口即关闭——客户端读必然失败
@@ -168,7 +169,7 @@ func TestF4_MaxConnections_RealTCP_E2E(t *testing.T) {
 	if err != nil {
 		t.Fatalf("dial conn2: %v", err)
 	}
-	defer conn2.Close()
+	defer closeRPCResource(t, "second websocket", conn2)
 	_, _ = conn2.Write(EncodeTgfHeartbeatFrame())
 	_ = conn2.SetReadDeadline(time.Now().Add(3 * time.Second))
 	one := make([]byte, 1)
@@ -183,7 +184,7 @@ func TestF4_MaxConnections_RealTCP_E2E(t *testing.T) {
 	if err != nil {
 		t.Fatalf("dial conn3: %v", err)
 	}
-	defer conn3.Close()
+	defer closeRPCResource(t, "third websocket", conn3)
 	heartbeatRoundTrip(t, conn3)
 }
 
@@ -246,7 +247,7 @@ func TestF4_Backpressure_BusyCode_ReqChanFull_E2E(t *testing.T) {
 	if err != nil {
 		t.Fatalf("dial gateway: %v", err)
 	}
-	defer conn.Close()
+	defer closeRPCResource(t, "websocket", conn)
 
 	frame := EncodeTgfBinaryFrame("slow", "Block", newEchoFrameData(t, []byte("x")))
 

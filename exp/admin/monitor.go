@@ -1,12 +1,15 @@
 package admin
 
 import (
-	"github.com/bytedance/sonic"
-	"github.com/cornelk/hashmap"
-	"github.com/thkhxm/tgf/v2"
+	"fmt"
+	"log"
 	"net/http"
+	"sync"
 	"sync/atomic"
 	"time"
+
+	"github.com/bytedance/sonic"
+	"github.com/thkhxm/tgf/v2"
 )
 
 //***************************************************
@@ -30,7 +33,10 @@ const (
 	ServiceMonitor = "service_monitor"
 )
 
-var monitorSecondCache []nodeSecondData
+var (
+	monitorSecondMu    sync.Mutex
+	monitorSecondCache []nodeSecondData
+)
 
 type nodeSecondData struct {
 	s string
@@ -38,10 +44,11 @@ type nodeSecondData struct {
 }
 
 func AddSecondMonitor(all NodeMonitorData) {
-	t := time.Now().Format("2011-01-01 21:01:00")
+	monitorSecondMu.Lock()
+	defer monitorSecondMu.Unlock()
 
 	monitorSecondCache = append(monitorSecondCache, nodeSecondData{
-		s: t,
+		s: time.Now().Format("2006-01-02 15:04:05"),
 		d: &all,
 	})
 	if len(monitorSecondCache) > 50000 {
@@ -49,39 +56,49 @@ func AddSecondMonitor(all NodeMonitorData) {
 	}
 }
 
-var monitorCache = hashmap.New[string, []*KeyValueMonitor]()
+var (
+	monitorMu    sync.RWMutex
+	monitorCache = make(map[string]map[string]*KeyValueMonitor)
+)
 
-func getMonitor(group, key string) (res *KeyValueMonitor) {
-	if r, ok := monitorCache.Get(group); ok {
-		for _, monitor := range r {
-			if monitor.key == key {
-				return monitor
-			}
-		}
-		r = append(r, &KeyValueMonitor{
-			key:   key,
-			total: atomic.Int64{},
-		})
-		monitorCache.Set(group, r)
-	} else {
-		monitorCache.Set(group, make([]*KeyValueMonitor, 0, 100))
+func getMonitor(group, key string) *KeyValueMonitor {
+	monitorMu.RLock()
+	groupMonitors := monitorCache[group]
+	monitor := groupMonitors[key]
+	monitorMu.RUnlock()
+	if monitor != nil {
+		return monitor
 	}
-	return getMonitor(group, key)
+
+	monitorMu.Lock()
+	defer monitorMu.Unlock()
+	groupMonitors = monitorCache[group]
+	if groupMonitors == nil {
+		groupMonitors = make(map[string]*KeyValueMonitor)
+		monitorCache[group] = groupMonitors
+	}
+	if monitor = groupMonitors[key]; monitor == nil {
+		monitor = &KeyValueMonitor{key: key}
+		groupMonitors[key] = monitor
+	}
+	return monitor
 }
 
 func AllMonitor() NodeMonitorData {
-	sqd := make([]MonitorItem, 0)
-	res := make([]MonitorData, 0)
-	monitorCache.Range(func(group string, monitors []*KeyValueMonitor) bool {
+	monitorMu.RLock()
+	defer monitorMu.RUnlock()
+
+	res := make([]MonitorData, 0, len(monitorCache))
+	for group, monitors := range monitorCache {
+		values := make([]MonitorItem, 0, len(monitors))
 		for _, monitor := range monitors {
-			sqd = append(sqd, MonitorItem{
+			values = append(values, MonitorItem{
 				Key:   monitor.key,
 				Count: monitor.total.Load(),
 			})
 		}
-		res = append(res, MonitorData{Values: sqd, Group: group})
-		return true
-	})
+		res = append(res, MonitorData{Values: values, Group: group})
+	}
 	return NodeMonitorData{
 		NodeId: tgf.NodeId,
 		Data:   res,
@@ -120,9 +137,20 @@ type MonitorItem struct {
 	Count int64  `json:"count"`
 }
 
-func QueryMonitor(writer http.ResponseWriter, request *http.Request) {
-	//group := request.PathValue("group")
-	data := AllMonitor()
-	jsonData, _ := sonic.Marshal(data)
-	writer.Write(jsonData)
+func writeJSONResponse(writer http.ResponseWriter, value any) error {
+	jsonData, err := sonic.Marshal(value)
+	if err != nil {
+		return fmt.Errorf("marshal JSON response: %w", err)
+	}
+	writer.Header().Set("Content-Type", "application/json; charset=utf-8")
+	if _, err = writer.Write(jsonData); err != nil {
+		return fmt.Errorf("write JSON response: %w", err)
+	}
+	return nil
+}
+
+func QueryMonitor(writer http.ResponseWriter, _ *http.Request) {
+	if err := writeJSONResponse(writer, AllMonitor()); err != nil {
+		log.Printf("query monitor response failed: %v", err)
+	}
 }

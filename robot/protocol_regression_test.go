@@ -21,6 +21,8 @@ import (
 	"bytes"
 	"context"
 	"encoding/binary"
+	"errors"
+	"io"
 	"net"
 	"testing"
 	"time"
@@ -28,6 +30,13 @@ import (
 	util2 "github.com/thkhxm/rpcx/v2/util"
 	"github.com/thkhxm/tgf/v2/rpc"
 )
+
+func closeRobotResource(t *testing.T, name string, resource io.Closer) {
+	t.Helper()
+	if err := resource.Close(); err != nil && !errors.Is(err, net.ErrClosed) {
+		t.Errorf("close %s: %v", name, err)
+	}
+}
 
 // ---- golden 编码辅助：按 v2/v1 协议规格手工构帧（独立于服务端实现的字节级约定） ----
 
@@ -249,7 +258,7 @@ func allocFreePort(t *testing.T) string {
 	if err != nil {
 		t.Fatalf("alloc port: %v", err)
 	}
-	defer l.Close()
+	defer closeRobotResource(t, "temporary TCP listener", l)
 	_, port, _ := net.SplitHostPort(l.Addr().String())
 	return port
 }
@@ -261,7 +270,7 @@ func allocFreeUDPPort(t *testing.T) string {
 	if err != nil {
 		t.Fatalf("alloc udp port: %v", err)
 	}
-	defer conn.Close()
+	defer closeRobotResource(t, "TCP connection", conn)
 	_, port, _ := net.SplitHostPort(conn.LocalAddr().String())
 	return port
 }
@@ -296,7 +305,7 @@ func TestRobot_TCP_HeartbeatRoundtrip_V2(t *testing.T) {
 		}
 		time.Sleep(20 * time.Millisecond)
 	}
-	defer conn.Close()
+	defer closeRobotResource(t, "KCP connection", conn)
 
 	if _, err := conn.Write(rpc.EncodeTgfHeartbeatFrame()); err != nil {
 		t.Fatalf("write heartbeat: %v", err)
@@ -329,10 +338,10 @@ func TestRobot_KCP_HeartbeatRoundtrip(t *testing.T) {
 	if err != nil {
 		t.Fatalf("DialKCP: %v", err)
 	}
-	defer client.Close()
+	defer closeRobotResource(t, "robot KCP client", client)
 
-	if err := client.SendHeartbeat(); err != nil {
-		t.Fatalf("SendHeartbeat: %v", err)
+	if sendErr := client.SendHeartbeat(); sendErr != nil {
+		t.Fatalf("SendHeartbeat: %v", sendErr)
 	}
 	sf, err := client.ReadServerFrame()
 	if err != nil {
@@ -346,11 +355,11 @@ func TestRobot_KCP_HeartbeatRoundtrip(t *testing.T) {
 // TestRobot_FrameMACCapable_Implemented 编译期+运行期确认 tcp 与 kcp robot 都实现
 // FrameMACCapable（帧级 MAC 升级入口）。
 func TestRobot_FrameMACCapable_Implemented(t *testing.T) {
-	var r IRobot = NewRobotTcp()
+	r := NewRobotTcp()
 	if _, ok := r.(FrameMACCapable); !ok {
 		t.Error("tcp robot 应实现 FrameMACCapable")
 	}
-	var k IRobot = NewRobotKCP(nil)
+	k := NewRobotKCP(nil)
 	if _, ok := k.(FrameMACCapable); !ok {
 		t.Error("kcp robot 应实现 FrameMACCapable")
 	}

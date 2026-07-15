@@ -17,13 +17,13 @@
 
 ### 1.1 框架仓库布局速览
 
-tgf 是一个 Go **workspace**（`go.work`），同仓三模块协同开发：
+tgf 框架组通过 Go **workspace**（`go.work`）让三个仓库协同开发：
 
 | 模块 | 作用 |
 |------|------|
 | `tgf/` | 框架本体 `github.com/thkhxm/tgf/v2`（主产物） |
-| `rpcx/` | `smallnest/rpcx` 的 fork，经 `go.mod` replace 为 `github.com/thkhxm/rpcx/v2` |
-| `rpcx-consul/` | `rpcxio/rpcx-consul` 的 fork，replace 为 `github.com/thkhxm/rpcx-consul/v2` |
+| `rpcx/` | `smallnest/rpcx` 的 fork，module path 为 `github.com/thkhxm/rpcx/v2` |
+| `rpcx-consul/` | `rpcxio/rpcx-consul` 的 fork，module path 为 `github.com/thkhxm/rpcx-consul/v2` |
 
 `tgf/` 内部包职责（贡献者需要知道改哪儿）：
 

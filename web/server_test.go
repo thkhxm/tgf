@@ -38,7 +38,7 @@ func httpGet(t *testing.T, addr, path string) (*http.Response, string) {
 	if err != nil {
 		t.Fatalf("GET %s 失败: %v", path, err)
 	}
-	defer resp.Body.Close()
+	defer closeWebResource(t, "response body", resp.Body)
 	body, _ := io.ReadAll(resp.Body)
 	return resp, string(body)
 }
@@ -114,7 +114,7 @@ func TestServer_ShutdownDrainsInflight(t *testing.T) {
 			resCh <- result{err: err}
 			return
 		}
-		defer resp.Body.Close()
+		defer closeWebResource(t, "in-flight response body", resp.Body)
 		b, _ := io.ReadAll(resp.Body)
 		resCh <- result{status: resp.StatusCode, body: string(b)}
 	}()
@@ -166,7 +166,7 @@ func TestServer_ShutdownTimeoutGivesUp(t *testing.T) {
 	go func() {
 		resp, err := http.Get("http://" + addr + "/hang")
 		if resp != nil {
-			resp.Body.Close()
+			closeWebResource(t, "timed-out response body", resp.Body)
 		}
 		errCh <- err
 	}()
@@ -253,7 +253,7 @@ func TestServer_AuthGroupIntegration(t *testing.T) {
 	if err != nil {
 		t.Fatalf("带凭据请求失败: %v", err)
 	}
-	resp.Body.Close()
+	closeWebResource(t, "authenticated response body", resp.Body)
 	if resp.StatusCode != http.StatusOK {
 		t.Errorf("正确凭据 = %d, want 200", resp.StatusCode)
 	}

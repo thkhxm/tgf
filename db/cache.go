@@ -130,7 +130,7 @@ func GetMap[Key cacheKey, Val any](key string) (res map[Key]Val, success bool) {
 		return
 	}
 	data := cache.GetMap(key)
-	if data != nil && len(data) > 0 {
+	if len(data) > 0 {
 		res = make(map[Key]Val, len(data))
 		for k, v := range data {
 			kk, _ := util.StrToAny[Key](k)

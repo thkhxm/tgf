@@ -95,7 +95,7 @@ func (d *f2StubDiscovery) RegisterServer(ip string) server.Plugin {
 	return d.plugin
 }
 func (d *f2StubDiscovery) RegisterDiscovery(string) *client2.ConsulDiscovery { return nil }
-func (d *f2StubDiscovery) GetDiscovery(string) *client2.ConsulDiscovery     { return nil }
+func (d *f2StubDiscovery) GetDiscovery(string) *client2.ConsulDiscovery      { return nil }
 
 // f2FakeRenewer 录制 TTL 续约/反注册调用，并支持注入续约失败。
 type f2FakeRenewer struct {
@@ -131,7 +131,7 @@ func (s *f2OkService) Startup() (bool, error) {
 	return true, nil
 }
 
-// f2FailService Startup 必然失败的服务——F2 契约：绝不能出现在注册名单里。
+// f2FailService Startup 以 false 报告失败——F2 契约：绝不能出现在注册名单里。
 type f2FailService struct {
 	Module
 }
@@ -139,6 +139,18 @@ type f2FailService struct {
 func (s *f2FailService) GetName() string        { return "f2-fail" }
 func (s *f2FailService) GetVersion() string     { return "1.0" }
 func (s *f2FailService) Startup() (bool, error) { return false, errors.New("injected startup failure") }
+
+// f2TrueErrorService 覆盖历史漏判：即使 bool 为 true，只要 error 非 nil
+// 也必须视为启动失败，不得进入任何本地或 discovery 注册列表。
+type f2TrueErrorService struct {
+	Module
+}
+
+func (s *f2TrueErrorService) GetName() string    { return "f2-true-error" }
+func (s *f2TrueErrorService) GetVersion() string { return "1.0" }
+func (s *f2TrueErrorService) Startup() (bool, error) {
+	return true, errors.New("injected startup error with true status")
+}
 
 // TestF2_RunOrder_ServeReadyBeforeRegister_StartupFailNotRegistered 是 F2 注册
 // 时序的核心回归（消费方：Server.Run 步骤 1~5 + 心跳 goroutine + Destroy）：
@@ -172,9 +184,12 @@ func TestF2_RunOrder_ServeReadyBeforeRegister_StartupFailNotRegistered(t *testin
 
 	s := NewRPCServer()
 	s.WithoutServiceClient()
+	s.WithInProcessDispatch()
 	s.WithHealthCheck(20 * time.Millisecond)
 	s.WithService(&f2OkService{startupDone: &startupDone})
 	s.WithService(&f2FailService{})
+	s.WithService(&f2TrueErrorService{})
+	t.Cleanup(ResetLocalDispatcherForTest)
 
 	done := s.Run()
 	if done == nil {
@@ -189,8 +204,8 @@ func TestF2_RunOrder_ServeReadyBeforeRegister_StartupFailNotRegistered(t *testin
 	}
 	hasOK := false
 	for _, name := range registered {
-		if name == "f2-fail" {
-			t.Error("Startup 失败的服务 f2-fail 不应被注册(F2: 失败者绝不发布)")
+		if name == "f2-fail" || name == "f2-true-error" {
+			t.Errorf("Startup 失败的服务 %s 不应被注册(F2: 失败者绝不发布)", name)
 		}
 		if name == "f2-ok" {
 			hasOK = true
@@ -209,6 +224,33 @@ func TestF2_RunOrder_ServeReadyBeforeRegister_StartupFailNotRegistered(t *testin
 	if !hasOK {
 		t.Errorf("f2-ok 应在注册名单中, got %v", registered)
 	}
+	if _, ok := localDispatcher.Lookup("f2-ok"); !ok {
+		t.Error("Startup 成功的 f2-ok 应进入本地 dispatcher")
+	}
+	for _, name := range []string{"f2-fail", "f2-true-error"} {
+		if _, ok := localDispatcher.Lookup(name); ok {
+			t.Errorf("Startup 失败的服务 %s 不应进入本地 dispatcher", name)
+		}
+	}
+	report := LastServiceCapabilities()
+	for capability, names := range map[string][]string{
+		"stateful":  report.Stateful,
+		"lifecycle": report.Lifecycle,
+		"plain":     report.PlainOnly,
+	} {
+		hasOKCapability := false
+		for _, name := range names {
+			if name == "f2-fail" || name == "f2-true-error" {
+				t.Errorf("Startup 失败的服务 %s 不应进入 %s 能力盘点", name, capability)
+			}
+			if name == "f2-ok" {
+				hasOKCapability = true
+			}
+		}
+		if capability != "plain" && !hasOKCapability {
+			t.Errorf("Startup 成功的 f2-ok 应进入 %s 能力盘点, got %v", capability, names)
+		}
+	}
 
 	// ---- 4: TTL health 挂载 + 心跳续约 ----
 	if healthOpts.ServiceAddress != plugin.addr {
@@ -216,8 +258,8 @@ func TestF2_RunOrder_ServeReadyBeforeRegister_StartupFailNotRegistered(t *testin
 	}
 	foundModule := false
 	for _, m := range healthOpts.Modules {
-		if m == "f2-fail" {
-			t.Error("TTL health 的 Modules 不应包含 Startup 失败的服务")
+		if m == "f2-fail" || m == "f2-true-error" {
+			t.Errorf("TTL health 的 Modules 不应包含 Startup 失败的服务 %s", m)
 		}
 		if m == "f2-ok" {
 			foundModule = true
@@ -297,7 +339,7 @@ func freeF2Port(t *testing.T) int {
 	if err != nil {
 		t.Fatalf("申请空闲端口失败: %v", err)
 	}
-	defer l.Close()
+	defer closeRPCResource(t, "temporary TCP listener", l)
 	return l.Addr().(*net.TCPAddr).Port
 }
 

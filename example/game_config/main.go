@@ -45,8 +45,16 @@ func main() {
 	// ----------------------------------------------------------------
 	// 准备：创建临时目录 + 写入测试 JSON
 	// ----------------------------------------------------------------
-	dir, _ := os.MkdirTemp("", "tgf-gameconf-*")
-	defer os.RemoveAll(dir)
+	dir, err := os.MkdirTemp("", "tgf-gameconf-*")
+	if err != nil {
+		log.Error("创建临时配置目录失败: %v", err)
+		return
+	}
+	defer func() {
+		if err := os.RemoveAll(dir); err != nil {
+			log.Error("清理临时配置目录失败: %v", err)
+		}
+	}()
 
 	// Hero.json → key "HeroConf"
 	writeJSON(dir, "Hero.json", `[

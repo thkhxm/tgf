@@ -349,7 +349,7 @@ type itItem struct {
 	Amount uint64
 }
 
-func (i *itItem) GetTableName() string                     { return "it_item" }
-func (i *itItem) HashCachePkKey(key ...string) string      { return key[0] }
-func (i *itItem) HashCacheFieldByVal() string              { return i.PropId }
+func (i *itItem) GetTableName() string                      { return "it_item" }
+func (i *itItem) HashCachePkKey(key ...string) string       { return key[0] }
+func (i *itItem) HashCacheFieldByVal() string               { return i.PropId }
 func (i *itItem) HashCacheFieldByKeys(key ...string) string { return key[1] }

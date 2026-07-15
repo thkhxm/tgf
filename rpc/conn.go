@@ -112,8 +112,8 @@ func (c *tcpFramedConn) ReadFrame() (*FrameIn, error) {
 	msgType := head[1]
 	switch msgType {
 	case byte(Heartbeat):
-		if _, err := c.reader.Discard(2); err != nil {
-			return nil, err
+		if _, discardErr := c.reader.Discard(2); discardErr != nil {
+			return nil, discardErr
 		}
 		return &FrameIn{MessageType: Heartbeat}, nil
 

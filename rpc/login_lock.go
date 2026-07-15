@@ -333,7 +333,7 @@ func kickOwnerSyncByAddress(address, userId string) (err error) {
 	rc := getRPCClient()
 	xclient := rc.getClient(tgf.GatewayServiceModuleName)
 	if xclient == nil {
-		err = tgf.ServiceNotFound
+		err = tgf.ErrServiceNotFound
 		return err
 	}
 	// 与 SendRPCMessageByStr 相同的 Go + select 超时模式（ctx 不能用

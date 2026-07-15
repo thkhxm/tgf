@@ -20,12 +20,12 @@
 //   - metrics.NewMemoryProvider     → 内存 metrics 观察埋点
 //   - log.InfoTagW                  → zap.Field 零分配日志
 //
-// v3 / D4 说明：单进程 + 网关组合已可用——TCP 客户端发来的 Logic 帧会经
-// localDispatcher 直通本地 service（v3 之前这条路径首条消息即 panic）。
+// v2 说明：单进程 + 网关组合可用，TCP 客户端发来的 Logic 帧会经
+// localDispatcher 直通本地 service。
 // 网关可达的方法参数必须是 rpc.Args[T]/rpc.Reply[T] 形式；本示例的方法是
 // 普通 struct 参数（进程内 RPC 风格），客户端帧不可直达，详见 README。
 //
-// v3 / D7 说明：框架默认开启登录鉴权（gate.Login 要求 LoginReq.Token）。
+// v2 说明：框架默认开启登录鉴权（gate.Login 要求 LoginReq.Token）。
 // 本示例不走 gate.Login，无需配置；需要客户端登录的项目参考 README 的
 // 「登录鉴权」一节（GenerateLoginToken / UserLoginWithToken / WithoutLoginCheck）。
 package main
@@ -33,17 +33,15 @@ package main
 import (
 	"fmt"
 	"os"
-	"os/signal"
-	"syscall"
 	"time"
 
+	"context"
 	"github.com/thkhxm/tgf/v2"
 	"github.com/thkhxm/tgf/v2/config"
 	"github.com/thkhxm/tgf/v2/log"
 	"github.com/thkhxm/tgf/v2/metrics"
 	"github.com/thkhxm/tgf/v2/rpc"
 	"go.uber.org/zap"
-	"golang.org/x/net/context"
 )
 
 // ====================================================================
@@ -270,12 +268,7 @@ func main() {
 	}()
 
 	// --- 4.5 优雅关闭 ---
-	sig := make(chan os.Signal, 1)
-	signal.Notify(sig, syscall.SIGINT, syscall.SIGTERM)
-	select {
-	case <-done:
-		fmt.Println("server 退出")
-	case s := <-sig:
-		fmt.Printf("收到信号 %v，正在关闭...\n", s)
-	}
+	// SIGINT/SIGTERM 由框架统一处理；业务 main 只等待 Run 的 done。
+	<-done
+	fmt.Println("server 退出")
 }

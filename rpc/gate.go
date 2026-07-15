@@ -1,9 +1,10 @@
 package rpc
 
 import (
+	"context"
+
 	"github.com/thkhxm/tgf/v2"
 	"github.com/thkhxm/tgf/v2/log"
-	"golang.org/x/net/context"
 )
 
 //***************************************************
@@ -122,10 +123,10 @@ func (g *GateService) Login(ctx context.Context, args *LoginReq, reply *LoginRes
 	ownerAddr := loginCoord.GetGateOwner(args.UserId)
 	kicked := false
 
-	switch {
-	case ownerAddr == "":
+	switch ownerAddr {
+	case "":
 		// 首次登录或 meta 已过期：没有需要踢的老连接
-	case ownerAddr == localAddr:
+	case localAddr:
 		// 老连接在本节点——本地 Offline。phase1 CAS 保证并发安全。
 		// F3：Offline(replace=true) 内部已不再固定 sleep 1s，改为有界排空通知队列。
 		g.tcpService.Offline(args.UserId, true)

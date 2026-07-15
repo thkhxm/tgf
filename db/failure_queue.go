@@ -160,8 +160,8 @@ func NewFileFailureQueue(path string) (*FileFailureQueue, error) {
 			}
 		}
 		_ = existing.Close()
-		if err := scanner.Err(); err != nil {
-			return nil, fmt.Errorf("db/FailureQueue: 统计已有行数失败: %w", err)
+		if scanErr := scanner.Err(); scanErr != nil {
+			return nil, fmt.Errorf("db/FailureQueue: 统计已有行数失败: %w", scanErr)
 		}
 	} else if !os.IsNotExist(err) {
 		return nil, fmt.Errorf("db/FailureQueue: 打开文件失败: %w", err)

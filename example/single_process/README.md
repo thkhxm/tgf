@@ -52,11 +52,9 @@ main.go
 
 全程**零网络**、**零 Consul**。策略管道（C6 限流/熔断）和 metrics 埋点（B4）一直生效。
 
-## 网关 + 单进程（v3 / D4）
+## 网关 + 单进程（v2）
 
-v3 之前**单进程 + 网关组合是不可用的**：客户端发来的第一条 Logic 帧会在
-`doLogic → sendMessage → getRPCClient` 处对 nil discovery panic（P0-2）。
-v3 起 `sendMessage` 在单进程模式下走 localDispatcher 本地直通，真实 TCP/WS/KCP
+当前 v2 的 `sendMessage` 在单进程模式下走 localDispatcher 本地直通，真实 TCP/WS/KCP
 客户端消息可以端到端到达本地注册的 service：
 
 1. 客户端连 `:8082` 发 Logic 帧（`module.method` + pb 负载）；
@@ -69,9 +67,9 @@ v3 起 `sendMessage` 在单进程模式下走 localDispatcher 本地直通，真
 端到端回归见 `tgf/rpc/gateway_local_dispatch_test.go` 的
 `TestSingleProcessGateway_EndToEnd`。
 
-## 登录鉴权（v3 / D7，默认开启）
+## 登录鉴权（v2，默认开启）
 
-v3 起框架默认开启登录凭据校验（fail-closed）：`gate.Login` 要求 `LoginReq.Token`，
+当前 v2 默认开启登录凭据校验（fail-closed）：`gate.Login` 要求 `LoginReq.Token`，
 由默认 HMAC token 实现（或 `WithLoginCheck` 注入的自定义校验器）验证，
 **伪造 userId / 过期 token / 无 token 一律拒绝**。
 

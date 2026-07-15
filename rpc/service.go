@@ -3,13 +3,14 @@ package rpc
 import (
 	"sync"
 
+	"context"
+	"reflect"
+
 	"github.com/thkhxm/rpcx/v2/client"
 	"github.com/thkhxm/rpcx/v2/share"
 	"github.com/thkhxm/tgf/v2"
 	"github.com/thkhxm/tgf/v2/log"
 	"go.uber.org/zap"
-	"golang.org/x/net/context"
-	"reflect"
 )
 
 //***************************************************
@@ -155,7 +156,7 @@ func (m *Module) LoginHook(ctx context.Context, args *DefaultArgs, reply *EmptyR
 //     并把缺失能力的服务在启动日志里显式标出，便于排查"状态推送没生效"。
 //
 // 消费点：wireServiceCapabilities 由 Server.Run 经 registerLocalServices
-//（local_dispatcher.go，Run 无条件调用）触发，对全部已装载 service 生效，
+//（local_dispatcher.go，Run 无条件调用）触发，对已成功 Startup 的 service 生效，
 // 与单进程 / 分布式无关。
 //***************************************************
 
@@ -316,17 +317,13 @@ func (s *ServiceAPI[Req, Res]) New(req Req, res Res) *ServiceAPI[Req, Res] {
 }
 
 func (s *ServiceAPI[Req, Res]) NewRPC(req Req) *ServiceAPI[Req, Res] {
-	var ()
 	var res Res
-	resType := reflect.TypeOf((*Res)(nil)).Elem() // 获取Res的类型
-	resValue := reflect.New(resType)              // 创建Res的新实例
-
-	// 如果Res是一个指针类型，我们需要通过.Elem()获取其指向的值
-	//if resType.Kind() == reflect.Ptr {
-	//	res = resValue.Interface().(Res)
-	//} else {
-	res = resValue.Elem().Interface().(Res)
-	//}
+	resType := reflect.TypeOf((*Res)(nil)).Elem()
+	if resType.Kind() == reflect.Ptr {
+		// rpcx 需要一个可写的回包目标；指针响应必须预先分配其 Elem，
+		// 否则接口中的 typed nil 无法被远程解码器填充。
+		res = reflect.New(resType.Elem()).Interface().(Res)
+	}
 	return &ServiceAPI[Req, Res]{ModuleName: s.ModuleName, Name: s.Name, args: req, reply: res, MessageType: s.MessageType}
 }
 

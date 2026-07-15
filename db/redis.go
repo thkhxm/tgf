@@ -22,8 +22,7 @@ import (
 // ***************************************************
 
 type redisService struct {
-	client  redis.UniversalClient
-	cluster redis.ClusterClient
+	client redis.UniversalClient
 }
 
 // warnRedisErr D5: redis 写路径不再静默吞错。
@@ -114,7 +113,7 @@ func (r *redisService) TryLock(key string) (*redislock.Lock, error) {
 
 func (r *redisService) TryUnLock(l *redislock.Lock, ctx context.Context) {
 	var ()
-	l.Release(ctx)
+	warnRedisErr("Unlock", "", l.Release(ctx))
 }
 
 // Incr D5: 不再恒返回 nil error——redis 故障时如实把错误抛给业务，

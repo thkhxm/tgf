@@ -219,7 +219,7 @@ func allocKCPPort(t *testing.T) string {
 		t.Fatalf("listen: %v", err)
 	}
 	port := c.LocalAddr().(*net.UDPAddr).Port
-	c.Close()
+	closeRPCResource(t, "temporary UDP listener", c)
 	return strconv.Itoa(port)
 }
 
@@ -280,11 +280,11 @@ func TestKCPFramedConn_ReadFrame_HeartbeatPlaintext(t *testing.T) {
 	client.SetNoDelay(1, 10, 2, 1)
 	client.SetStreamMode(true)
 	client.SetACKNoDelay(true)
-	defer client.Close()
+	defer closeRPCResource(t, "KCP client", client)
 
 	// 客户端写一个心跳帧（明文模式 sealer）
-	if err := writeKCPFrame(client, plaintextSealer{}, EncodeTgfHeartbeatFrame()); err != nil {
-		t.Fatalf("client write: %v", err)
+	if writeErr := writeKCPFrame(client, plaintextSealer{}, EncodeTgfHeartbeatFrame()); writeErr != nil {
+		t.Fatalf("client write: %v", writeErr)
 	}
 
 	var serverFC *kcpFramedConn
@@ -319,7 +319,7 @@ func TestKCPFramedConn_ReadFrame_LogicWithAEAD(t *testing.T) {
 	client.SetNoDelay(1, 10, 2, 1)
 	client.SetStreamMode(true)
 	client.SetACKNoDelay(true)
-	defer client.Close()
+	defer closeRPCResource(t, "KCP client", client)
 
 	clientFC, err := newKCPFramedConn(client, builder)
 	if err != nil {
@@ -329,8 +329,8 @@ func TestKCPFramedConn_ReadFrame_LogicWithAEAD(t *testing.T) {
 	// 客户端发送 Logic 帧
 	payload := []byte("hello-kcp-aead")
 	raw := EncodeTgfBinaryFrame("player", "Move", payload)
-	if err := clientFC.WriteFrame(raw); err != nil {
-		t.Fatalf("client WriteFrame: %v", err)
+	if writeErr := clientFC.WriteFrame(raw); writeErr != nil {
+		t.Fatalf("client WriteFrame: %v", writeErr)
 	}
 
 	var serverFC *kcpFramedConn
@@ -370,7 +370,7 @@ func TestKCPFramedConn_AEADMismatchFails(t *testing.T) {
 	client.SetNoDelay(1, 10, 2, 1)
 	client.SetStreamMode(true)
 	client.SetACKNoDelay(true)
-	defer client.Close()
+	defer closeRPCResource(t, "KCP client", client)
 
 	clientBuilder := NewKCPBuilder("0").WithAEADKey(keyClient)
 	clientFC, err := newKCPFramedConn(client, clientBuilder)
@@ -379,8 +379,8 @@ func TestKCPFramedConn_AEADMismatchFails(t *testing.T) {
 	}
 
 	raw := EncodeTgfBinaryFrame("a", "B", []byte("x"))
-	if err := clientFC.WriteFrame(raw); err != nil {
-		t.Fatalf("write: %v", err)
+	if writeErr := clientFC.WriteFrame(raw); writeErr != nil {
+		t.Fatalf("write: %v", writeErr)
 	}
 
 	var serverFC *kcpFramedConn
@@ -410,7 +410,7 @@ func TestKCPFramedConn_MultipleFramesPreserveOrder(t *testing.T) {
 	client.SetNoDelay(1, 10, 2, 1)
 	client.SetStreamMode(true)
 	client.SetACKNoDelay(true)
-	defer client.Close()
+	defer closeRPCResource(t, "KCP client", client)
 
 	const N = 5
 	var wg sync.WaitGroup

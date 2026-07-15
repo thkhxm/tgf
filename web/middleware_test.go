@@ -7,6 +7,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -17,6 +18,13 @@ import (
 	"github.com/thkhxm/tgf/v2/metrics"
 	"github.com/thkhxm/tgf/v2/trace"
 )
+
+func closeWebResource(t *testing.T, name string, resource io.Closer) {
+	t.Helper()
+	if err := resource.Close(); err != nil {
+		t.Errorf("close %s: %v", name, err)
+	}
+}
 
 // TestChain_Order 验证 Chain 的包装顺序：mws[0] 最外层；nil 中间件被跳过。
 func TestChain_Order(t *testing.T) {
@@ -51,7 +59,7 @@ func TestRecover_PanicReturns500(t *testing.T) {
 	if err != nil {
 		t.Fatalf("第一次请求失败: %v", err)
 	}
-	resp1.Body.Close()
+	closeWebResource(t, "first response body", resp1.Body)
 	if resp1.StatusCode != http.StatusInternalServerError {
 		t.Errorf("panic 请求状态码 = %d, want 500", resp1.StatusCode)
 	}
@@ -60,7 +68,7 @@ func TestRecover_PanicReturns500(t *testing.T) {
 	if err != nil {
 		t.Fatalf("panic 后服务应继续可用: %v", err)
 	}
-	resp2.Body.Close()
+	closeWebResource(t, "second response body", resp2.Body)
 	if resp2.StatusCode != http.StatusOK {
 		t.Errorf("panic 后第二次请求状态码 = %d, want 200", resp2.StatusCode)
 	}
@@ -142,7 +150,7 @@ func TestAccessLog_EmitsStructuredLine(t *testing.T) {
 			t.Errorf("访问日志缺少 %q: %s", want, line)
 		}
 	}
-	if strings.Contains(line, "traceId= ") || strings.Contains(line, "traceId= ") {
+	if strings.Contains(line, "traceId= remote=") {
 		t.Errorf("访问日志 traceId 不应为空: %s", line)
 	}
 }
@@ -217,7 +225,7 @@ func TestRateLimit_Returns429(t *testing.T) {
 		if err != nil {
 			t.Fatalf("请求失败: %v", err)
 		}
-		resp.Body.Close()
+		closeWebResource(t, "response body", resp.Body)
 		return resp.StatusCode
 	}
 
@@ -233,10 +241,7 @@ func TestRateLimit_Returns429(t *testing.T) {
 
 	// 1 QPS：等待令牌恢复后应重新放行
 	deadline := time.Now().Add(3 * time.Second)
-	for {
-		if get() == http.StatusOK {
-			break
-		}
+	for get() != http.StatusOK {
 		if time.Now().After(deadline) {
 			t.Fatal("令牌恢复后应重新放行")
 		}

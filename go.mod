@@ -4,15 +4,6 @@ go 1.26.0
 
 toolchain go1.26.4
 
-// fork 已迁移为带 /v2 主版本后缀的自有 module path（github.com/thkhxm/rpcx/v2、
-// github.com/thkhxm/rpcx-consul/v2）。下游 go get 本框架无需手抄 replace：
-// 下面的 path replace 只在本主模块生效，依赖方会忽略它，按下方 require 的对应 tag 从 fork 远端拉取。
-// 本块仅用于本仓库脱离 go.work（GOWORK=off）时解析同工作区 fork 源码。
-replace (
-	github.com/thkhxm/rpcx-consul/v2 => ../rpcx-consul
-	github.com/thkhxm/rpcx/v2 => ../rpcx
-)
-
 require (
 	github.com/bsm/redislock v0.9.4
 	github.com/bwmarrin/snowflake v0.3.0
@@ -44,7 +35,7 @@ require (
 	go.uber.org/zap v1.27.1
 	golang.org/x/crypto v0.48.0
 	golang.org/x/exp v0.0.0-20250106191152-7588d65b2ba8
-	golang.org/x/net v0.50.0
+	golang.org/x/net v0.50.0 // indirect
 	golang.org/x/sync v0.19.0
 	golang.org/x/text v0.34.0
 	google.golang.org/protobuf v1.36.11

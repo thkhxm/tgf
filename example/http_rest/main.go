@@ -1,4 +1,4 @@
-// tgf v3 / G 档示例 ①：纯 REST API（常规 http web 服务）
+// tgf v2 示例 ①：纯 REST API（常规 http web 服务）
 //
 // 演示把 tgf 当一个**普通 HTTP web 框架**用——不接任何游戏 RPC 后端，
 // 只用 WithHTTPService 起一个标准 REST 服务，展示一等公民 HTTP 能力的基础面：
@@ -30,10 +30,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
-	"os"
-	"os/signal"
 	"sync/atomic"
-	"syscall"
 	"time"
 
 	"github.com/thkhxm/tgf/v2"
@@ -146,7 +143,7 @@ func main() {
 
 	fmt.Println()
 	fmt.Println("========================================")
-	fmt.Println("  tgf v3 G档 · 纯 REST API 示例已启动")
+	fmt.Println("  tgf v2 · 纯 REST API 示例已启动")
 	fmt.Println("  HTTP: http://127.0.0.1:8090")
 	fmt.Println("  路由: GET /health | GET /users/{id} | POST /users | GET /admin/stats(鉴权)")
 	fmt.Println("  Consul: 无（WithStandalone）")
@@ -159,15 +156,9 @@ func main() {
 	fmt.Println("    curl -i -H 'Authorization: Bearer s3cr3t' http://127.0.0.1:8090/admin/stats")
 	fmt.Println()
 
-	// 优雅关闭：收到 SIGINT/SIGTERM 后，框架的 Destroy 链会优雅 drain HTTP（http.Server.Shutdown）。
-	sig := make(chan os.Signal, 1)
-	signal.Notify(sig, syscall.SIGINT, syscall.SIGTERM)
-	select {
-	case <-done:
-		log.InfoTag("http_rest", "server 退出")
-	case s := <-sig:
-		log.InfoTag("http_rest", "收到信号 %v，正在优雅关闭...", s)
-	}
+	// SIGINT/SIGTERM 由框架统一处理；业务 main 只等待 Run 的 done。
+	<-done
+	log.InfoTag("http_rest", "server 退出")
 }
 
 // ---- 小工具 ----
@@ -176,7 +167,9 @@ func main() {
 func writeJSON(w http.ResponseWriter, status int, v any) {
 	w.Header().Set("Content-Type", "application/json; charset=utf-8")
 	w.WriteHeader(status)
-	_ = json.NewEncoder(w).Encode(v)
+	if err := json.NewEncoder(w).Encode(v); err != nil {
+		log.WarnTag("http_rest", "编码 JSON 响应失败: %v", err)
+	}
 }
 
 // parseID 把字符串 id 转 int64（解析失败回 0，演示用容错）。

@@ -62,7 +62,8 @@ func TestSetTracer_NilFallsBackToNoop(t *testing.T) {
 }
 
 func TestTraceIDFromContext_NilSafe(t *testing.T) {
-	if got := TraceIDFromContext(nil); got != "" {
+	var nilContext context.Context
+	if got := TraceIDFromContext(nilContext); got != "" {
 		t.Fatalf("nil ctx 应返回空, 实际 %q", got)
 	}
 	if got := TraceIDFromContext(context.Background()); got != "" {

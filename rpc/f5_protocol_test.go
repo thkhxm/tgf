@@ -115,7 +115,7 @@ func TestF5_LegacyProtocol_E2E_HeartbeatCompat(t *testing.T) {
 	if err != nil {
 		t.Fatalf("dial: %v", err)
 	}
-	defer conn.Close()
+	defer closeRPCResource(t, "websocket", conn)
 	if _, err := conn.Write(EncodeTgfHeartbeatFrame()); err != nil {
 		t.Fatalf("write heartbeat: %v", err)
 	}
@@ -158,8 +158,8 @@ func TestF5_WithAEADKey_NilIsExplicitPlaintext(t *testing.T) {
 func TestF5_NewKCPFramedConn_InvalidKeyFailClosed(t *testing.T) {
 	bad := &KCPServerConfig{aeadKey: make([]byte, 16)}
 	c1, c2 := net.Pipe()
-	defer c1.Close()
-	defer c2.Close()
+	defer closeRPCResource(t, "first websocket", c1)
+	defer closeRPCResource(t, "second websocket", c2)
 	fc, err := newKCPFramedConn(c2, bad)
 	if err == nil {
 		t.Fatalf("非法密钥应返回错误, got conn=%v", fc)
@@ -238,8 +238,8 @@ func TestF5_FrameMAC_EncodeDecodeVerify(t *testing.T) {
 
 	// TCP 流式解码路径产出一致
 	c1, c2 := net.Pipe()
-	defer c1.Close()
-	defer c2.Close()
+	defer closeRPCResource(t, "first websocket", c1)
+	defer closeRPCResource(t, "second websocket", c2)
 	tc := newTCPFramedConn(c2, 0, 0)
 	go func() { _, _ = c1.Write(frame) }()
 	fi2, err := tc.ReadFrame()
@@ -399,7 +399,7 @@ func TestF5_FrameMAC_OffMode_PlainFramesAccepted(t *testing.T) {
 	if err != nil {
 		t.Fatalf("dial: %v", err)
 	}
-	defer conn.Close()
+	defer closeRPCResource(t, "websocket", conn)
 	heartbeatRoundTrip(t, conn)
 
 	var tpl string

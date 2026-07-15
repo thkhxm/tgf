@@ -1,6 +1,6 @@
 # tgf 发版流程
 
-> 最后更新：2026-06-11（v2.0.0 发版收口）
+> 最后更新：2026-07-16（公开依赖图门禁）
 > 目标读者：tgf 的维护者 / 有发版权限的人
 
 本文档描述 tgf 主模块（`github.com/thkhxm/tgf/v2`）及其两个 fork 依赖
@@ -8,8 +8,8 @@
 打 tag、推送、goproxy 复验与文档同步流程。
 
 仓库布局背景见 `../CLAUDE.md`（工作区根）：tgf / rpcx / rpcx-consul 三仓在一个
-`go.work` workspace 内并排开发；`tgf/go.mod` 用 `require` + path `replace` 同时支撑
-"远端 tag 拉取"与"本地 `GOWORK=off` 单仓构建"两种模式。
+`go.work` workspace 内并排开发；`tgf/go.mod` 只声明公开 tag，不含本地 `replace`。
+本地源码联调由 `go.work` 接管，`GOWORK=off` 则专门验证公开依赖图。
 
 ---
 
@@ -51,8 +51,7 @@ SemVer。tgf 通过 `go.mod` 的 `require` 钉住具体 fork tag。
 3. 把新 fork tag 推到 fork 的远端仓库；
 4. 回到 `tgf/go.mod`，把对应 `require` 行升到新 fork tag
    （`github.com/thkhxm/rpcx/v2 v2.0.4`）；
-5. `cd tgf && go mod tidy`（workspace 内会优先用本地 replace 的源码，需要用
-   `GOWORK=off` 验证远端 tag 能真正解析，见 §4）；
+5. `cd tgf && go mod tidy`；随后用 `GOWORK=off` 验证远端 tag 能真正解析（见 §4）；
 6. tgf 自身再按需 bump 版本（fork 升级若引入行为变化，至少 PATCH）。
 
 > 反模式：只改了 fork 本地源码、靠 `go.work` 让 tgf 编译通过就发 tgf tag——这只在
@@ -205,10 +204,10 @@ curl -fsSL https://goproxy.cn/github.com/thkhxm/tgf/v2/@v/v2.0.0.info
    `go get` 时优先走 `GOPROXY=https://goproxy.cn,direct`；只有怀疑代理缓存延迟时才临时
    `GOPROXY=direct` 命中源站。不要因为一次直连超时就误判 tag 没发成功。
 
-5. **`go.work` / `replace` 不进下游依赖图**：本仓库的 `go.work`（workspace）与 `tgf/go.mod`
-   里指向 `../rpcx` 的 path replace **只在本机生效**。下游 `go get tgf/v2` 时这两者都被忽略，
-   按 `require` 的 fork tag 从远端拉取。所以 fork 改动必须走 §1.3 的「bump fork tag → 升
-   tgf require」联动，光靠 workspace 编译通过不代表下游可用。
+5. **`go.work` 不进下游依赖图**：本仓库的 `go.work` 只在框架组源码联调时覆盖依赖；
+   `tgf/go.mod` 禁止提交指向相邻仓库的本地 `replace`。下游 `go get tgf/v2` 会按 `require`
+   的 fork tag 从远端拉取，所以 fork 改动必须走 §1.3 的「bump fork tag → 升 tgf require」
+   联动，光靠 workspace 编译通过不代表下游可用。
 
 6. **GOWORK 干扰复验**：在 workspace 目录树内跑 `go get` 会被 `go.work` 接管，可能"看起来
    成功"其实用的是本地源码。复验务必在**仓库外**的临时模块里，并加 `GOWORK=off` 兜底。

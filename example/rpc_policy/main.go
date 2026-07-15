@@ -13,8 +13,8 @@ import (
 	"sync/atomic"
 	"time"
 
+	"context"
 	"github.com/thkhxm/tgf/v2/rpc"
-	"golang.org/x/net/context"
 )
 
 // ====================================================================
@@ -88,7 +88,6 @@ func main() {
 			},
 		}).
 		Run()
-	_ = done
 	time.Sleep(200 * time.Millisecond)
 	fmt.Println()
 
@@ -198,4 +197,6 @@ func main() {
   `)
 
 	fmt.Println("=== RPC 策略化示例结束 ===")
+	fmt.Println("按 Ctrl+C 触发框架优雅停机。")
+	<-done
 }

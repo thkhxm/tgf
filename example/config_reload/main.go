@@ -28,17 +28,17 @@ func main() {
 		return
 	}
 
-	fmt.Printf("  Logger.Path:    %s\n", cfg.Logger.Path)     // ./log/tgf.log
-	fmt.Printf("  Logger.Level:   %s\n", cfg.Logger.Level)    // debug
-	fmt.Printf("  Redis.Addr:     %s\n", cfg.Redis.Addr)      // 127.0.0.1:6379
-	fmt.Printf("  Redis.DB:       %d\n", cfg.Redis.DB)        // 1
-	fmt.Printf("  Redis.Cluster:  %v\n", cfg.Redis.Cluster)   // false
-	fmt.Printf("  MySQL.User:     %s\n", cfg.MySQL.User)      // root
-	fmt.Printf("  MySQL.Port:     %s\n", cfg.MySQL.Port)      // 3306
-	fmt.Printf("  Consul.Address: %s\n", cfg.Consul.Address)  // 127.0.0.1:8500
-	fmt.Printf("  Service.Port:   %s\n", cfg.Service.Port)    // 8082
-	fmt.Printf("  Gate.Push:      %v\n", cfg.Gate.Push)        // true
-	fmt.Printf("  Runtime.Module: %s\n", cfg.Runtime.Module)  // dev
+	fmt.Printf("  Logger.Path:    %s\n", cfg.Logger.Path)    // ./log/tgf.log
+	fmt.Printf("  Logger.Level:   %s\n", cfg.Logger.Level)   // debug
+	fmt.Printf("  Redis.Addr:     %s\n", cfg.Redis.Addr)     // 127.0.0.1:6379
+	fmt.Printf("  Redis.DB:       %d\n", cfg.Redis.DB)       // 1
+	fmt.Printf("  Redis.Cluster:  %v\n", cfg.Redis.Cluster)  // false
+	fmt.Printf("  MySQL.User:     %s\n", cfg.MySQL.User)     // root
+	fmt.Printf("  MySQL.Port:     %s\n", cfg.MySQL.Port)     // 3306
+	fmt.Printf("  Consul.Address: %s\n", cfg.Consul.Address) // 127.0.0.1:8500
+	fmt.Printf("  Service.Port:   %s\n", cfg.Service.Port)   // 8082
+	fmt.Printf("  Gate.Push:      %v\n", cfg.Gate.Push)      // true
+	fmt.Printf("  Runtime.Module: %s\n", cfg.Runtime.Module) // dev
 	fmt.Println()
 
 	// ----------------------------------------------------------------
@@ -63,10 +63,13 @@ func main() {
 	})
 
 	// 模拟环境变量变化
-	os.Setenv("LogLevel", "warn")
-	os.Setenv("RedisAddr", "10.0.0.1:6380")
-	os.Setenv("RedisDB", "5")
-	os.Setenv("RedisCluster", "1")
+	defer unsetExampleEnv("LogLevel", "RedisAddr", "RedisDB", "RedisCluster")
+	if !setExampleEnv("LogLevel", "warn") ||
+		!setExampleEnv("RedisAddr", "10.0.0.1:6380") ||
+		!setExampleEnv("RedisDB", "5") ||
+		!setExampleEnv("RedisCluster", "1") {
+		return
+	}
 
 	newCfg, err := config.Reload()
 	if err != nil {
@@ -87,14 +90,18 @@ func main() {
 	// ----------------------------------------------------------------
 	fmt.Println("--- 4. 类型校验 ---")
 
-	os.Setenv("RedisDB", "not-a-number")
+	if !setExampleEnv("RedisDB", "not-a-number") {
+		return
+	}
 	_, err = config.Reload()
 	if err != nil {
 		fmt.Printf("  预期的类型错误: %v\n", err)
 	}
 
 	// 恢复有效值
-	os.Setenv("RedisDB", "1")
+	if !setExampleEnv("RedisDB", "1") {
+		return
+	}
 	fmt.Println()
 
 	// ----------------------------------------------------------------
@@ -122,11 +129,21 @@ func main() {
   新增配置字段只需要改 struct 定义一处（v1 要改 3 处）。
   `)
 
-	// 清理
-	os.Unsetenv("LogLevel")
-	os.Unsetenv("RedisAddr")
-	os.Unsetenv("RedisDB")
-	os.Unsetenv("RedisCluster")
-
 	fmt.Println("=== config 示例结束 ===")
+}
+
+func setExampleEnv(key, value string) bool {
+	if err := os.Setenv(key, value); err != nil {
+		fmt.Printf("设置环境变量 %s 失败: %v\n", key, err)
+		return false
+	}
+	return true
+}
+
+func unsetExampleEnv(keys ...string) {
+	for _, key := range keys {
+		if err := os.Unsetenv(key); err != nil {
+			fmt.Printf("清理环境变量 %s 失败: %v\n", key, err)
+		}
+	}
 }

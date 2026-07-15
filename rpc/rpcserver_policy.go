@@ -276,8 +276,7 @@ func isCircuitFailure(err error) bool {
 // ---- policyCounter：延迟初始化的 metrics counter ----
 
 var (
-	policyCounterOnce sync.Once
-	policyCounterMap  sync.Map // map[string]metrics.Counter
+	policyCounterMap sync.Map // map[string]metrics.Counter
 )
 
 func policyCounter(name string) metrics.Counter {

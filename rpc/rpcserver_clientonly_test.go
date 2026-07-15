@@ -131,7 +131,7 @@ func TestG3_ClientOnly_NoRPCListener_HTTPWorks(t *testing.T) {
 		t.Error("client-only 模式不应创建 rpcx server")
 	}
 	if conn, err := net.DialTimeout("tcp", fmt.Sprintf("127.0.0.1:%d", rpcPort), 300*time.Millisecond); err == nil {
-		conn.Close()
+		closeRPCResource(t, "unexpected RPC listener connection", conn)
 		t.Error("client-only 模式不应监听 rpcx ServicePort")
 	}
 	if len(s.httpServers) != 1 {
@@ -154,7 +154,7 @@ func TestG3_ClientOnly_NoRPCListener_HTTPWorks(t *testing.T) {
 	// ---- 3: Destroy 关闭 HTTP 端口 + 幂等 ----
 	s.Destroy()
 	if conn, err := net.DialTimeout("tcp", addr, 500*time.Millisecond); err == nil {
-		conn.Close()
+		closeRPCResource(t, "unexpected HTTP listener connection", conn)
 		t.Error("Destroy 后 HTTP 端口应已关闭")
 	}
 	s.Destroy() // 幂等：不得 panic

@@ -19,7 +19,8 @@ import (
 	"testing"
 	"time"
 
-	"golang.org/x/net/context"
+	"context"
+
 	"google.golang.org/protobuf/proto"
 	"google.golang.org/protobuf/reflect/protoreflect"
 )
@@ -140,9 +141,9 @@ func TestSendMessage_SingleProcess_ModuleMissingNoPanic(t *testing.T) {
 	defer cleanup()
 
 	// 保存并清空全局 rpcClient，模拟单进程模式下 client 从未启动
-	origClient := rpcClient
-	rpcClient = nil
-	defer func() { rpcClient = origClient }()
+	origClient := loadRPCClient()
+	storeRPCClient(nil)
+	defer func() { storeRPCClient(origClient) }()
 
 	ct := newBareConnectData()
 	ct.userId = "u1"
@@ -314,7 +315,7 @@ func TestSingleProcessGateway_EndToEnd(t *testing.T) {
 	if err != nil {
 		t.Fatalf("dial gateway: %v", err)
 	}
-	defer conn.Close()
+	defer closeRPCResource(t, "single-process gateway connection", conn)
 
 	// 发送 Logic 帧：echo.Echo + WSMessage 负载
 	frame := EncodeTgfBinaryFrame("echo", "Echo", newEchoFrameData(t, []byte("e2e-hello")))
@@ -351,7 +352,7 @@ func TestTCPServer_CloseListeners(t *testing.T) {
 	if err != nil {
 		t.Fatalf("dial gateway: %v", err)
 	}
-	defer conn.Close()
+	defer closeRPCResource(t, "gateway connection", conn)
 	if _, err := conn.Write(EncodeTgfHeartbeatFrame()); err != nil {
 		t.Fatalf("write first heartbeat: %v", err)
 	}
