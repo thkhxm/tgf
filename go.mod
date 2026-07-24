@@ -28,8 +28,8 @@ require (
 	github.com/rpcxio/libkv v0.5.1
 	github.com/rs/cors v1.11.1
 	github.com/testcontainers/testcontainers-go v0.32.0
-	github.com/thkhxm/rpcx-consul/v2 v2.0.2
-	github.com/thkhxm/rpcx/v2 v2.0.3
+	github.com/thkhxm/rpcx-consul/v2 v2.0.3
+	github.com/thkhxm/rpcx/v2 v2.0.4
 	github.com/xtaci/kcp-go v5.4.20+incompatible
 	github.com/xuri/excelize/v2 v2.10.1
 	go.uber.org/zap v1.27.1

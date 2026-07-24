@@ -1,6 +1,6 @@
 # tgf 发版流程
 
-> 最后更新：2026-07-16（公开依赖图门禁）
+> 最后更新：2026-07-24（v2.2.0 与 tgfctl 发布）
 > 目标读者：tgf 的维护者 / 有发版权限的人
 
 本文档描述 tgf 主模块（`github.com/thkhxm/tgf/v2`）及其两个 fork 依赖
@@ -35,8 +35,8 @@
 
 | fork module path | 当前 tag |
 |------------------|---------|
-| `github.com/thkhxm/rpcx/v2` | `v2.0.3` |
-| `github.com/thkhxm/rpcx-consul/v2` | `v2.0.2` |
+| `github.com/thkhxm/rpcx/v2` | `v2.0.4` |
+| `github.com/thkhxm/rpcx-consul/v2` | `v2.0.3` |
 
 fork 的版本号与 tgf 的版本号**不要求同步**——它们是独立模块，各自按自己的变更节奏走
 SemVer。tgf 通过 `go.mod` 的 `require` 钉住具体 fork tag。
@@ -47,7 +47,7 @@ SemVer。tgf 通过 `go.mod` 的 `require` 钉住具体 fork tag。
 必须走完整联动**，否则下游 `go get github.com/thkhxm/tgf/v2@<tag>` 会拉到旧 fork：
 
 1. 在 fork 仓库 commit 改动；
-2. 给 fork 仓库 **bump 一个新 tag**（如 `rpcx/v2` 从 `v2.0.3` → `v2.0.4`）；
+2. 给 fork 仓库 **bump 一个新 tag**（如 `rpcx/v2` 从 `v2.0.4` → `v2.0.5`）；
 3. 把新 fork tag 推到 fork 的远端仓库；
 4. 回到 `tgf/go.mod`，把对应 `require` 行升到新 fork tag
    （`github.com/thkhxm/rpcx/v2 v2.0.4`）；
@@ -75,19 +75,21 @@ SemVer。tgf 通过 `go.mod` 的 `require` 钉住具体 fork tag。
 - [ ] `README.md` / `README.cn.md` / `README.en.md` 安装段、版本徽章、底部签名行已对齐目标版本。
 - [ ] 所有文档 import / `go get` 示例的 module path 带正确的 `/vN` 后缀
       （`go get github.com/thkhxm/tgf/v2@vX.Y.Z`、`import ".../tgf/v2/rpc"`）。
-- [ ] **脚手架 skill 版本同步（易漏！）**：`.claude/skills/tgf-server-dev/` 下 4 个
-      `go.mod.tmpl`、`SKILL.md`、`references/api-reference.md` 里硬编码的
-      `github.com/thkhxm/tgf/v2 vX.Y.Z` 已升到本次版本。改完后**重新拷贝到全局安装目录**
-      （`~/.claude/skills/tgf-server-dev/`），否则用户用的是仓库外的旧副本。
-      （SKILL.md 生成步骤已带 `go get @latest` 兜底，但模板里的占位版本仍应保持最新。）
+- [ ] **脚手架 Skill 合同同步（易漏！）**：`.claude/skills/tgf-server-dev/` 的
+      `references/api-reference.md` 已对齐本次公开 API；`SKILL.md` 继续显式调用仓库提供的
+      `tgfctl`，不得恢复模型手工复制模板的旧流程。运行 `scripts/check_skill_contract.py`、
+      Skill 元数据校验和 lint 后，通过 Codex Skill 安装/同步流程更新已安装副本（通常位于
+      `$CODEX_HOME/skills/tgf-server-dev/tgf-server-dev/`），并验证仓库版与安装版 8 个合同文件
+      规范化后一致。生成模板已嵌入 `tgfctl` 的 Go 代码，不再维护旧的 4 个 `go.mod.tmpl`。
 - [ ] 若本次包含 fork 改动：§1.3 的 fork tag 联动已全部完成且 `require` 已升版。
 
 ---
 
 ## 3. 打 tag 与推送
 
-> 假设远端为 `origin`，默认分支为 `main`。本仓库当前在 `feature/v2` 上开发，发版前请
-> 先把发版内容合并到目标发布分支（通常 `main`），在该分支的提交上打 tag。
+> 假设远端为 `origin`，本仓库默认发布分支为 `master`。发版内容必须先以快进或已审计合并
+> 进入 `master`，并在该精确提交的 GitHub Actions 全部成功后打 tag；不得直接给功能分支打
+> 正式发布 tag。
 
 ### 3.1 fork（如有改动，先发 fork）
 
@@ -111,10 +113,10 @@ git push origin v2.0.4
 git status
 
 # 2. 打 tag（SemVer，带 v 前缀，不带 /v2）
-git tag v2.0.0
+git tag v2.2.0
 
 # 3. 推 tag
-git push origin v2.0.0
+git push origin v2.2.0
 ```
 
 > 一个提交上只打一个 tag。补发时若该提交已被消费，**不要移动旧 tag**（goproxy 会缓存，
@@ -132,18 +134,18 @@ mkdir /tmp/tgf-verify && cd /tmp/tgf-verify
 go mod init verify
 
 # 关键：用 GOFLAGS=-mod=mod，并确保不在 workspace 内（GOWORK=off 兜底）
-GOWORK=off go get github.com/thkhxm/tgf/v2@v2.0.0
+GOWORK=off go get github.com/thkhxm/tgf/v2@v2.2.0
 ```
 
 复验要点：
 
-- [ ] `go get` 能解析到刚发的 `v2.0.0`（而不是 `latest` 落到旧版本或报 `unknown revision`）。
-- [ ] `go.sum` 里出现 `github.com/thkhxm/tgf/v2 v2.0.0` 及其依赖的 fork tag
-      （`github.com/thkhxm/rpcx/v2 v2.0.3` 等）。
+- [ ] `go get` 能解析到刚发的 `v2.2.0`（而不是 `latest` 落到旧版本或报 `unknown revision`）。
+- [ ] `go.sum` 里出现 `github.com/thkhxm/tgf/v2 v2.2.0` 及其依赖的 fork tag
+      （`github.com/thkhxm/rpcx/v2 v2.0.4` 等）。
 - [ ] 写一个最小 `main.go`（`import ".../tgf/v2/rpc"` + `rpc.NewRPCServer()...Run()`）能
       `GOWORK=off go build` 通过——证明**下游无需任何 replace** 即可消费。
 - [ ] fork tag 也能独立被 goproxy 解析：
-      `GOWORK=off go get github.com/thkhxm/rpcx/v2@v2.0.3`。
+      `GOWORK=off go get github.com/thkhxm/rpcx/v2@v2.0.4`。
 
 代理与校验环境（本机当前值，供参考）：
 
@@ -154,9 +156,9 @@ GOWORK=off go get github.com/thkhxm/tgf/v2@v2.0.0
 
 ```bash
 # 直接命中源站（绕过代理缓存），或手动触发代理回源
-GOPROXY=direct GOWORK=off go get github.com/thkhxm/tgf/v2@v2.0.0
+GOPROXY=direct GOWORK=off go get github.com/thkhxm/tgf/v2@v2.2.0
 # 或显式请求一次代理的 .info，促其回源缓存该 tag
-curl -fsSL https://goproxy.cn/github.com/thkhxm/tgf/v2/@v/v2.0.0.info
+curl -fsSL https://goproxy.cn/github.com/thkhxm/tgf/v2/@v/v2.2.0.info
 ```
 
 ---

@@ -115,7 +115,7 @@ import (
 
 > **下游业务工程不需要任何 `replace` 块。** tgf 依赖的 rpcx / rpcx-consul fork 也已
 > 迁移为带 `/v2` 后缀的自有 module path（`github.com/thkhxm/rpcx/v2` /
-> `github.com/thkhxm/rpcx-consul/v2`，当前 tag `v2.0.3` / `v2.0.2`），由 tgf 的
+> `github.com/thkhxm/rpcx-consul/v2`，当前 tag `v2.0.4` / `v2.0.3`），由 tgf 的
 > `go.mod` 直接 `require` 引入并随之自动拉取——业务方既不必 `require` 它们，也不必
 > 写 `replace`。
 
@@ -642,4 +642,4 @@ MIT License — 见 [LICENSE](LICENSE)。
 
 ---
 
-*tgf v2.0.0 · 最后更新 2026-06-11*
+*tgf v2.2.0 · 最后更新 2026-07-24*

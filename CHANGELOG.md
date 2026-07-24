@@ -11,6 +11,28 @@
 可观测性接入：`doc/observability.md`
 发版流程：`doc/release-process.md`
 
+## [2.2.0] - 2026-07-24
+
+### Added
+
+- 新增跨平台 `tgfctl` 命令行脚手架，支持单进程、分布式、HTTP REST、HTTP+RPC、
+  Redis/MySQL、TCP/WebSocket/KCP 与 Docker Compose/Kubernetes 组合，并在生成后自动执行
+  `tidy/build/vet/test/verify`。
+- 新增 15 个已知使用场景的示例治理矩阵和真实分布式 gateway/game 示例。
+
+### Changed
+
+- `tgf-server-dev` Skill 改为显式调用确定性的 `tgfctl`，统一项目结构、依赖来源、密钥、
+  go.work 与部署规范；`@latest` 会先解析并固定为具体 TGF 版本。
+- 升级公开依赖到 `github.com/thkhxm/rpcx/v2 v2.0.4` 与
+  `github.com/thkhxm/rpcx-consul/v2 v2.0.3`。
+
+### Fixed
+
+- 修复 RPC 指针回复、本地服务注册失败残留、Admin 生命周期终态/取消/聚合等框架契约问题。
+- 修复 Redis/Consul registry 停止超时、并发清理、失败重试与资源关闭的生命周期问题。
+- 加固平台 HTTP 错误摘要，避免远端响应体或敏感内容进入错误信息。
+
 ## [2.1.0] - 2026-06-11
 
 ### Added
