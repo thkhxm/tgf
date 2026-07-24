@@ -6,6 +6,7 @@ package rpc
 
 import (
 	"errors"
+	"sync"
 	"testing"
 
 	"context"
@@ -28,6 +29,7 @@ type fakeLoginCoordinator struct {
 	setOwnerArgs  []fakeSetOwnerCall
 	kickArgs      []fakeKickCall
 	clearOwnerArg []fakeClearOwnerCall
+	clearOwnerMu  sync.Mutex
 }
 
 type fakeSetOwnerCall struct {
@@ -71,6 +73,8 @@ func (f *fakeLoginCoordinator) SetGateOwner(userId, address string) {
 }
 
 func (f *fakeLoginCoordinator) ClearGateOwner(userId, expectAddress string) {
+	f.clearOwnerMu.Lock()
+	defer f.clearOwnerMu.Unlock()
 	f.clearOwnerArg = append(f.clearOwnerArg, fakeClearOwnerCall{UserId: userId, ExpectAddress: expectAddress})
 }
 

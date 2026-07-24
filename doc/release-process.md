@@ -35,7 +35,7 @@
 
 | fork module path | 当前 tag |
 |------------------|---------|
-| `github.com/thkhxm/rpcx/v2` | `v2.0.4` |
+| `github.com/thkhxm/rpcx/v2` | `v2.0.5` |
 | `github.com/thkhxm/rpcx-consul/v2` | `v2.0.3` |
 
 fork 的版本号与 tgf 的版本号**不要求同步**——它们是独立模块，各自按自己的变更节奏走
@@ -47,10 +47,10 @@ SemVer。tgf 通过 `go.mod` 的 `require` 钉住具体 fork tag。
 必须走完整联动**，否则下游 `go get github.com/thkhxm/tgf/v2@<tag>` 会拉到旧 fork：
 
 1. 在 fork 仓库 commit 改动；
-2. 给 fork 仓库 **bump 一个新 tag**（如 `rpcx/v2` 从 `v2.0.4` → `v2.0.5`）；
+2. 给 fork 仓库 **bump 一个新 tag**（如 `rpcx/v2` 从 `v2.0.5` → `v2.0.6`）；
 3. 把新 fork tag 推到 fork 的远端仓库；
 4. 回到 `tgf/go.mod`，把对应 `require` 行升到新 fork tag
-   （`github.com/thkhxm/rpcx/v2 v2.0.4`）；
+   （`github.com/thkhxm/rpcx/v2 v2.0.5`）；
 5. `cd tgf && go mod tidy`；随后用 `GOWORK=off` 验证远端 tag 能真正解析（见 §4）；
 6. tgf 自身再按需 bump 版本（fork 升级若引入行为变化，至少 PATCH）。
 
@@ -100,10 +100,10 @@ SemVer。tgf 通过 `go.mod` 的 `require` 钉住具体 fork tag。
 git status
 
 # 2. 打带 v 前缀的 SemVer tag（不带 /v2，/v2 只在 go.mod module 行）
-git tag v2.0.4
+git tag v2.0.5
 
 # 3. 推 tag 到远端
-git push origin v2.0.4
+git push origin v2.0.5
 ```
 
 ### 3.2 tgf 主模块
@@ -141,11 +141,11 @@ GOWORK=off go get github.com/thkhxm/tgf/v2@v2.2.0
 
 - [ ] `go get` 能解析到刚发的 `v2.2.0`（而不是 `latest` 落到旧版本或报 `unknown revision`）。
 - [ ] `go.sum` 里出现 `github.com/thkhxm/tgf/v2 v2.2.0` 及其依赖的 fork tag
-      （`github.com/thkhxm/rpcx/v2 v2.0.4` 等）。
+      （`github.com/thkhxm/rpcx/v2 v2.0.5` 等）。
 - [ ] 写一个最小 `main.go`（`import ".../tgf/v2/rpc"` + `rpc.NewRPCServer()...Run()`）能
       `GOWORK=off go build` 通过——证明**下游无需任何 replace** 即可消费。
 - [ ] fork tag 也能独立被 goproxy 解析：
-      `GOWORK=off go get github.com/thkhxm/rpcx/v2@v2.0.4`。
+      `GOWORK=off go get github.com/thkhxm/rpcx/v2@v2.0.5`。
 
 代理与校验环境（本机当前值，供参考）：
 

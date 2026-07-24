@@ -15,7 +15,50 @@ import (
 
 	libkvstore "github.com/rpcxio/libkv/store"
 	"github.com/thkhxm/rpcx-consul/v2/client"
+	"github.com/thkhxm/rpcx/v2/server"
 )
+
+type testDiscoveryStub struct{}
+
+func (testDiscoveryStub) RegisterServer(string) server.Plugin { return nil }
+func (testDiscoveryStub) RegisterDiscovery(string) *client.ConsulDiscovery {
+	return nil
+}
+func (testDiscoveryStub) GetDiscovery(string) *client.ConsulDiscovery { return nil }
+
+func TestDiscoveryTestHooksAreSynchronized(t *testing.T) {
+	ResetDiscoveryForTest()
+	defer ResetDiscoveryForTest()
+
+	stub := testDiscoveryStub{}
+	const iterations = 1000
+	var wg sync.WaitGroup
+	wg.Add(3)
+	go func() {
+		defer wg.Done()
+		for i := 0; i < iterations; i++ {
+			SetDiscoveryForTest(stub)
+		}
+	}()
+	go func() {
+		defer wg.Done()
+		for i := 0; i < iterations; i++ {
+			ResetDiscoveryForTest()
+		}
+	}()
+	go func() {
+		defer wg.Done()
+		for i := 0; i < iterations; i++ {
+			_ = GetDiscovery()
+		}
+	}()
+	wg.Wait()
+
+	SetDiscoveryForTest(stub)
+	if got := GetDiscovery(); got != stub {
+		t.Fatalf("expected injected discovery after concurrent test, got %T", got)
+	}
+}
 
 // TestGetDiscovery_ReturnsNilBeforeUse 验证 A6 的行为变更：
 // GetDiscovery 不再自动触发 UseConsulDiscovery，未初始化时返回 nil。
@@ -30,7 +73,7 @@ func TestGetDiscovery_ReturnsNilBeforeUse(t *testing.T) {
 }
 
 // TestUseConsulDiscovery_Idempotent 验证连续调用 UseConsulDiscovery 只初始化一次。
-// sync.Once 确保 discovery 指针在首次后不再变化。
+// 锁保护的初始化状态确保 discovery 指针在首次后不再变化。
 func TestUseConsulDiscovery_Idempotent(t *testing.T) {
 	ResetDiscoveryForTest()
 	defer ResetDiscoveryForTest()
@@ -50,7 +93,7 @@ func TestUseConsulDiscovery_Idempotent(t *testing.T) {
 
 // TestUseConsulDiscovery_ConcurrentSingleton 是 A6 修复的核心回归测试：
 // 原代码 `if discovery != nil { return }` 非原子，N 个 goroutine 并发调用
-// 可能各自 new 一个 ConsulDiscovery。sync.Once 保证恰好一个胜者。
+// 可能各自 new 一个 ConsulDiscovery。锁保护的初始化状态保证恰好一个胜者。
 func TestUseConsulDiscovery_ConcurrentSingleton(t *testing.T) {
 	ResetDiscoveryForTest()
 	defer ResetDiscoveryForTest()

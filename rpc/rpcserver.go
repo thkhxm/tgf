@@ -1253,7 +1253,7 @@ func (c *Client) watchBaseDiscovery(d internal.IRPCDiscovery, discovery *client2
 			for _, v := range kv {
 				if strings.Index(v.Key, "/") > 0 {
 					moduleName := strings.Split(v.Key, "/")[0]
-					if dis := internal.GetDiscovery().GetDiscovery(moduleName); dis != nil {
+					if dis := d.GetDiscovery(moduleName); dis != nil {
 						continue
 					}
 					log.DebugTag("discovery", "base discovery service %v,%v", v.Key, v.Value)

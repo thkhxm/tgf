@@ -64,7 +64,7 @@ var (
 	runtimeCompress   = false
 	runtimeLocalTime  = true
 	runtimeTimeFormat = "2006-01-02 15:04:05.000"
-	ignoredTags       map[string]bool
+	ignoredTags       atomic.Pointer[map[string]bool]
 )
 
 const (
@@ -97,7 +97,7 @@ func checkTag(level zapcore.Level, tag string) *zapcore.CheckedEntry {
 	// 在 "log level WARN、DebugTag 调用" 的最常见场景下可以少一次 map lookup。
 	// 不过为了保持语义清晰（先判断 tag，再让 zap 判断 level），这里还是
 	// tag → level 的顺序。如果未来 profiling 显示这是瓶颈，再调换。
-	if ignoredTags != nil && ignoredTags[tag] {
+	if isTagIgnored(tag) {
 		return nil
 	}
 	return logger.Check(level, "")
@@ -176,28 +176,28 @@ func ErrorW(msg string, fields ...zap.Field) { logger.Error(msg, fields...) }
 
 // InfoTagW 等系列带 tag 过滤。tag 命中 ignoredTags 时完全短路。
 func InfoTagW(tag, msg string, fields ...zap.Field) {
-	if ignoredTags != nil && ignoredTags[tag] {
+	if isTagIgnored(tag) {
 		return
 	}
 	logger.Info(msg, append(fields, zap.String("tag", tag))...)
 }
 
 func DebugTagW(tag, msg string, fields ...zap.Field) {
-	if ignoredTags != nil && ignoredTags[tag] {
+	if isTagIgnored(tag) {
 		return
 	}
 	logger.Debug(msg, append(fields, zap.String("tag", tag))...)
 }
 
 func WarnTagW(tag, msg string, fields ...zap.Field) {
-	if ignoredTags != nil && ignoredTags[tag] {
+	if isTagIgnored(tag) {
 		return
 	}
 	logger.Warn(msg, append(fields, zap.String("tag", tag))...)
 }
 
 func ErrorTagW(tag, msg string, fields ...zap.Field) {
-	if ignoredTags != nil && ignoredTags[tag] {
+	if isTagIgnored(tag) {
 		return
 	}
 	logger.Error(msg, append(fields, zap.String("tag", tag))...)
@@ -273,7 +273,7 @@ func ErrorTagWT(tag, traceId, msg string, fields ...zap.Field) {
 // 把 traceId 与 tag 作为结构化字段一并写出。level 过滤命中时连 traceId 字段都
 // 不构造，保持热路径零开销。
 func tagWriteWithTrace(level zapcore.Level, tag, traceId, msg string, fields []zap.Field) {
-	if ignoredTags != nil && ignoredTags[tag] {
+	if isTagIgnored(tag) {
 		return
 	}
 	if ce := logger.Check(level, msg); ce != nil {
@@ -311,7 +311,7 @@ func Service(module, name, version, userId string, consume int64, code int32) {
 
 // CheckLogTag 保留给老代码/外部调用兼容。新代码应当直接用 `*TagW` 系列。
 func CheckLogTag(tag string) bool {
-	return !ignoredTags[tag]
+	return !isTagIgnored(tag)
 }
 
 // loadLumberjackConfig 从统一配置系统（tgf/config）拉取 v2 新增的 log 配置项。
@@ -373,9 +373,8 @@ func applyReloadableConfig(c *tgfconfig.Config) {
 	}
 	level := parseLogLevel(c.Logger.Level)
 	atomicLevel.SetLevel(level)
-	// ignoredTags 同样可热更：Reload 后重建过滤集合（map 整体替换，读侧无锁
-	// 读取的是替换前/后某一个完整 map，不会撕裂）。
-	ignoredTags = buildIgnoredTags(c.Logger.IgnoredTags)
+	// ignoredTags 同样可热更：Reload 后构造不可变快照，再原子发布给读侧。
+	storeIgnoredTags(buildIgnoredTags(c.Logger.IgnoredTags))
 }
 
 // parseLogLevel 解析日志级别字符串，空值 / 非法值回退 DebugLevel。
@@ -406,6 +405,16 @@ func buildIgnoredTags(raw string) map[string]bool {
 		}
 	}
 	return m
+}
+
+// storeIgnoredTags 原子发布只读快照。传入的 map 在发布后不得再修改。
+func storeIgnoredTags(tags map[string]bool) {
+	ignoredTags.Store(&tags)
+}
+
+func isTagIgnored(tag string) bool {
+	tags := ignoredTags.Load()
+	return tags != nil && (*tags)[tag]
 }
 
 func initLogger() {
@@ -456,7 +465,7 @@ func initLogger() {
 	// 级别交给 atomicLevel——所有 core 共享同一个 LevelEnabler，Reload 时
 	// SetLevel 即对全部 sink 生效（含 stdout 与三个专用文件）。
 	atomicLevel.SetLevel(parseLogLevel(logLevel))
-	ignoredTags = buildIgnoredTags(lc.IgnoredTags)
+	storeIgnoredTags(buildIgnoredTags(lc.IgnoredTags))
 
 	//在原有日志基础上增加一层
 	st := newCore(logPath, zapLoggerEncoderConfig, true)

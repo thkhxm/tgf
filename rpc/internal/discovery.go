@@ -17,13 +17,14 @@ import (
 //2023/2/23
 //***************************************************
 
-// discovery 是 package 级 singleton，由 discoveryOnce 保护并发初始化。
+// discovery 是 package 级 singleton，由 discoveryMu 保护初始化、读取和测试替换。
 // A6 修复：原实现用 `if discovery != nil { return }` 做 nil check，两个 goroutine
 // 可以同时通过检查然后各自 new 一个 ConsulDiscovery，丢失一个并留下不一致的
-// discoveryMap。sync.Once 保证整个初始化路径只跑一次。
+// discoveryMap。互斥锁下的 initialized 状态保证整个初始化路径只跑一次。
 var (
-	discovery     IRPCDiscovery
-	discoveryOnce sync.Once
+	discoveryMu          sync.RWMutex
+	discovery            IRPCDiscovery
+	discoveryInitialized bool
 )
 
 // IRPCDiscovery
@@ -41,14 +42,20 @@ type IRPCDiscovery interface {
 
 // UseConsulDiscovery 幂等地初始化全局 discovery 单例为 ConsulDiscovery。
 // A4 之后这个函数被 buildPreServeHooks 里"默认 Consul Hook"调用；也可能被
-// 业务代码显式调用——两种路径并存时 sync.Once 保证只 new 一次。
+// 业务代码显式调用——两种路径并存时锁保护的初始化状态保证只 new 一次。
 func UseConsulDiscovery() {
-	discoveryOnce.Do(func() {
-		cd := new(ConsulDiscovery)
-		cd.initStruct()
-		discovery = cd
-		log.InfoTag("init", "装载consul discovery模块")
-	})
+	discoveryMu.Lock()
+	if discoveryInitialized {
+		discoveryMu.Unlock()
+		return
+	}
+	cd := new(ConsulDiscovery)
+	cd.initStruct()
+	discovery = cd
+	discoveryInitialized = true
+	discoveryMu.Unlock()
+
+	log.InfoTag("init", "装载consul discovery模块")
 }
 
 // GetDiscovery 返回当前 discovery 单例的快照。
@@ -63,24 +70,27 @@ func UseConsulDiscovery() {
 // 调用方已经在 rpcserver.Run 里用 `if discovery != nil` guard 过了，所以这次
 // 行为变更不会破坏现有路径，但会让 `WithoutConsul()` 真的生效。
 func GetDiscovery() IRPCDiscovery {
+	discoveryMu.RLock()
+	defer discoveryMu.RUnlock()
 	return discovery
 }
 
-// ResetDiscoveryForTest 仅用于单测：清空 discovery 单例和 sync.Once，
+// ResetDiscoveryForTest 仅用于单测：清空 discovery 单例和初始化状态，
 // 让下一次 UseConsulDiscovery 能重新初始化。生产代码不要调用。
 func ResetDiscoveryForTest() {
+	discoveryMu.Lock()
+	defer discoveryMu.Unlock()
 	discovery = nil
-	discoveryOnce = sync.Once{}
+	discoveryInitialized = false
 }
 
 // SetDiscoveryForTest 仅用于单测（F2）：把 discovery 单例替换为注入的桩实现，
-// 并消耗 sync.Once——之后 buildPreServeHooks 里默认的 UseConsulDiscovery 调用
+// 并标记为已初始化——之后 buildPreServeHooks 里默认的 UseConsulDiscovery 调用
 // 会成为 no-op，Server.Run 的"注册时序"可以在无真实 Consul 的环境下被
 // 确定性验证（见 rpc/rpcserver_f2_order_test.go）。生产代码不要调用。
 func SetDiscoveryForTest(d IRPCDiscovery) {
-	discovery = nil
-	discoveryOnce = sync.Once{}
-	discoveryOnce.Do(func() {
-		discovery = d
-	})
+	discoveryMu.Lock()
+	defer discoveryMu.Unlock()
+	discovery = d
+	discoveryInitialized = true
 }

@@ -24,7 +24,7 @@
 
 - `tgf-server-dev` Skill 改为显式调用确定性的 `tgfctl`，统一项目结构、依赖来源、密钥、
   go.work 与部署规范；`@latest` 会先解析并固定为具体 TGF 版本。
-- 升级公开依赖到 `github.com/thkhxm/rpcx/v2 v2.0.4` 与
+- 升级公开依赖到 `github.com/thkhxm/rpcx/v2 v2.0.5` 与
   `github.com/thkhxm/rpcx-consul/v2 v2.0.3`。
 
 ### Fixed
